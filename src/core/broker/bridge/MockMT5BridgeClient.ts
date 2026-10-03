@@ -52,12 +52,12 @@ export function computeBarCoverage(bars: readonly BridgeBar[], tf: Timeframe, fr
       reason: "terminal returned zero bars; absence of data is not proof of no market activity" };
   }
   const step = TIMEFRAME_MS[tf] / 1000;
-  const oldest = bars[0].raw_time_s;
-  const newest = bars[bars.length - 1].raw_time_s;
+  const oldest = bars[0]!.raw_time_s;
+  const newest = bars[bars.length - 1]!.raw_time_s;
   const cov = { ...base, oldest_returned_at: oldest, newest_returned_at: newest };
   for (let i = 1; i < bars.length; i++) {
-    if (bars[i].raw_time_s - bars[i - 1].raw_time_s !== step) {
-      return { ...cov, coverage_status: "PARTIAL", reason: `internal gap after ${bars[i - 1].raw_time_s}` };
+    if (bars[i]!.raw_time_s - bars[i - 1]!.raw_time_s !== step) {
+      return { ...cov, coverage_status: "PARTIAL", reason: `internal gap after ${bars[i - 1]!.raw_time_s}` };
     }
   }
   const firstExpected = Math.ceil(fromS / step) * step;
@@ -75,7 +75,7 @@ export function computeBarCoverage(bars: readonly BridgeBar[], tf: Timeframe, fr
 export function computeTickCoverage(ticks: readonly BridgeTick[], fromS: number, toS: number): HistoryCoverage {
   const base = { requested_from: fromS, requested_to: toS, returned_count: ticks.length };
   if (ticks.length === 0) return { ...base, oldest_returned_at: null, newest_returned_at: null, coverage_status: "EMPTY", reason: "terminal returned zero ticks" };
-  return { ...base, oldest_returned_at: ticks[0].raw_time_msc, newest_returned_at: ticks[ticks.length - 1].raw_time_msc,
+  return { ...base, oldest_returned_at: ticks[0]!.raw_time_msc, newest_returned_at: ticks[ticks.length - 1]!.raw_time_msc,
     coverage_status: "UNKNOWN", reason: "tick continuity cannot be proven from a terminal response" };
 }
 
@@ -188,20 +188,20 @@ export class MockMT5BridgeClient implements ReadOnlyBridgeClient {
           ? { ...r, status: "RESOLVED" as const, broker_symbol: pinned, reason: "USER_PINNED" as const }
           : { ...r, status: "UNRESOLVED" as const, broker_symbol: null, reason: "PIN_NOT_IN_CANDIDATES" as const };
       }
-      if (matches.length === 1) return { ...r, status: "RESOLVED" as const, broker_symbol: matches[0].broker_symbol, reason: "UNIQUE_METADATA_MATCH" as const };
+      if (matches.length === 1) return { ...r, status: "RESOLVED" as const, broker_symbol: matches[0]!.broker_symbol, reason: "UNIQUE_METADATA_MATCH" as const };
       return { ...r, status: "UNRESOLVED" as const, broker_symbol: null, reason: matches.length === 0 ? "NO_CANDIDATE" as const : "AMBIGUOUS" as const };
     });
   }
 
   ticks(brokerSymbol: string, fromS: number, toS: number, delivery: BridgeDelivery = "BACKFILL"): BridgeEnvelope<HistoryResult<BridgeTick>> {
     const items = (this.script.ticks[brokerSymbol] ?? []).filter((t) => t.raw_time_msc >= fromS * 1000 && t.raw_time_msc < toS * 1000);
-    const last = items.length ? items[items.length - 1].raw_time_msc - this.script.source_to_bridge_ms + this.script.source_to_bridge_ms : null;
+    const last = items.length ? items[items.length - 1]!.raw_time_msc - this.script.source_to_bridge_ms + this.script.source_to_bridge_ms : null;
     return this.envelope("MARKET_DATA.TICKS", delivery, last, () => ({ items: items.map((t) => ({ ...t })), coverage: computeTickCoverage(items, fromS, toS) }));
   }
 
   bars(brokerSymbol: string, timeframe: Timeframe, fromS: number, toS: number, delivery: BridgeDelivery = "BACKFILL"): BridgeEnvelope<HistoryResult<BridgeBar>> {
     const items = (this.script.bars[`${brokerSymbol}:${timeframe}`] ?? []).filter((b) => b.raw_time_s >= fromS && b.raw_time_s < toS);
-    const src = items.length ? items[items.length - 1].raw_time_s * 1000 : null;
+    const src = items.length ? items[items.length - 1]!.raw_time_s * 1000 : null;
     return this.envelope("MARKET_DATA.BARS", delivery, src, () => ({ items: items.map((b) => ({ ...b })), coverage: computeBarCoverage(items, timeframe, fromS, toS, this.script.history_synced) }));
   }
 
