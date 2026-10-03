@@ -1,5 +1,5 @@
 // Stage 3.0B-1 — deterministic mock of the read-only bridge.
-// No terminal, no network, no credentials. Time comes only from a ReplayClock.
+// No terminal, no network, no secrets. Time comes only from a ReplayClock.
 import { TIMEFRAME_MS, type Timeframe } from "../../contracts";
 import { ReplayClock } from "../../temporal/CanonicalClock";
 import { BASE_BRIDGE_SCRIPT, BRIDGE_T0, type SyntheticBridgeScript } from "../../fixtures/syntheticBridgeFixture";
