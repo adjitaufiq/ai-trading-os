@@ -13,6 +13,11 @@ import { LiveClock } from "@/core/temporal/CanonicalClock";
 import { CandleAggregator } from "@/core/temporal/CandleAggregator";
 import { xauusdTemporalFixture } from "@/core/fixtures/xauusdTemporalFixture";
 import { runReplay } from "@/core/replay";
+import { runBrokerSimulation, SIMULATED_CONNECTION } from "@/core/broker/simulation";
+import { verifyBar } from "@/core/broker/DiscrepancyVerifier";
+import { BrokerNormalizer } from "@/core/broker/BrokerNormalizer";
+import { ReplayClock } from "@/core/temporal/CanonicalClock";
+import { brokerBarCases, SYNTHETIC_SPEC, SYNTHETIC_TOLERANCE } from "@/core/fixtures/syntheticExnessFixture";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -29,7 +34,8 @@ export const Route = createFileRoute("/")({
 });
 
 const MODULES: ModuleHealth[] = [
-  { name: "Market", state: "DEGRADED", note: "Mock adapter — MT5 read-only pending (Stage 3)" },
+  { name: "Market", state: "DEGRADED", note: "Mock adapter — no real broker feed" },
+  { name: "Broker Domain", state: "NOT_BUILT", note: "3.0A simulation on synthetic fixtures — MT5 not connected (3.0B)" },
   { name: "Evidence", state: "NOT_BUILT", note: "Canonical EvidenceState contract defined" },
   { name: "Strategy", state: "NOT_BUILT", note: "EMA_MTF_V1 — Stage 6" },
   { name: "Guards", state: "NOT_BUILT", note: "Preflight / invariants — Stage 6" },
@@ -142,6 +148,65 @@ function ReplayPanel() {
   );
 }
 
+const brokerSim = runBrokerSimulation();
+const bar0 = brokerSim.closed[0] ?? null;
+const normBar = (env: typeof brokerBarCases.exact) =>
+  new BrokerNormalizer(SYNTHETIC_SPEC, new ReplayClock(env.received_at)).normalizeBar(env);
+const discrepancies: [string, ReturnType<typeof verifyBar>][] = [
+  ["exact", verifyBar(bar0, normBar(brokerBarCases.exact), SYNTHETIC_SPEC, SYNTHETIC_TOLERANCE)],
+  ["small", verifyBar(bar0, normBar(brokerBarCases.small), SYNTHETIC_SPEC, SYNTHETIC_TOLERANCE)],
+  ["material", verifyBar(bar0, normBar(brokerBarCases.material), SYNTHETIC_SPEC, SYNTHETIC_TOLERANCE)],
+  ["missing internal", verifyBar(null, normBar(brokerBarCases.orphan), SYNTHETIC_SPEC, SYNTHETIC_TOLERANCE)],
+  ["missing broker", verifyBar(brokerSim.closed[1] ?? null, null, SYNTHETIC_SPEC, SYNTHETIC_TOLERANCE)],
+  ["forming", verifyBar(brokerSim.forming, normBar(brokerBarCases.exact), SYNTHETIC_SPEC, SYNTHETIC_TOLERANCE)],
+];
+const dispColor = (d: string) =>
+  d === "ACCEPT" || d === "EXACT" ? "text-bull" : d === "REJECT" || d === "MISMATCH" ? "text-bear" : d === "ACCEPT_WITH_FLAG" || d === "WITHIN_TOLERANCE" ? "" : "text-warn";
+
+function BrokerDomainPanel() {
+  return (
+    <div className="border border-border bg-card">
+      <h2 className="flex justify-between border-b border-border px-4 py-2 font-mono text-xs tracking-widest text-muted-foreground">
+        <span>BROKER DOMAIN · {SIMULATED_CONNECTION.mode}</span>
+        <span>MT5 {SIMULATED_CONNECTION.status.replace("_", " ")}</span>
+      </h2>
+      <div className="grid gap-0 md:grid-cols-2">
+        <div className="border-b border-border md:border-b-0 md:border-r">
+          <div className="px-4 py-2 font-mono text-xs text-muted-foreground">Feed anomalies · synthetic fixture</div>
+          <table className="w-full font-mono text-xs">
+            <tbody>
+              {brokerSim.audit.map((a, i) => (
+                <tr key={i} className="border-t border-border">
+                  <td className="px-3 py-1">{a.envelope.raw.raw_event_id}</td>
+                  <td className="px-3 py-1 text-muted-foreground">{a.anomalies.map((x) => x.classification).join(" + ") || "—"}</td>
+                  <td className={`px-3 py-1 text-right ${dispColor(a.disposition)}`}>{a.disposition}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div className="px-4 py-2 font-mono text-xs text-muted-foreground">Discrepancy · synthetic validation (tol {SYNTHETIC_TOLERANCE.maxPriceDeltaPoints} pts)</div>
+          <table className="w-full font-mono text-xs">
+            <tbody>
+              {discrepancies.map(([label, d]) => (
+                <tr key={label} className="border-t border-border">
+                  <td className="px-3 py-1">{label}</td>
+                  <td className="px-3 py-1 text-muted-foreground">{d.reason}</td>
+                  <td className={`px-3 py-1 text-right ${dispColor(d.outcome)}`}>{d.outcome}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p className="border-t border-border px-4 py-2 font-mono text-xs text-muted-foreground">
+        Synthetic Exness-like data. Not observed broker behaviour — empirical values come from TRS-03 (Stage 3.0B).
+      </p>
+    </div>
+  );
+}
+
 function Index() {
   return (
     <div className="min-h-screen">
@@ -150,7 +215,7 @@ function Index() {
         <div className="flex gap-4">
           <span className="border border-warn px-2 text-warn">{OPERATING_MODE.replace("_", " ")}</span>
           <span className="text-muted-foreground">execution.enabled = {String(EXECUTION_ENABLED)}</span>
-          <span className="text-warn">MT5 ○ mock</span>
+          <span className="text-muted-foreground">MT5 NOT CONNECTED</span>
         </div>
       </header>
 
@@ -162,6 +227,8 @@ function Index() {
           </div>
 
           <ReplayPanel />
+
+          <BrokerDomainPanel />
 
           <div className="border border-border bg-card">
             <h2 className="border-b border-border px-4 py-2 font-mono text-xs tracking-widest text-muted-foreground">
