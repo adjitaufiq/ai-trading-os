@@ -195,7 +195,7 @@ export class MockMT5BridgeClient implements ReadOnlyBridgeClient {
 
   ticks(brokerSymbol: string, fromS: number, toS: number, delivery: BridgeDelivery = "BACKFILL"): BridgeEnvelope<HistoryResult<BridgeTick>> {
     const items = (this.script.ticks[brokerSymbol] ?? []).filter((t) => t.raw_time_msc >= fromS * 1000 && t.raw_time_msc < toS * 1000);
-    const last = items.length ? items[items.length - 1]!.raw_time_msc - this.script.source_to_bridge_ms + this.script.source_to_bridge_ms : null;
+    const last = items.length ? items[items.length - 1]!.raw_time_msc : null;
     return this.envelope("MARKET_DATA.TICKS", delivery, last, () => ({ items: items.map((t) => ({ ...t })), coverage: computeTickCoverage(items, fromS, toS) }));
   }
 
