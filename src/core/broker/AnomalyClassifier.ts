@@ -74,7 +74,7 @@ export class AnomalyClassifier {
         add("LATE_EVENT", e.provenance.delivery === "BACKFILL" ? "RECONCILE" : "QUARANTINE",
           "belongs to an already-closed bucket; CLOSED candles are immutable");
       } else {
-        add("OUT_OF_ORDER", "QUARANTINE", `event_at ${e.event_at} < last accepted ${last.event_at}`);
+        add("OUT_OF_ORDER", e.provenance.delivery === "BACKFILL" ? "RECONCILE" : "QUARANTINE", `event_at ${e.event_at} < last accepted ${last.event_at}`);
       }
     } else if (!last && bucketClosed) {
       add("LATE_EVENT", "QUARANTINE", "first event already belongs to a closed bucket");
