@@ -142,3 +142,27 @@
     color: var(--color-foreground);
   }
 }
+
+/* Trading OS terminal palette (overrides) */
+@theme inline {
+  --color-bull: var(--bull);
+  --color-bear: var(--bear);
+  --color-warn: var(--warn);
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, sans-serif;
+}
+:root {
+  --background: oklch(0.16 0.01 250);
+  --foreground: oklch(0.92 0.01 250);
+  --card: oklch(0.2 0.012 250);
+  --card-foreground: oklch(0.92 0.01 250);
+  --muted: oklch(0.24 0.012 250);
+  --muted-foreground: oklch(0.62 0.02 250);
+  --border: oklch(0.3 0.015 250);
+  --primary: oklch(0.82 0.15 85);
+  --primary-foreground: oklch(0.16 0.01 250);
+  --bull: oklch(0.75 0.16 150);
+  --bear: oklch(0.65 0.2 25);
+  --warn: oklch(0.8 0.15 75);
+}
+body { font-family: var(--font-sans); background: var(--background); color: var(--foreground); }
