@@ -17,7 +17,7 @@ export function runReplay(
   timeframe: Timeframe,
   endAt?: number,
 ): ReplayResult {
-  const clock = new ReplayClock(events[0]?.ingested_at ?? 0);
+  const clock = new ReplayClock(events.length ? Math.min(...events.map((e) => e.ingested_at)) : 0);
   const adapter = new DeterministicReplayAdapter(events, clock);
   const agg = new CandleAggregator(symbol, timeframe, clock);
   const emitted: Bar[] = [];
