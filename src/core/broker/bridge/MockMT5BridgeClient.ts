@@ -1,5 +1,5 @@
 // Stage 3.0B-1 — deterministic mock of the read-only bridge.
-// No terminal, no network, no credentials. Time comes only from a ReplayClock.
+// No terminal, no network, no secrets. Time comes only from a ReplayClock.
 import { TIMEFRAME_MS, type Timeframe } from "../../contracts";
 import { ReplayClock } from "../../temporal/CanonicalClock";
 import { BASE_BRIDGE_SCRIPT, BRIDGE_T0, type SyntheticBridgeScript } from "../../fixtures/syntheticBridgeFixture";
@@ -195,7 +195,7 @@ export class MockMT5BridgeClient implements ReadOnlyBridgeClient {
 
   ticks(brokerSymbol: string, fromS: number, toS: number, delivery: BridgeDelivery = "BACKFILL"): BridgeEnvelope<HistoryResult<BridgeTick>> {
     const items = (this.script.ticks[brokerSymbol] ?? []).filter((t) => t.raw_time_msc >= fromS * 1000 && t.raw_time_msc < toS * 1000);
-    const last = items.length ? items[items.length - 1]!.raw_time_msc - this.script.source_to_bridge_ms + this.script.source_to_bridge_ms : null;
+    const last = items.length ? items[items.length - 1]!.raw_time_msc : null;
     return this.envelope("MARKET_DATA.TICKS", delivery, last, () => ({ items: items.map((t) => ({ ...t })), coverage: computeTickCoverage(items, fromS, toS) }));
   }
 
