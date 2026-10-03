@@ -35,7 +35,7 @@ const MODULES: ModuleHealth[] = [
   { name: "System Health", state: "HEALTHY", note: "Frontend shell online" },
 ];
 
-const STAGES = [
+const STAGES: [string, string, string][] = [
   ["0", "Foundation", "LOCKED"], ["1", "Research Spec", "PARALLEL"], ["2", "Application Skeleton", "ACTIVE"],
   ["3", "Market Data Core", ""], ["4", "Technical Intelligence", ""], ["5", "Chart + Manual Structure", ""],
   ["6", "Strategy / Guard Engine", ""], ["7", "External Intelligence", ""], ["8", "AI Analyst", ""],
@@ -119,7 +119,7 @@ function Index() {
           <ol className="p-2 text-sm">
             {STAGES.map(([n, name, tag]) => (
               <li key={n} className={`flex justify-between px-2 py-1 ${tag === "ACTIVE" ? "bg-muted text-primary" : ""}`}>
-                <span><span className="font-mono text-muted-foreground mr-2">{n.padStart(2, "0")}</span>{name}</span>
+                <span><span className="font-mono text-muted-foreground mr-2">{String(n).padStart(2, "0")}</span>{name}</span>
                 <span className="font-mono text-xs">{tag}</span>
               </li>
             ))}
