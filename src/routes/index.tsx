@@ -3,11 +3,16 @@ import { useEffect, useState } from "react";
 import {
   EXECUTION_ENABLED,
   OPERATING_MODE,
+  type Bar,
   type HealthState,
   type MarketEvent,
   type ModuleHealth,
 } from "@/core/contracts";
-import { mockMarketAdapter } from "@/core/mockMarketAdapter";
+import { MockMarketAdapter } from "@/core/market/MockMarketAdapter";
+import { LiveClock } from "@/core/temporal/CanonicalClock";
+import { CandleAggregator } from "@/core/temporal/CandleAggregator";
+import { xauusdTemporalFixture } from "@/core/fixtures/xauusdTemporalFixture";
+import { runReplay } from "@/core/replay";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -47,21 +52,36 @@ const stateColor: Record<HealthState, string> = {
   HEALTHY: "text-bull", DEGRADED: "text-warn", DOWN: "text-bear", NOT_BUILT: "text-muted-foreground",
 };
 
-function useTicks(symbol: string) {
+const liveClock = new LiveClock();
+const liveAdapter = new MockMarketAdapter(liveClock);
+const replayResult = runReplay(xauusdTemporalFixture, "XAUUSD", "M5");
+
+const fmt = (t: number | null) => (t == null ? "—" : new Date(t).toISOString().slice(11, 23));
+
+function useLive(symbol: string) {
   const [e, setE] = useState<MarketEvent | null>(null);
   const [prev, setPrev] = useState<number | null>(null);
-  useEffect(() => mockMarketAdapter.subscribe(symbol, (n) => {
-    setE((old) => { setPrev(old?.bid ?? null); return n; });
-  }), [symbol]);
-  return { e, dir: e && prev != null ? Math.sign(e.bid - prev) : 0 };
+  const [bar, setBar] = useState<Bar | null>(null);
+  const [lastClosed, setLastClosed] = useState<Bar | null>(null);
+  useEffect(() => {
+    const agg = new CandleAggregator(symbol, "M5", liveClock);
+    const off = agg.onBar((b) => (b.status === "CLOSED" ? setLastClosed(b) : setBar(b)));
+    const unsub = liveAdapter.subscribe(symbol, (n) => {
+      agg.ingest(n);
+      setE((old) => { setPrev(old?.bid ?? null); return n; });
+    });
+    const tick = setInterval(() => { agg.checkBoundary(); if (!agg.current) setBar(null); }, 1000);
+    return () => { off(); unsub(); clearInterval(tick); };
+  }, [symbol]);
+  return { e, bar, lastClosed, dir: e && prev != null ? Math.sign(e.bid - prev) : 0 };
 }
 
 function Ticker({ symbol }: { symbol: string }) {
-  const { e, dir } = useTicks(symbol);
+  const { e, dir, bar, lastClosed } = useLive(symbol);
   return (
     <div className="border border-border bg-card p-4">
       <div className="flex justify-between text-xs text-muted-foreground font-mono">
-        <span>{symbol}</span><span>{e?.source ?? "—"}</span>
+        <span>{symbol}</span><span>{e?.source ?? "—"} · CLOCK {liveClock.mode}</span>
       </div>
       <div className={`mt-2 font-mono text-3xl ${dir > 0 ? "text-bull" : dir < 0 ? "text-bear" : ""}`}>
         {e ? e.bid.toFixed(2) : "—"}
@@ -69,7 +89,54 @@ function Ticker({ symbol }: { symbol: string }) {
       <div className="mt-2 grid grid-cols-3 gap-2 font-mono text-xs text-muted-foreground">
         <span>ASK {e?.ask.toFixed(2) ?? "—"}</span>
         <span>SPR {e?.spread.toFixed(2) ?? "—"}</span>
-        <span>LAT {e ? e.receivedAt - e.brokerTime : "—"}ms</span>
+        <span>LAT {e ? e.ingested_at - e.event_at : "—"}ms</span>
+      </div>
+      <div className="mt-3 space-y-1 border-t border-border pt-2 font-mono text-xs">
+        <div className="flex justify-between">
+          <span>M5 {bar ? <span className="text-warn">FORMING</span> : "—"}</span>
+          <span className="text-muted-foreground">{bar ? `${bar.tick_count} ticks · close ${fmt(bar.close_time)}` : ""}</span>
+        </div>
+        <div className="flex justify-between">
+          <span>M5 last <span className="text-bull">{lastClosed ? "CLOSED" : "—"}</span></span>
+          <span className="text-muted-foreground">{lastClosed ? `closed_at ${fmt(lastClosed.closed_at)}` : "waiting for boundary"}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReplayPanel() {
+  const rows = [...replayResult.closed, ...(replayResult.forming ? [replayResult.forming] : [])];
+  return (
+    <div className="border border-border bg-card">
+      <h2 className="flex justify-between border-b border-border px-4 py-2 font-mono text-xs tracking-widest text-muted-foreground">
+        <span>REPLAY FIXTURE · XAUUSD M5</span><span>CLOCK REPLAY</span>
+      </h2>
+      <div className="overflow-x-auto">
+        <table className="w-full font-mono text-xs">
+          <thead className="text-muted-foreground">
+            <tr className="text-left">
+              {["open_time", "close_time", "status", "closed_at", "effective_at", "available_at", "O", "H", "L", "C", "n"].map((h) => (
+                <th key={h} className="px-3 py-1 font-normal">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((b) => (
+              <tr key={b.open_time} className="border-t border-border">
+                <td className="px-3 py-1">{fmt(b.open_time)}</td>
+                <td className="px-3 py-1">{fmt(b.close_time)}</td>
+                <td className={`px-3 py-1 ${b.status === "CLOSED" ? "text-bull" : "text-warn"}`}>{b.status}</td>
+                <td className="px-3 py-1">{fmt(b.closed_at)}</td>
+                <td className="px-3 py-1">{fmt(b.effective_at)}</td>
+                <td className="px-3 py-1">{fmt(b.available_at)}</td>
+                <td className="px-3 py-1">{b.open}</td><td className="px-3 py-1">{b.high}</td>
+                <td className="px-3 py-1">{b.low}</td><td className="px-3 py-1">{b.close}</td>
+                <td className="px-3 py-1">{b.tick_count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -93,6 +160,8 @@ function Index() {
             <Ticker symbol="XAUUSD" />
             <Ticker symbol="BTCUSD" />
           </div>
+
+          <ReplayPanel />
 
           <div className="border border-border bg-card">
             <h2 className="border-b border-border px-4 py-2 font-mono text-xs tracking-widest text-muted-foreground">
