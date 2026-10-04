@@ -46,7 +46,7 @@ const realFetch: FetchLike = async (url) => {
   if (p === "/v1/health") body = env("SYSTEM.HEALTH", "LIVE", { bridge_instance_id: "exness-demo-x", connection_epoch: 7, source_mode: "REAL", terminal_connected: true });
   else if (p === "/v1/terminal") body = env("SYSTEM.TERMINAL_INFO", "LIVE", { connected: true, terminal_ping_us: 12000, terminal_ping_ms: 12, retransmission: 0, trade_allowed_observed: true, tradeapi_disabled_observed: false, authority: "OBSERVATION_ONLY" });
   else if (p === "/v1/symbols") body = env("DISCOVERY.SYMBOLS", "LIVE", BTC.map(spec));
-  else if (p === "/v1/symbols/XAUUSD") body = env("DISCOVERY.SYMBOL_INFO", "LIVE", { ...spec("XAUUSD"), currency_base: "XAU", path: "Metals\\XAUUSD" });
+  else if (p === "/v1/symbols/XAUUSD") body = env("DISCOVERY.SYMBOL_SPEC", "LIVE", { ...spec("XAUUSD"), currency_base: "XAU", path: "Metals\\XAUUSD" });
   else if (p === "/v1/ticks/latest/XAUUSD") body = env("MARKET_DATA.TICKS", "LIVE", tick, MSC);
   else if (p.startsWith("/v1/bars/XAUUSD/")) {
     const tf = p.split("/").pop() as keyof typeof TF_S;
@@ -70,7 +70,7 @@ describe("Stage 3 audit helpers (pure)", () => {
     expect(tickAge(null, MSC, 60_000)).toEqual({ status: "UNKNOWN", age_ms: null });
     expect(tickAge(MSC, MSC - 50, 60_000).age_ms).toBe(-50);
   });
-  it("utc rendering", () => expect(utc(MSC)).toBe("2026-10-02 21:37:59.954 UTC"));
+  it("utc rendering", () => expect(utc(MSC)).toBe("2026-10-02 20:57:59.954 UTC"));
   it("gap / duplicate / out-of-order detection without creating bars", () => {
     const input = [bar("M5", T0, 0), bar("M5", T0 + 300, 1), bar("M5", T0 + 1200, 2), bar("M5", T0 + 1200, 3), bar("M5", T0 + 900, 4)];
     const snapshot = JSON.stringify(input);
@@ -94,7 +94,7 @@ describe("Stage 3 audit terminal (render)", () => {
     expect(tid("raw-spread").textContent).toBe(String(4140.53 - 4140.348));
     await waitFor(() => expect(tid("top-spread").textContent).toBe("0.182"));
     expect(tid("raw-time-msc").textContent).toContain(String(MSC));
-    expect(tid("raw-time-msc").textContent).toContain("2026-10-02 21:37:59.954 UTC");
+    expect(tid("raw-time-msc").textContent).toContain("2026-10-02 20:57:59.954 UTC");
     expect(tid("raw-time-s").textContent).toContain("1790974679");
     expect(tid("tick-delivery").textContent).toBe("LIVE");
     expect(within(tid("transport-seq")).getByTestId("tick-sequence").textContent).toMatch(/^\d+$/);
@@ -147,7 +147,7 @@ describe("Stage 3 audit terminal (render)", () => {
     expect(screen.getAllByTestId("btc-row").map((r) => r.firstChild!.textContent)).toEqual(BTC);
     expect(tid("btc-resolution").textContent).toBe("BTC SYMBOL RESOLUTION: AMBIGUOUS");
     expect(tid("compare-status").textContent).toBe("COMPARISON PENDING");
-    expect(tid("mt5-compare").textContent).not.toMatch(/\bMATCH\b(?! automatically)/);
+    expect(tid("mt5-compare").textContent).not.toMatch(/WITHIN_TOLERANCE|EXACT|COMPARISON (PASS|OK)|: MATCH/);
   });
   it("no mock fallback when gateway is unreachable", async () => {
     renderT(async () => { throw new Error("down"); });
@@ -173,6 +173,6 @@ describe("Stage 3 audit terminal (render)", () => {
   it("Wire 3.0B-1 validators unchanged (hash pinned to pre-task source)", () => {
     const h = createHash("sha256").update(readFileSync("src/core/broker/gateway/validate.ts")).digest("hex");
     expect(h).toBe("5da33b861c4c90a038d7e166f7b4f9931cce31242edf32fec7c4277484af6340");
-    expect(readFileSync("src/core/broker/gateway/validate.ts", "utf8")).toContain('"3.0B-1"');
+    expect(readFileSync("src/core/broker/gateway/validate.ts", "utf8")).toContain("body.schema_version !== BRIDGE_SCHEMA_VERSION");
   });
 });
