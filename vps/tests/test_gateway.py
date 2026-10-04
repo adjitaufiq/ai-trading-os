@@ -173,7 +173,7 @@ class Http(GatewayCase):
     async def test_bars_from_and_pos(self):
         st, _, env = await self.get(f"/v1/bars/XAUUSDm/M5?mode=from&from={TO}&count=2")
         self.assertEqual((st, len(env["data"]["items"])), (200, 2))
-        st, _, env = await self.get("/v1/bars/XAUUSDm/H1?mode=pos&start=0&count=2")
+        st, _, env = await self.get("/v1/bars/XAUUSDm/M5?mode=pos&start=0&count=2")
         self.assertEqual((st, env["data"]["coverage"]["coverage_status"]), (200, "UNKNOWN"))
 
     async def test_invalid_timeframe_rejected_before_native(self):

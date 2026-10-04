@@ -82,7 +82,7 @@ class GatewaySafety(unittest.TestCase):
                                   "validate_subscription", "stream_events", "stream_invalid"})
 
     def test_single_wall_clock_read(self):
-        hits = [f.name for f in FILES if re.search(r"\btime\.(time|time_ns|monotonic)\b|datetime\.now|utcnow",
+        hits = [f.name for f in FILES if re.search(r"\btime \. (time|time_ns|monotonic)\b|datetime \. now|utcnow",
                                                     code_tokens(f))]
         self.assertEqual(hits, ["clock.py"])
 
