@@ -26,16 +26,8 @@ function MarketCandlesView({ bars, digits, onInspect, onActivate, focus }: Marke
   useEffect(() => {
     const el = container.current;
     if (!el) return;
-    const css = getComputedStyle(el);
-    // Canvas chart parsers require browser-resolved colors, not unresolved oklch token strings.
-    const color = (name: string) => {
-      const probe = document.createElement("span");
-      probe.style.color = `var(${name})`;
-      el.appendChild(probe);
-      const resolved = getComputedStyle(probe).color;
-      probe.remove();
-      return resolved;
-    };
+    // Canvas chart parsers require sRGB colors, not unresolved oklch tokens.
+    const color = (name: string) => getComputedStyle(el).getPropertyValue(name).trim();
     const c = createChart(el, {
       autoSize: true,
       localization: { locale: "en-US" },
