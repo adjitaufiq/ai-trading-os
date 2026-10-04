@@ -376,7 +376,7 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
           <div className="grid grid-cols-2 gap-2 text-lg">
             <div><div className="text-xs text-muted-foreground">Bid</div>{t ? String(t.data.bid) : "—"}</div>
             <div><div className="text-xs text-muted-foreground">Ask</div>{t ? String(t.data.ask) : "—"}</div>
-            <div><div className="text-xs text-muted-foreground">Spread (price)</div>{t ? String(spreadPrice(t.data.bid, t.data.ask)) : "—"}</div>
+            <div className="min-w-0 break-all"><div className="text-xs text-muted-foreground">Spread (price)</div>{t ? (digits != null ? spreadPrice(t.data.bid, t.data.ask).toFixed(digits) : String(spreadPrice(t.data.bid, t.data.ask))) : "—"}</div>
             <div className="text-sm"><div className="text-xs text-muted-foreground">Broker timestamp</div>{t ? `${t.data.raw_time_msc} · ${utc(t.data.raw_time_msc)}` : "—"}</div>
           </div>
           <div className="grid grid-cols-4 gap-2 text-sm" data-testid="compare-bar">
