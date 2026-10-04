@@ -38,6 +38,7 @@ function MarketCandlesView({ bars, digits, onInspect, onActivate, focus }: Marke
     };
     const c = createChart(el, {
       autoSize: true,
+      localization: { locale: "en-US" },
       layout: { background: { type: ColorType.Solid, color: color("--canvas-background") }, textColor: color("--canvas-foreground"), attributionLogo: true },
       grid: { vertLines: { color: color("--canvas-grid") }, horzLines: { color: color("--canvas-grid") } },
       crosshair: { mode: CrosshairMode.Normal },
