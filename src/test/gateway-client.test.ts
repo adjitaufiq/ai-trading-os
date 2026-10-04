@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { readFileSync, readdirSync, statSync } from "node:fs";
