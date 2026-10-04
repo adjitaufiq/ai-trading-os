@@ -172,7 +172,7 @@ describe("Stage 3 audit terminal (render)", () => {
   });
   it("Wire 3.0B-1 validators unchanged (hash pinned to pre-task source)", () => {
     const h = createHash("sha256").update(readFileSync("src/core/broker/gateway/validate.ts")).digest("hex");
-    expect(h).toBe(process.env.VALIDATE_SHA ?? h); // pinned below
+    expect(h).toBe("5da33b861c4c90a038d7e166f7b4f9931cce31242edf32fec7c4277484af6340");
     expect(readFileSync("src/core/broker/gateway/validate.ts", "utf8")).toContain('"3.0B-1"');
   });
 });
