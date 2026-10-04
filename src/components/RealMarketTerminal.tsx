@@ -12,7 +12,7 @@ export type TerminalMarket = typeof TERMINAL_MARKETS[number];
 export const TERMINAL_TIMEFRAMES: readonly Timeframe[] = ["M5", "M15", "H1", "H4"];
 const NAMES: Record<TerminalMarket, string> = { XAUUSD: "Gold vs US Dollar", BTCUSD: "Bitcoin vs US Dollar" };
 const STALE_AFTER_MS = 60_000; // UI observation policy, not a broker market-hours assertion.
-const BAR_COUNT = 300;
+const BAR_COUNT = 200;
 
 type Slot<T> = { value: T | null; error: string | null; failed: boolean };
 type SymbolState = {
