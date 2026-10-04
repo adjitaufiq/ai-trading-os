@@ -18,3 +18,4 @@
 - Broker/internal candle comparison returns a DiscrepancyResult outcome with point metrics against a configurable tolerance, never a boolean. Why: TRS-03 needs analysable deltas, not assumed Exness values.
 - The MT5 bridge (src/core/broker/bridge) exposes only whitelisted SYSTEM/DISCOVERY/MARKET_DATA capabilities through typed methods; generic invoke() is SYSTEM-only. Why: no generic bypass to an execution or untyped surface.
 - The MetaTrader5 package is imported only in vps/mt5_bridge/native.py, behind a whitelist proxy; the adapter connects to a pre-authenticated terminal and takes no account identity or secrets. Why: native read-only boundary stays isolated from the TypeScript app and from execution.
+- The VPS gateway (vps/mt5_gateway) is a stdlib-only, loopback-bound HTTP/WS transport with a static typed route table over ReadOnlyMT5Adapter; no generic dispatch and no native access. Why: network reachability must never grant execution authority.
