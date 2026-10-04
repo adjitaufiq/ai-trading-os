@@ -45,6 +45,7 @@ export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000 }: Re
   const [timeframe, setTimeframe] = useState<Timeframe>("M5");
   const [states, setStates] = useState(initial);
   const [health, setHealth] = useState<Slot<BridgeHealth>>(blank);
+  const [healthBusy, setHealthBusy] = useState(false);
   const [clock, setClock] = useState<number | null>(null);
   const [inspected, setInspected] = useState<BridgeBar | null>(null);
   const [focus, setFocus] = useState(false);
@@ -101,13 +102,18 @@ export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000 }: Re
 
   useEffect(() => {
     let active = true;
+    let busy = false;
     const poll = async () => {
+      if (busy) return;
+      busy = true;
+      if (active) setHealthBusy(true);
       try {
         const r = await client.getHealth();
         if (active) setHealth((old) => r.ok && r.envelope.source === "EXNESS_MT5" && r.envelope.source_mode === "REAL"
           ? { value: r.data, failed: false, error: null }
           : { ...old, failed: true, error: errorOf(r) });
       } catch { if (active) setHealth((old) => ({ ...old, failed: true, error: "Gateway unreachable" })); }
+      finally { busy = false; if (active) setHealthBusy(false); }
     };
     void poll();
     const timer = setInterval(poll, 15_000);
@@ -150,7 +156,7 @@ export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000 }: Re
   const candle = inspected && chartBars.includes(inspected) ? inspected : chartBars.at(-1) ?? null;
   const ageMs = quote && clock != null ? clock - quote.raw_time_msc : null;
   const freshness = !quote ? "DATA UNAVAILABLE" : state.quote.failed || (ageMs != null && ageMs > STALE_AFTER_MS) ? "DATA STALE" : ageMs == null || ageMs < 0 ? "UNKNOWN" : "FRESH";
-  const connection = health.value?.terminal_connected && !health.failed ? "CONNECTED" : health.value?.terminal_connected ? "DATA DEGRADED" : health.value ? "DISCONNECTED" : "DATA UNAVAILABLE";
+  const connection = health.value?.terminal_connected && !health.failed ? "CONNECTED" : health.value?.terminal_connected ? "DATA DEGRADED" : health.value ? "DISCONNECTED" : healthBusy ? "CONNECTING" : "DATA UNAVAILABLE";
   const price = (n: number | null) => formatMarketPrice(n, digits);
   const ohlc = (["OPEN", "HIGH", "LOW", "CLOSE"] as const).map((label) => ({ label, value: candle ? price(candle[label.toLowerCase() as "open" | "high" | "low" | "close"]) : "—" }));
 
