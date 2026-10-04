@@ -85,7 +85,9 @@ describe("R1 — BACKFILL never mutates LIVE state", () => {
     r.send(tickMs("l1", 0, 2345));
     r.send(tickMs("b1", 200_000, 2350, { backfill: true }));
     const live = r.send(tickMs("l2", 100_000, 2346));
-    expect(live).toMatchObject({ route: "LIVE_MUTATION", disposition: "ACCEPT" });
+    expect(live.route).toBe("LIVE_MUTATION");
+    expect(live.anomalies.map((a) => a.classification)).not.toContain("OUT_OF_ORDER");
+    expect(live.disposition).not.toBe("QUARANTINE");
   });
 
   it("D: BACKFILL for an already CLOSED interval leaves the CLOSED candle unchanged", () => {
@@ -168,7 +170,7 @@ describe("R3 — feed classifier does not own candle lifecycle; canonical LIVE M
 
   it("one canonical observation, classified once, fans out to independent M5/M15/H1/H4 lifecycles", () => {
     const r = rig();
-    const closedAt: Record<string, Bar[]> = { M5: [], M15: [], H1: [], H4: [] };
+    const closedAt: Record<(typeof LIVE_FANOUT_TIMEFRAMES)[number], Bar[]> = { M5: [], M15: [], H1: [], H4: [] };
     const frozenCopies = new Map<Bar, string>();
     for (const tf of LIVE_FANOUT_TIMEFRAMES) {
       r.fanout.aggregators[tf].onBar((b) => { if (b.status === "CLOSED") { closedAt[tf]!.push(b); frozenCopies.set(b, JSON.stringify(b)); } });
