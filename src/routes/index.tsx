@@ -18,6 +18,7 @@ import { verifyBar } from "@/core/broker/DiscrepancyVerifier";
 import { BrokerNormalizer } from "@/core/broker/BrokerNormalizer";
 import { ReplayClock } from "@/core/temporal/CanonicalClock";
 import { brokerBarCases, SYNTHETIC_SPEC, SYNTHETIC_TOLERANCE } from "@/core/fixtures/syntheticExnessFixture";
+import { GatewayStatusPanel } from "@/components/GatewayStatusPanel";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -227,6 +228,8 @@ function Index() {
           </div>
 
           <ReplayPanel />
+
+          <GatewayStatusPanel />
 
           <BrokerDomainPanel />
 
