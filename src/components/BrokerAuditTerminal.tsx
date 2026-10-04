@@ -29,12 +29,12 @@ const Box = ({ children, testid }: { children: React.ReactNode; testid?: string 
   <section className="border border-border bg-card" data-testid={testid}>{children}</section>
 );
 const KV = ({ rows, testid }: { rows: [string, React.ReactNode, string?][]; testid?: string }) => (
-  <table className="w-full font-mono text-xs" data-testid={testid}>
+  <table className="w-full table-fixed font-mono text-xs" data-testid={testid}>
     <tbody>
       {rows.map(([k, v, tid]) => (
         <tr key={k} className="border-t border-border first:border-t-0">
-          <td className="px-3 py-0.5 text-muted-foreground">{k}</td>
-          <td className="max-w-0 px-3 py-0.5 text-right" data-testid={tid}><div className="overflow-x-auto whitespace-nowrap tabular-nums">{v}</div></td>
+          <td className="w-1/2 break-words px-3 py-0.5 text-muted-foreground">{k}</td>
+          <td className="w-1/2 px-3 py-0.5 text-right" data-testid={tid}><div className="overflow-x-auto whitespace-nowrap tabular-nums">{v}</div></td>
         </tr>
       ))}
     </tbody>
