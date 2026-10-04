@@ -7,7 +7,8 @@ type V = { ok: true } | { ok: false; reason: string };
 const OK: V = { ok: true };
 const bad = (reason: string): V => ({ ok: false, reason });
 
-type Obj = Record<string, unknown>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Obj = any;
 const isObj = (x: unknown): x is Obj => typeof x === "object" && x !== null && !Array.isArray(x);
 const isNum = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
 const isInt = (x: unknown): x is number => Number.isSafeInteger(x);

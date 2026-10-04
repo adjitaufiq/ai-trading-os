@@ -31,8 +31,8 @@ export function makeGatewayConfig(p: Partial<Omit<GatewayConfig, "environment">>
   const timeoutMs = p.timeoutMs ?? 5_000;
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new GatewayConfigError("timeoutMs must be > 0");
   return Object.freeze({
-    httpBaseUrl: check(p.httpBaseUrl ?? env.VITE_GATEWAY_HTTP_URL ?? "http://127.0.0.1:8000", ["http:", "https:"]),
-    wsBaseUrl: check(p.wsBaseUrl ?? env.VITE_GATEWAY_WS_URL ?? "ws://127.0.0.1:8000", ["ws:", "wss:"]),
+    httpBaseUrl: check(p.httpBaseUrl ?? env["VITE_GATEWAY_HTTP_URL"] ?? "http://127.0.0.1:8000", ["http:", "https:"]),
+    wsBaseUrl: check(p.wsBaseUrl ?? env["VITE_GATEWAY_WS_URL"] ?? "ws://127.0.0.1:8000", ["ws:", "wss:"]),
     timeoutMs,
     environment: "FAKE_MT5_LOCAL",
   });
