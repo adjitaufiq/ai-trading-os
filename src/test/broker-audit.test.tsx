@@ -51,7 +51,7 @@ const realFetch: FetchLike = async (url) => {
   else if (p.startsWith("/v1/bars/XAUUSD/")) {
     const tf = p.split("/").pop() as keyof typeof TF_S;
     const items = barsFor(tf);
-    body = env("MARKET_DATA.BARS", "BACKFILL", { items, coverage: cov(items.length, items[0].raw_time_s, items[items.length - 1].raw_time_s) });
+    body = env("MARKET_DATA.BARS", "BACKFILL", { items, coverage: cov(items.length, items[0]!.raw_time_s, items[items.length - 1]!.raw_time_s) });
   } else return { status: 404, text: async () => "" };
   return { status: 200, text: async () => JSON.stringify(body) };
 };
@@ -76,7 +76,7 @@ describe("Stage 3 audit helpers (pure)", () => {
     const snapshot = JSON.stringify(input);
     const a = auditBars(input, "M5");
     expect(a.diagnostics.map((d) => d.kind)).toEqual(["FIRST", "CONTIGUOUS", "INTERVAL_GAP", "DUPLICATE_TIMESTAMP", "OUT_OF_ORDER"]);
-    expect(a.diagnostics[2].missing_intervals).toBe(2);
+    expect(a.diagnostics[2]!.missing_intervals).toBe(2);
     expect(a.count).toBe(5);
     expect(JSON.stringify(input)).toBe(snapshot);
   });
@@ -136,7 +136,7 @@ describe("Stage 3 audit terminal (render)", () => {
     for (const tf of ["M15", "H1", "H4"]) {
       fireEvent.click(screen.getByRole("tab", { name: tf }));
       expect(screen.getAllByTestId("bar-row")).toHaveLength(3);
-      expect(screen.getAllByTestId("bar-row")[0].textContent).toContain(tf);
+      expect(screen.getAllByTestId("bar-row")[0]!.textContent).toContain(tf);
       expect(tid("gap-gaps").textContent).toBe("0");
       expect(tid("bars-delivery").textContent).toBe("BACKFILL");
     }

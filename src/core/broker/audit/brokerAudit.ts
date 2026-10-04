@@ -33,7 +33,7 @@ export function auditBars(bars: readonly BridgeBar[], timeframe: Timeframe): Bar
   const expected = TIMEFRAME_MS[timeframe] / 1000;
   const diagnostics: BarDiagnostic[] = bars.map((b, i) => {
     if (i === 0) return { index: 0, raw_time_s: b.raw_time_s, expected_delta_s: expected, actual_delta_s: null, missing_intervals: null, kind: "FIRST" };
-    const d = b.raw_time_s - bars[i - 1].raw_time_s;
+    const d = b.raw_time_s - bars[i - 1]!.raw_time_s;
     const kind: BarDiagnosticKind = d === 0 ? "DUPLICATE_TIMESTAMP" : d < 0 ? "OUT_OF_ORDER" : d === expected ? "CONTIGUOUS" : "INTERVAL_GAP";
     return {
       index: i, raw_time_s: b.raw_time_s, expected_delta_s: expected, actual_delta_s: d,

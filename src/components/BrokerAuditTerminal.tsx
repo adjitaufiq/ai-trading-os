@@ -169,7 +169,7 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
     <div className="space-y-4 font-mono" data-testid="audit-terminal">
       {/* SYSTEM STATE BAR */}
       <div className="flex flex-wrap gap-2 text-xs" data-testid="audit-labels">
-        {["EXNESS MT5", env?.source_mode ?? health.result?.ok && health.result.envelope.source_mode || "SOURCE_MODE ?", "READ-ONLY", OPERATING_MODE, "EXECUTION ABSENT", "WEBSOCKET DEFERRED"].map((l) => (
+        {["EXNESS MT5", env?.source_mode ?? (health.result?.ok ? health.result.envelope.source_mode : "SOURCE_MODE ?"), "READ-ONLY", OPERATING_MODE, "EXECUTION ABSENT", "WEBSOCKET DEFERRED"].map((l) => (
           <span key={String(l)} className="border border-border px-2 py-0.5">{String(l)}</span>
         ))}
       </div>
@@ -270,7 +270,7 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
             </thead>
             <tbody data-testid="bar-rows">
               {[...items.keys()].reverse().map((i) => {
-                const b = items[i], d = audit.diagnostics[i];
+                const b = items[i]!, d = audit.diagnostics[i]!;
                 return (
                   <tr key={`${b.raw_time_s}-${i}`} className="border-t border-border" data-testid="bar-row">
                     <td className="px-2">{i}</td><td className="px-2">{b.broker_symbol}</td><td className="px-2">{b.timeframe}</td>
