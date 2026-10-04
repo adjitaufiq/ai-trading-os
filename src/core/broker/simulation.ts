@@ -7,6 +7,7 @@ import {
   BROKER_T0,
   SYNTHETIC_MAX_GAP_MS,
   SYNTHETIC_MAX_LATENCY_MS,
+  SYNTHETIC_MAX_REORDER_MS,
   SYNTHETIC_SPEC,
 } from "../fixtures/syntheticExnessFixture";
 import { BrokerFeedPipeline, type AuditRecord } from "./BrokerFeedPipeline";
@@ -39,7 +40,7 @@ export function runBrokerSimulation(
   const freshness = new FreshnessPolicy({ maxTickAgeMs: 10_000, maxGapMs: opts.maxGapMs ?? SYNTHETIC_MAX_GAP_MS });
   const pipe = new BrokerFeedPipeline(
     SYNTHETIC_SPEC,
-    { timeframe: "M5", maxLatencyMs: opts.maxLatencyMs ?? SYNTHETIC_MAX_LATENCY_MS, freshness },
+    { maxLatencyMs: opts.maxLatencyMs ?? SYNTHETIC_MAX_LATENCY_MS, maxReorderMs: SYNTHETIC_MAX_REORDER_MS, freshness },
     clock,
     (e) => agg.ingest(e),
   );

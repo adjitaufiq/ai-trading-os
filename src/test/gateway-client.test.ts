@@ -110,7 +110,7 @@ describe("2C hermetic full chain: FakeMT5 → adapter → 2B gateway → HTTP/WS
     const sunk: MarketEvent[] = [];
     const pipe = new BrokerFeedPipeline(
       { symbol: "XAUUSD", origin: "SYNTHETIC", digits: 2, point: 0.01, tick_size: 0.01, contract_size: 100, broker_utc_offset_ms: 0 },
-      { timeframe: "M5", maxLatencyMs: 60_000, freshness: new FreshnessPolicy({ maxTickAgeMs: 60_000, maxGapMs: 120_000 }) },
+      { maxLatencyMs: 60_000, maxReorderMs: 60_000, freshness: new FreshnessPolicy({ maxTickAgeMs: 60_000, maxGapMs: 120_000 }) },
       clock, (e) => { sunk.push(e); agg.ingest(e); });
     const ingest = new GatewayMarketIngest(pipe, { broker_symbol: "XAUUSDm", canonical_symbol: "XAUUSD" });
     const obs = await new Promise<ClientTickObservation>((res, rej) => {
