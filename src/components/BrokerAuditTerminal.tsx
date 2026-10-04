@@ -449,7 +449,7 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
             <button key={k} onClick={() => setInspect(k)} className={`border border-border px-2 ${inspect === k ? "bg-muted text-primary" : ""}`}>{k}</button>
           ))}
         </div>
-        <pre className="max-h-96 overflow-auto border-t border-border p-3 text-xs" data-testid="envelope-json">{JSON.stringify(envelopes[inspect] ?? null, null, 2)}</pre>
+        <pre className="h-96 overflow-auto border-t border-border p-3 text-xs" data-testid="envelope-json">{JSON.stringify(envelopes[inspect] ?? null, null, 2)}</pre>
       </details>
     </div>
   );
