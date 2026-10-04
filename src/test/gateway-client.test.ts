@@ -85,6 +85,7 @@ describe("2C hermetic full chain: FakeMT5 → adapter → 2B gateway → HTTP/WS
   const live = (fp?: ExplicitFreshnessPolicy) => new BrokerGatewayClient({
     config: makeGatewayConfig({ httpBaseUrl: `http://127.0.0.1:${port}`, wsBaseUrl: `ws://127.0.0.1:${port}` }),
     wallClock: new ReplayClock(T0 + 20_000), monoClock: mono(), freshnessPolicy: fp,
+    wsFactory: (u) => new WebSocket(u) as never,
   });
 
   it("HTTP routes return validated envelopes; health decomposed honestly", async () => {

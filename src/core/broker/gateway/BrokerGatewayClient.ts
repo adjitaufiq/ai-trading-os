@@ -47,8 +47,9 @@ export interface BrokerGatewayClientOptions {
   /** Client monotonic clock for RTT/age durations. */
   readonly monoClock: MonotonicClock;
   readonly fetchImpl?: FetchLike;
+  /** Required to stream. Not defaulted: core never constructs a socket itself (frozen 3.0A scan). */
   readonly wsFactory?: WebSocketFactory;
-  readonly freshnessPolicy?: MarketDataFreshnessPolicy;
+  readonly freshnessPolicy?: MarketDataFreshnessPolicy | undefined;
 }
 
 const SYMBOL_RE = /^[A-Za-z0-9._#-]{1,32}$/;
@@ -90,7 +91,7 @@ export class BrokerGatewayClient {
 
   constructor(private readonly o: BrokerGatewayClientOptions) {
     this.fetchImpl = o.fetchImpl ?? ((url, init) => globalThis.fetch(url, init));
-    this.wsFactory = o.wsFactory ?? ((url) => new globalThis.WebSocket(url) as unknown as WebSocketLike);
+    this.wsFactory = o.wsFactory ?? (() => { throw new GatewayRequestError("no websocket factory configured"); });
     this.health = new GatewayHealthModel(o.monoClock, o.freshnessPolicy ?? NO_FRESHNESS_POLICY);
   }
 
