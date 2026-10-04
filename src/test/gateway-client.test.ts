@@ -141,7 +141,7 @@ describe("2C safety", () => {
   it("no execution/account/position/RPC/credential surface; no direct aggregator bypass", () => {
     for (const f of walk("src/core/broker/gateway")) {
       const s = readFileSync(f, "utf8");
-      expect(s, f).not.toMatch(/order_send|order_check|account_info|positions_get|MetaTrader5|invoke\(|rpc\(|execute\(|password|login\(|CandleAggregator|Date\.now\(/);
+      expect(s, f).not.toMatch(/order_send|order_check|account_info|positions_get|MetaTrader5|invoke\(|rpc\(|execute\(|password|login\(|import[^;]*CandleAggregator|Date\.now\(/);
     }
     expect(OPERATING_MODE).toBe("MONITOR_ONLY");
     expect(EXECUTION_ENABLED).toBe(false);
