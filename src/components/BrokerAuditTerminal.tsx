@@ -96,16 +96,30 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
   const [inspect, setInspect] = useState<string>("tick");
   const alive = useRef(true);
 
+  // Keys whose static request already returned a validated observation. Retries
+  // only re-request the others, so a later timeout can never replace (blank out)
+  // a real observation that was already received.
+  const okKeys = useRef(new Set<string>());
   const loadStatic = useCallback(async () => {
     const at = () => now();
-    const [h, s, b] = await Promise.all([client.getHealth(), client.getSymbol(AUDIT_SYMBOL), client.getSymbols(BTC_GROUP)]);
+    const need = (k: string) => !okKeys.current.has(k);
+    const mark = (k: string, r: { ok: boolean }) => { if (r.ok) okKeys.current.add(k); };
+    await Promise.all([
+      need("health") ? client.getHealth().then((r) => { if (alive.current) { mark("health", r); setHealth({ result: r, at: at() }); } }) : null,
+      need("spec") ? client.getSymbol(AUDIT_SYMBOL).then((r) => { if (alive.current) { mark("spec", r); setSpec({ result: r, at: at() }); } }) : null,
+      need("btc") ? client.getSymbols(BTC_GROUP).then((r) => { if (alive.current) { mark("btc", r); setBtc({ result: r, at: at() }); } }) : null,
+    ]);
     if (!alive.current) return;
-    setHealth({ result: h, at: at() }); setSpec({ result: s, at: at() }); setBtc({ result: b, at: at() });
-    const t = await client.getTerminal();
-    if (alive.current) setTerm({ result: t, at: at() });
+    if (need("term")) {
+      const t = await client.getTerminal();
+      if (!alive.current) return;
+      mark("term", t); setTerm({ result: t, at: at() });
+    }
     for (const f of AUDIT_TIMEFRAMES) {
+      if (!need(`bars:${f}`)) continue;
       const r = await client.getBars({ symbol: AUDIT_SYMBOL, timeframe: f, mode: "pos", start: 0, count: BAR_COUNT });
       if (!alive.current) return;
+      mark(`bars:${f}`, r);
       setBars((o) => ({ ...o, [f]: { result: r, at: at() } }));
     }
   }, [client, now]);
