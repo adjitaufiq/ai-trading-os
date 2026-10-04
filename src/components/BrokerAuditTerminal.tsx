@@ -28,17 +28,16 @@ const H = ({ children, right }: { children: React.ReactNode; right?: React.React
 const Box = ({ children, testid }: { children: React.ReactNode; testid?: string }) => (
   <section className="border border-border bg-card" data-testid={testid}>{children}</section>
 );
+// Two equal columns that can both shrink, so values never get clipped on phones.
 const KV = ({ rows, testid }: { rows: [string, React.ReactNode, string?][]; testid?: string }) => (
-  <table className="w-full table-fixed font-mono text-xs" data-testid={testid}>
-    <tbody>
-      {rows.map(([k, v, tid]) => (
-        <tr key={k} className="border-t border-border first:border-t-0">
-          <td className="w-1/2 break-words px-3 py-0.5 text-muted-foreground">{k}</td>
-          <td className="w-1/2 px-3 py-0.5 text-right" data-testid={tid}><div className="overflow-x-auto whitespace-nowrap tabular-nums">{v}</div></td>
-        </tr>
-      ))}
-    </tbody>
-  </table>
+  <div className="w-full font-mono text-xs" data-testid={testid}>
+    {rows.map(([k, v, tid]) => (
+      <div key={k} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 border-t border-border px-3 py-0.5 first:border-t-0">
+        <div className="min-w-0 break-words text-muted-foreground">{k}</div>
+        <div className="min-w-0 break-all text-right tabular-nums" data-testid={tid}>{v}</div>
+      </div>
+    ))}
+  </div>
 );
 const ErrLine = ({ e }: { e: ClientError }) => (
   <div className="px-3 py-2 font-mono text-xs text-bear" data-testid="audit-error">
