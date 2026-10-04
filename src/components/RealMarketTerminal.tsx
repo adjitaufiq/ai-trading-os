@@ -94,7 +94,7 @@ export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000 }: Re
       const ordered = r.ok && r.data.items.every((bar, i, list) => bar.broker_symbol === symbol && bar.timeframe === tf && (i === 0 || list[i - 1]!.raw_time_s < bar.raw_time_s));
       patch(symbol, (s) => ({ ...s, bars: { ...s.bars, [tf]: accepted(r, symbol, "BACKFILL", symbol) && ordered
         ? { value: r.data.items, failed: false, error: null }
-        : { ...(s.bars[tf] ?? blank<readonly BridgeBar[]>()), failed: true, error: ordered ? errorOf(r) : "Broker bars have conflicting symbol, timeframe, or order" } } }));
+        : { ...(s.bars[tf] ?? blank<readonly BridgeBar[]>()), failed: true, error: !r.ok ? errorOf(r) : !ordered ? "Broker bars have conflicting symbol, timeframe, or order" : errorOf(r) } } }));
     } catch {
       patch(symbol, (s) => ({ ...s, bars: { ...s.bars, [tf]: { ...(s.bars[tf] ?? blank<readonly BridgeBar[]>()), failed: true, error: "Bars unavailable" } } }));
     } finally { barBusy.current.delete(key); }
