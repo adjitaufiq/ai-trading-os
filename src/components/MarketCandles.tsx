@@ -38,18 +38,18 @@ function MarketCandlesView({ bars, digits, onInspect, onActivate, focus }: Marke
     };
     const c = createChart(el, {
       autoSize: true,
-      layout: { background: { type: ColorType.Solid, color: color("--background") }, textColor: color("--muted-foreground"), attributionLogo: true },
-      grid: { vertLines: { color: color("--chart-grid") }, horzLines: { color: color("--chart-grid") } },
+      layout: { background: { type: ColorType.Solid, color: color("--canvas-background") }, textColor: color("--canvas-foreground"), attributionLogo: true },
+      grid: { vertLines: { color: color("--canvas-grid") }, horzLines: { color: color("--canvas-grid") } },
       crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: color("--border"), minimumWidth: 72 },
-      timeScale: { borderColor: color("--border"), timeVisible: true, secondsVisible: false, rightOffset: 8, barSpacing: 9, minBarSpacing: 3 },
+      rightPriceScale: { borderColor: color("--canvas-border"), minimumWidth: 72 },
+      timeScale: { borderColor: color("--canvas-border"), timeVisible: true, secondsVisible: false, rightOffset: 8, barSpacing: 9, minBarSpacing: 3 },
       handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
       handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
     });
     const s = c.addSeries(CandlestickSeries, {
-      upColor: color("--bull"), downColor: color("--bear"),
-      borderUpColor: color("--bull"), borderDownColor: color("--bear"),
-      wickUpColor: color("--bull"), wickDownColor: color("--bear"),
+      upColor: color("--canvas-up"), downColor: color("--canvas-down"),
+      borderUpColor: color("--canvas-up"), borderDownColor: color("--canvas-down"),
+      wickUpColor: color("--canvas-up"), wickDownColor: color("--canvas-down"),
     });
     chart.current = c;
     series.current = s;
