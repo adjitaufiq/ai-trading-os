@@ -8,6 +8,7 @@ import { ExplicitFreshnessPolicy } from "@/core/broker/gateway/health";
 import { GatewayMarketIngest } from "@/core/broker/gateway/GatewayMarketIngest";
 import type { ClientError, ClientTickObservation, GatewayHealthState } from "@/core/broker/gateway/types";
 import { BrokerFeedPipeline } from "@/core/broker/BrokerFeedPipeline";
+import type { BrokerMarketEvent } from "@/core/broker/types";
 import { CandleAggregator } from "@/core/temporal/CandleAggregator";
 import { ReplayClock } from "@/core/temporal/CanonicalClock";
 import { FreshnessPolicy } from "@/core/temporal/TemporalPolicy";
@@ -266,7 +267,7 @@ describe("2C BrokerPipeline disposition matrix", () => {
   function rig() {
     const clock = new ReplayClock(T0 + 20_000);
     const agg = new CandleAggregator("XAUUSD", "M5", clock);
-    const sunk: MarketEvent[] = [];
+    const sunk: BrokerMarketEvent[] = [];
     const pipe = new BrokerFeedPipeline(SPEC, CFG, clock, (e) => { sunk.push(e); agg.ingest(e); });
     const ingest = new GatewayMarketIngest(pipe, BIND);
     const s = stream();
