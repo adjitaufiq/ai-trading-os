@@ -335,10 +335,11 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
         </div>
       </Box>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 [&>*]:min-w-0">
         <Box testid="coverage">
           <H>HISTORY COVERAGE · all bar requests</H>
-          <table className="w-full text-xs">
+          <div className="overflow-x-auto">
+          <table className="w-full whitespace-nowrap text-xs">
             <thead className="text-muted-foreground"><tr className="text-left">{["tf", "request", "req_from", "req_to", "count", "oldest", "newest", "coverage_status", "reason"].map((h) => <th key={h} className="px-2 font-normal">{h}</th>)}</tr></thead>
             <tbody>
               {AUDIT_TIMEFRAMES.map((f) => {
@@ -357,6 +358,7 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
               })}
             </tbody>
           </table>
+          </div>
           <p className="border-t border-border px-3 py-1 text-xs text-muted-foreground">
             REQUEST COMPLETED = the HTTP request returned a valid envelope. It is NOT "OBSERVATION COVERAGE COMPLETE". coverage_status is reported verbatim from the gateway; for count-based (pos) requests requested_from/to are null, so interval completeness is not established by this UI.
           </p>
@@ -403,7 +405,8 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
       <Box testid="btc-discovery">
         <H right={<span className="text-warn" data-testid="btc-resolution">BTC SYMBOL RESOLUTION: AMBIGUOUS</span>}>BTC DISCOVERY · GET /v1/symbols?group={BTC_GROUP}</H>
         {btc.result && !btc.result.ok ? <ErrLine e={btc.result.error} /> : null}
-        <table className="w-full text-xs">
+        <div className="overflow-x-auto">
+        <table className="w-full whitespace-nowrap text-xs">
           <thead className="text-muted-foreground"><tr className="text-left">{["broker_symbol", "description", "path", "base", "profit", "digits", "point", "contract"].map((h) => <th key={h} className="px-2 font-normal">{h}</th>)}</tr></thead>
           <tbody>
             {(btc.result?.ok ? btc.result.data : []).map((s, i) => (
@@ -414,6 +417,7 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
             ))}
           </tbody>
         </table>
+        </div>
         <p className="border-t border-border px-3 py-1 text-xs text-muted-foreground">{btc.result?.ok ? btc.result.data.length : 0} candidates. None auto-selected — group filter is an optimization, not identity resolution.</p>
       </Box>
 
