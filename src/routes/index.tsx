@@ -20,7 +20,7 @@ export const Route = createFileRoute("/")({
 
 function Terminal() {
   const client = useMemo(() => new BrokerGatewayClient({
-    config: makeGatewayConfig(), wallClock: new LiveClock(), monoClock: { now: () => performance.now() },
+    config: makeGatewayConfig({ timeoutMs: 15_000 }), wallClock: new LiveClock(), monoClock: { now: () => performance.now() },
   }), []);
   return <RealMarketTerminal client={client} />;
 }
