@@ -34,7 +34,11 @@ export function GatewayStatusView({ state, environment, mode = OPERATING_MODE }:
     <div className="border border-border bg-card" data-testid="gateway-status">
       <h2 className="flex justify-between border-b border-border px-4 py-2 font-mono text-xs tracking-widest text-muted-foreground">
         <span>BROKER GATEWAY · STAGE 3.0B-2C</span>
-        <span data-testid="gateway-env">{ENV_LABEL[environment]}{state.source_mode ? ` · ${state.source_mode}` : ""}</span>
+        <span data-testid="gateway-env">
+          {state.source_mode === "REAL"
+            ? "Exness MT5 / REAL (READ-ONLY SMOKE)"
+            : `${ENV_LABEL[environment]}${state.source_mode ? ` · ${state.source_mode}` : ""}`}
+        </span>
       </h2>
       <ul className="divide-y divide-border font-mono text-xs">
         {rows.map(([k, v, c]) => (
