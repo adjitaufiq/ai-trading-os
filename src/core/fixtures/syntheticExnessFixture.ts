@@ -24,6 +24,8 @@ export const SYNTHETIC_TOLERANCE: DiscrepancyTolerance = Object.freeze({
 
 export const SYNTHETIC_MAX_LATENCY_MS = 2_000;
 export const SYNTHETIC_MAX_GAP_MS = 120_000;
+/** Synthetic feed reorder window (OUT_OF_ORDER vs LATE_EVENT). Not an Exness value — TRS-03 measures. */
+export const SYNTHETIC_MAX_REORDER_MS = 90_000;
 
 interface TickOpts { recvSec?: number; epoch?: number; backfill?: boolean }
 export function tick(id: string, eventSec: number, bid: number, o: TickOpts = {}): BrokerEventEnvelope<RawBrokerTick> {

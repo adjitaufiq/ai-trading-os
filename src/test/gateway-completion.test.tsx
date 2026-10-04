@@ -260,7 +260,7 @@ describe("2C WebSocket matrix", () => {
 
 // ---------------- Pipeline dispositions ----------------
 const SPEC = { symbol: "XAUUSD", origin: "SYNTHETIC" as const, digits: 2, point: 0.01, tick_size: 0.01, contract_size: 100, broker_utc_offset_ms: 0 };
-const CFG = { timeframe: "M5" as const, maxLatencyMs: 60_000, freshness: new FreshnessPolicy({ maxTickAgeMs: 60_000, maxGapMs: 120_000 }) };
+const CFG = { maxLatencyMs: 60_000, maxReorderMs: 60_000, freshness: new FreshnessPolicy({ maxTickAgeMs: 60_000, maxGapMs: 120_000 }) };
 const BIND = { broker_symbol: "XAUUSDm", canonical_symbol: "XAUUSD" };
 
 describe("2C BrokerPipeline disposition matrix", () => {
