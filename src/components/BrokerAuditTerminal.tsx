@@ -45,7 +45,8 @@ const ErrLine = ({ e }: { e: ClientError }) => (
     {e.kind}{e.http_status != null ? ` · HTTP ${e.http_status}` : ""} · {e.message} · NO MOCK FALLBACK
   </div>
 );
-const ts = (ms: number | null | undefined) => (ms == null ? "null" : <>{ms} <span className="text-muted-foreground">({utc(ms)})</span></>);
+// Raw value and UTC on separate lines so row height stays constant as values change.
+const ts = (ms: number | null | undefined) => (ms == null ? "null" : <>{ms} <br /><span className="text-muted-foreground">({utc(ms)})</span></>);
 const fTone = (s: AuditFreshness) => (s === "FRESH" ? "text-bull" : s === "STALE" ? "text-bear" : "text-muted-foreground");
 
 function Candles({ bars }: { bars: readonly BridgeBar[] }) {
@@ -215,8 +216,19 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
         <H right={<span className={fTone(age.status)} data-testid="freshness">{age.status}{age.age_ms != null ? ` · age ${age.age_ms} ms` : ""}</span>}>
           {AUDIT_SYMBOL} · BROKER OBSERVATION · delivery <span data-testid="tick-delivery">{env?.delivery ?? "—"}</span>
         </H>
-        {tick.result && !tick.result.ok ? <ErrLine e={tick.result.error} /> : null}
-        {tickIsLastGood ? <div className="px-3 text-xs text-muted-foreground" data-testid="tick-last-good">Showing LAST VALIDATED tick (latest poll failed)</div> : null}
+        {/* Fixed-height status slot: poll failures change text, never the layout height. */}
+        <div className="h-14 overflow-hidden border-b border-border" data-testid="tick-poll-status">
+          {tick.result && !tick.result.ok ? (
+            <>
+              <ErrLine e={tick.result.error} />
+              {tickIsLastGood ? <div className="-mt-1 truncate px-3 font-mono text-xs text-muted-foreground" data-testid="tick-last-good">Showing LAST VALIDATED tick (latest poll failed)</div> : null}
+            </>
+          ) : (
+            <div className="truncate px-3 py-2 font-mono text-xs text-muted-foreground">
+              {tick.result ? `latest poll OK · client ${tick.at != null ? utc(tick.at) : "—"}` : "latest poll PENDING"}
+            </div>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-2 px-3 py-2 text-2xl tabular-nums sm:grid-cols-4">
           <div className="min-w-0 break-all"><div className="text-xs text-muted-foreground">BID</div><span data-testid="top-bid">{t ? String(t.data.bid) : "—"}</span></div>
           <div className="min-w-0 break-all"><div className="text-xs text-muted-foreground">ASK</div><span data-testid="top-ask">{t ? String(t.data.ask) : "—"}</span></div>
