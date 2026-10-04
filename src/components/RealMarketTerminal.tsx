@@ -115,13 +115,16 @@ export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000 }: Re
   }, [client]);
 
   useEffect(() => {
-    void loadSpec(selected);
-    void loadBars(selected, timeframe);
+    let active = true;
+    const load = async () => {
+      await loadSpec(selected);
+      if (active) await loadBars(selected, timeframe);
+    };
+    void load();
     const refresh = setInterval(() => {
-      if (!stateRef.current[selected].spec.value) void loadSpec(selected);
-      void loadBars(selected, timeframe);
+      void load();
     }, 30_000);
-    return () => clearInterval(refresh);
+    return () => { active = false; clearInterval(refresh); };
   }, [selected, timeframe, loadSpec, loadBars]);
 
   useEffect(() => {
