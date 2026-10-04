@@ -164,5 +164,13 @@
   --bull: oklch(0.75 0.16 150);
   --bear: oklch(0.65 0.2 25);
   --warn: oklch(0.8 0.15 75);
+  --chart-grid: oklch(0.25 0.012 250);
+  /* Canvas chart library accepts sRGB tokens; CSS UI continues using semantic oklch roles. */
+  --canvas-background: #181c20;
+  --canvas-foreground: #979fa8;
+  --canvas-grid: #282e33;
+  --canvas-up: #62c991;
+  --canvas-down: #e27272;
+  --canvas-border: #424a50;
 }
 body { font-family: var(--font-sans); background: var(--background); color: var(--foreground); }
