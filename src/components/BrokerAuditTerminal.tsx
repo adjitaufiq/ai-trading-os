@@ -110,6 +110,11 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
     }
   }, [client, now]);
 
+  // Last tick that actually passed validation. Shown (explicitly labeled) when a
+  // later poll fails, so one timeout doesn't blank the panel. Real data only.
+  const [lastGoodTick, setLastGoodTick] = useState<Slot<BridgeTick>>(empty);
+  const staticFailed = useRef(false);
+
   useEffect(() => {
     alive.current = true;
     void loadStatic();
@@ -118,14 +123,31 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
       if (busy) return; busy = true;
       const r = await client.getLatestTick(AUDIT_SYMBOL);
       busy = false;
-      if (alive.current) { setTick({ result: r, at: now() }); setNowMs(now()); }
+      if (alive.current) {
+        const at = now();
+        setTick({ result: r, at });
+        if (r.ok) setLastGoodTick({ result: r, at });
+        setNowMs(at);
+      }
     };
     void poll();
     const id = setInterval(poll, pollMs);
     return () => { alive.current = false; clearInterval(id); };
   }, [client, loadStatic, now, pollMs]);
 
-  const t = tick.result?.ok ? tick.result : null;
+  // Retry static loads (spec/btc/bars/…) every 15 s only while any of them failed.
+  useEffect(() => {
+    staticFailed.current =
+      [health, spec, btc, term].some((s) => s.result && !s.result.ok) ||
+      AUDIT_TIMEFRAMES.some((f) => bars[f]?.result && !bars[f]!.result!.ok);
+  }, [health, spec, btc, term, bars]);
+  useEffect(() => {
+    const id = setInterval(() => { if (staticFailed.current) void loadStatic(); }, 15_000);
+    return () => clearInterval(id);
+  }, [loadStatic]);
+
+  const t = tick.result?.ok ? tick.result : lastGoodTick.result?.ok ? lastGoodTick.result : null;
+  const tickIsLastGood = !!(tick.result && !tick.result.ok && t);
   const env = t?.envelope;
   const age = tickAge(env?.timing.source_event_at ?? null, nowMs ?? 0, nowMs == null ? null : staleAfter);
   const barSlot = bars[tf];
@@ -180,10 +202,11 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
           {AUDIT_SYMBOL} · BROKER OBSERVATION · delivery <span data-testid="tick-delivery">{env?.delivery ?? "—"}</span>
         </H>
         {tick.result && !tick.result.ok ? <ErrLine e={tick.result.error} /> : null}
-        <div className="grid grid-cols-2 gap-2 px-3 py-2 text-2xl sm:grid-cols-4">
-          <div><div className="text-xs text-muted-foreground">BID</div><span data-testid="top-bid">{t ? String(t.data.bid) : "—"}</span></div>
-          <div><div className="text-xs text-muted-foreground">ASK</div><span data-testid="top-ask">{t ? String(t.data.ask) : "—"}</span></div>
-          <div><div className="text-xs text-muted-foreground">SPREAD (price, UI-derived)</div><span data-testid="top-spread">{t ? (digits != null ? spreadPrice(t.data.bid, t.data.ask).toFixed(digits) : String(spreadPrice(t.data.bid, t.data.ask))) : "—"}</span></div>
+        {tickIsLastGood ? <div className="px-3 text-xs text-muted-foreground" data-testid="tick-last-good">Showing LAST VALIDATED tick (latest poll failed)</div> : null}
+        <div className="grid grid-cols-2 gap-2 px-3 py-2 text-2xl tabular-nums sm:grid-cols-4">
+          <div className="min-w-0 break-all"><div className="text-xs text-muted-foreground">BID</div><span data-testid="top-bid">{t ? String(t.data.bid) : "—"}</span></div>
+          <div className="min-w-0 break-all"><div className="text-xs text-muted-foreground">ASK</div><span data-testid="top-ask">{t ? String(t.data.ask) : "—"}</span></div>
+          <div className="min-w-0 break-all"><div className="text-xs text-muted-foreground">SPREAD (price, UI-derived)</div><span data-testid="top-spread">{t ? (digits != null ? spreadPrice(t.data.bid, t.data.ask).toFixed(digits) : String(spreadPrice(t.data.bid, t.data.ask))) : "—"}</span></div>
           <div className="text-sm"><div className="text-xs text-muted-foreground">BROKER TIME (raw_time_msc)</div>{t ? utc(t.data.raw_time_msc) : "—"}</div>
         </div>
         <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-1 text-xs text-muted-foreground">
