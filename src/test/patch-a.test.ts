@@ -5,7 +5,6 @@ import { EXECUTION_ENABLED, OPERATING_MODE, type Bar } from "@/core/contracts";
 import { BrokerFeedPipeline, routeFor, type AuditRecord } from "@/core/broker/BrokerFeedPipeline";
 import { LIVE_FANOUT_TIMEFRAMES, LiveCandleFanout } from "@/core/broker/LiveCandleFanout";
 import type { BrokerEventEnvelope, BrokerMarketEvent, RawBrokerTick } from "@/core/broker/types";
-import { CandleAggregator } from "@/core/temporal/CandleAggregator";
 import { ReplayClock } from "@/core/temporal/CanonicalClock";
 import { FreshnessPolicy } from "@/core/temporal/TemporalPolicy";
 import { BROKER_T0, SYNTHETIC_SPEC, tick } from "@/core/fixtures/syntheticExnessFixture";
@@ -225,13 +224,13 @@ describe("R3 — feed classifier does not own candle lifecycle; canonical LIVE M
   });
 
   it("[start, end): boundary tick belongs to the new interval on every timeframe", () => {
-    const clock = new ReplayClock(BROKER_T0 + 14_400_020);
-    const agg = Object.fromEntries(LIVE_FANOUT_TIMEFRAMES.map((tf) => [tf, new CandleAggregator("XAUUSD", tf, clock)]));
     const r = rig();
-    r.send(tickMs("k1", 14_400_000, 2345));
+    r.send(tickMs("k0", 14_399_999, 2344)); // last ms of every interval ending at 12:00
+    r.send(tickMs("k1", 14_400_000, 2345)); // exactly 12:00 → new interval everywhere
     for (const tf of LIVE_FANOUT_TIMEFRAMES) {
-      expect(r.fanout.aggregators[tf].current!.open_time).toBe(BROKER_T0 + 14_400_000);
-      expect(agg[tf]).toBeDefined();
+      const a = r.fanout.aggregators[tf];
+      expect(a.current).toMatchObject({ open_time: BROKER_T0 + 14_400_000, open: 2345, tick_count: 1 });
+      expect(a.closedBars.at(-1)).toMatchObject({ close_time: BROKER_T0 + 14_400_000, close: 2344, status: "CLOSED" });
     }
   });
 
