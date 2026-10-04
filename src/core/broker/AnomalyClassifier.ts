@@ -1,13 +1,20 @@
-import { TIMEFRAME_MS, type Timeframe } from "../contracts";
-import type { CanonicalClock } from "../temporal/CanonicalClock";
 import type { FreshnessPolicy } from "../temporal/TemporalPolicy";
 import type { AnomalyDisposition, BrokerMarketEvent, FeedAnomaly } from "./types";
 
+/**
+ * Feed-quality configuration only. Deliberately contains NO timeframe and no candle
+ * lifecycle knowledge (PRE-2D R3): interval ownership/closure belongs to each
+ * CandleAggregator behind the LIVE fanout, never to the feed classifier.
+ */
 export interface ClassifierConfig {
-  /** Bucketing timeframe of the downstream aggregator (closed-bucket detection). */
-  timeframe: Timeframe;
   /** ingested_at - event_at above this is flagged LATE_EVENT (configurable, not an Exness value). */
   maxLatencyMs: number;
+  /**
+   * Feed-level reorder window: an event_at regression behind the live watermark up to this
+   * many ms is OUT_OF_ORDER; beyond it the observation is LATE_EVENT. Pure feed temporal
+   * discontinuity — independent of any candle interval. Configurable, not an Exness value.
+   */
+  maxReorderMs: number;
   /** Gap thresholds resolved per symbol/source. */
   freshness: FreshnessPolicy;
 }
@@ -24,22 +31,18 @@ export function resolveDisposition(anomalies: readonly FeedAnomaly[]): AnomalyDi
 }
 
 /**
- * Classifies a normalized candidate against stream state. Returns every
- * applicable observation; it never reorders or edits the event.
+ * Classifies a normalized candidate ONCE against feed/stream state. Returns every
+ * applicable observation; it never reorders or edits the event, and never decides
+ * which candle owns the event or whether any candle is closed.
  */
 export class AnomalyClassifier {
   private readonly seenIds = new Set<string>();
   private readonly seenContent = new Set<string>();
-  private lastAccepted: BrokerMarketEvent | null = null;
+  /** Last observation that mutated LIVE state (live watermark). BACKFILL never moves it. */
+  private lastLive: BrokerMarketEvent | null = null;
   private lastEpoch: number | null = null;
-  private readonly tfMs: number;
 
-  constructor(
-    private readonly cfg: ClassifierConfig,
-    private readonly clock: CanonicalClock,
-  ) {
-    this.tfMs = TIMEFRAME_MS[cfg.timeframe];
-  }
+  constructor(private readonly cfg: ClassifierConfig) {}
 
   classify(e: BrokerMarketEvent): FeedAnomaly[] {
     const id = e.provenance.raw_event_id;
@@ -59,25 +62,21 @@ export class AnomalyClassifier {
       return out;
     }
 
+    const backfill = e.provenance.delivery === "BACKFILL";
     const epochChanged = this.lastEpoch !== null && e.provenance.connection_epoch !== this.lastEpoch;
-    if (e.provenance.delivery === "BACKFILL" || epochChanged) {
+    if (backfill || epochChanged) {
       add("RECONNECT_BACKFILL", "ACCEPT_WITH_FLAG", `epoch ${e.provenance.connection_epoch}, delivery ${e.provenance.delivery}`);
     }
 
-    const last = this.lastAccepted;
-    const bucket = Math.floor(e.event_at / this.tfMs) * this.tfMs;
-    const bucketClosed = bucket + this.tfMs <= this.clock.now() ||
-      (last !== null && bucket < Math.floor(last.event_at / this.tfMs) * this.tfMs);
-
+    const last = this.lastLive;
     if (last && e.event_at < last.event_at) {
-      if (bucketClosed) {
-        add("LATE_EVENT", e.provenance.delivery === "BACKFILL" ? "RECONCILE" : "QUARANTINE",
-          "belongs to an already-closed bucket; CLOSED candles are immutable");
+      const regression = last.event_at - e.event_at;
+      const disposition: AnomalyDisposition = backfill ? "RECONCILE" : "QUARANTINE";
+      if (regression > this.cfg.maxReorderMs) {
+        add("LATE_EVENT", disposition, `event_at ${regression}ms behind live watermark > reorder window ${this.cfg.maxReorderMs}ms`);
       } else {
-        add("OUT_OF_ORDER", e.provenance.delivery === "BACKFILL" ? "RECONCILE" : "QUARANTINE", `event_at ${e.event_at} < last accepted ${last.event_at}`);
+        add("OUT_OF_ORDER", disposition, `event_at ${e.event_at} < live watermark ${last.event_at}`);
       }
-    } else if (!last && bucketClosed) {
-      add("LATE_EVENT", "QUARANTINE", "first event already belongs to a closed bucket");
     } else if (e.ingested_at - e.event_at > this.cfg.maxLatencyMs) {
       add("LATE_EVENT", "ACCEPT_WITH_FLAG", `latency ${e.ingested_at - e.event_at}ms > ${this.cfg.maxLatencyMs}ms`);
     }
@@ -91,13 +90,16 @@ export class AnomalyClassifier {
     return out;
   }
 
-  /** Commit state after the pipeline decided. Rejected/quarantined events still count as seen. */
-  commit(e: BrokerMarketEvent, accepted: boolean, temporallyValid: boolean): void {
+  /**
+   * Commit state after the pipeline routed the event. Every temporally valid observation
+   * counts as seen (dedup); only a LIVE mutation advances the live watermark/epoch.
+   */
+  commit(e: BrokerMarketEvent, liveMutation: boolean, temporallyValid: boolean): void {
     if (!temporallyValid) return;
     this.seenIds.add(e.provenance.raw_event_id);
     this.seenContent.add(`${e.symbol}|${e.event_at}|${e.bid}|${e.ask}`);
-    if (accepted) {
-      this.lastAccepted = e;
+    if (liveMutation) {
+      this.lastLive = e;
       this.lastEpoch = e.provenance.connection_epoch;
     }
   }

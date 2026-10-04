@@ -10,19 +10,56 @@ import type {
   SymbolSpecification,
 } from "./types";
 
+/**
+ * Where an observation went. Separate from disposition (PRE-2D R1/R2):
+ * - LIVE_MUTATION            — STREAM delivery with ACCEPT/ACCEPT_WITH_FLAG; the ONLY route to the live sink.
+ * - BACKFILL_HISTORY         — BACKFILL delivery with ACCEPT/ACCEPT_WITH_FLAG; history/audit/discrepancy only.
+ * - RECONCILIATION_CANDIDATE — RECONCILE disposition; evidence for later resolution, never a mutation.
+ * - QUARANTINED / REJECTED   — audit only.
+ */
+export type FeedRoute = "LIVE_MUTATION" | "BACKFILL_HISTORY" | "RECONCILIATION_CANDIDATE" | "QUARANTINED" | "REJECTED";
+
 export interface AuditRecord {
   readonly envelope: BrokerEventEnvelope<RawBrokerTick>;
   readonly candidate: BrokerMarketEvent;
   readonly anomalies: readonly FeedAnomaly[];
   readonly disposition: AnomalyDisposition;
-  /** seq on the canonical stream, or null if it did not reach it. */
+  readonly route: FeedRoute;
+  /** seq on the canonical LIVE stream, or null if it did not mutate live state. */
   readonly canonical_seq: number | null;
 }
 
+export interface BrokerFeedPipelineResult {
+  readonly acceptedLive: readonly AuditRecord[];
+  readonly acceptedWithFlags: readonly AuditRecord[];
+  readonly backfill: readonly AuditRecord[];
+  readonly quarantined: readonly AuditRecord[];
+  readonly reconciliationCandidates: readonly AuditRecord[];
+  readonly rejected: readonly AuditRecord[];
+}
+
+export interface NonLiveSinks {
+  /** History/bootstrap/discrepancy consumer. Never wired to a live CandleAggregator. */
+  readonly onBackfill?: (r: AuditRecord) => void;
+  /** Reconciliation-candidate consumer (no engine yet — Patch A only defines the route). */
+  readonly onReconcileCandidate?: (r: AuditRecord) => void;
+}
+
+/** Disposition × delivery → route. Delivery is explicit; BACKFILL can never yield LIVE_MUTATION. */
+export function routeFor(disposition: AnomalyDisposition, delivery: BrokerEventEnvelope["delivery"]): FeedRoute {
+  switch (disposition) {
+    case "REJECT": return "REJECTED";
+    case "QUARANTINE": return "QUARANTINED";
+    case "RECONCILE": return "RECONCILIATION_CANDIDATE";
+    case "ACCEPT":
+    case "ACCEPT_WITH_FLAG":
+      return delivery === "STREAM" ? "LIVE_MUTATION" : "BACKFILL_HISTORY";
+  }
+}
+
 /**
- * Raw → normalize → validate/classify → canonical sink or audit/quarantine.
- * Only ACCEPT / ACCEPT_WITH_FLAG reach the sink (e.g. a CandleAggregator).
- * Every envelope, including rejected ones, is preserved in the audit log.
+ * Raw → normalize → classify ONCE → route. Only LIVE_MUTATION reaches the live sink
+ * (e.g. a LiveCandleFanout). Every envelope, including rejected ones, is preserved in the audit log.
  */
 export class BrokerFeedPipeline {
   private readonly normalizer: BrokerNormalizer;
@@ -34,10 +71,11 @@ export class BrokerFeedPipeline {
     spec: SymbolSpecification,
     cfg: ClassifierConfig,
     clock: CanonicalClock,
-    private readonly sink: (e: BrokerMarketEvent) => void,
+    private readonly liveSink: (e: BrokerMarketEvent) => void,
+    private readonly nonLive: NonLiveSinks = {},
   ) {
     this.normalizer = new BrokerNormalizer(spec, clock);
-    this.classifier = new AnomalyClassifier(cfg, clock);
+    this.classifier = new AnomalyClassifier(cfg);
   }
 
   process(env: BrokerEventEnvelope<RawBrokerTick>): AuditRecord {
@@ -45,20 +83,26 @@ export class BrokerFeedPipeline {
     const candidate = this.normalizer.normalizeTick(frozenEnv, this.seq);
     const anomalies = Object.freeze(this.classifier.classify(candidate));
     const disposition = resolveDisposition(anomalies);
-    const accepted = disposition === "ACCEPT" || disposition === "ACCEPT_WITH_FLAG";
+    const route = routeFor(disposition, frozenEnv.delivery);
+    const live = route === "LIVE_MUTATION";
     const temporallyValid = !anomalies.some((a) => a.classification === "TEMPORAL_INVALID");
-    this.classifier.commit(candidate, accepted, temporallyValid);
+    this.classifier.commit(candidate, live, temporallyValid);
     const record = Object.freeze<AuditRecord>({
       envelope: frozenEnv,
       candidate,
       anomalies,
       disposition,
-      canonical_seq: accepted ? this.seq : null,
+      route,
+      canonical_seq: live ? this.seq : null,
     });
     this.log.push(record);
-    if (accepted) {
+    if (live) {
       this.seq++;
-      this.sink(candidate);
+      this.liveSink(candidate);
+    } else if (route === "BACKFILL_HISTORY") {
+      this.nonLive.onBackfill?.(record);
+    } else if (route === "RECONCILIATION_CANDIDATE") {
+      this.nonLive.onReconcileCandidate?.(record);
     }
     return record;
   }
@@ -67,7 +111,21 @@ export class BrokerFeedPipeline {
     return this.log;
   }
   get quarantine(): readonly AuditRecord[] {
-    return this.log.filter((r) => r.disposition === "QUARANTINE" || r.disposition === "RECONCILE");
+    return this.log.filter((r) => r.route === "QUARANTINED");
+  }
+  get reconciliationCandidates(): readonly AuditRecord[] {
+    return this.log.filter((r) => r.route === "RECONCILIATION_CANDIDATE");
+  }
+  get result(): BrokerFeedPipelineResult {
+    const by = (f: (r: AuditRecord) => boolean) => Object.freeze(this.log.filter(f));
+    return Object.freeze({
+      acceptedLive: by((r) => r.route === "LIVE_MUTATION" && r.disposition === "ACCEPT"),
+      acceptedWithFlags: by((r) => r.route === "LIVE_MUTATION" && r.disposition === "ACCEPT_WITH_FLAG"),
+      backfill: by((r) => r.route === "BACKFILL_HISTORY"),
+      quarantined: by((r) => r.route === "QUARANTINED"),
+      reconciliationCandidates: by((r) => r.route === "RECONCILIATION_CANDIDATE"),
+      rejected: by((r) => r.route === "REJECTED"),
+    });
   }
   trace(raw_event_id: string): AuditRecord | undefined {
     return this.log.find((r) => r.envelope.raw.raw_event_id === raw_event_id);
