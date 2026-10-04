@@ -34,7 +34,7 @@ const KV = ({ rows, testid }: { rows: [string, React.ReactNode, string?][]; test
       {rows.map(([k, v, tid]) => (
         <tr key={k} className="border-t border-border first:border-t-0">
           <td className="px-3 py-0.5 text-muted-foreground">{k}</td>
-          <td className="px-3 py-0.5 text-right break-all" data-testid={tid}>{v}</td>
+          <td className="max-w-0 px-3 py-0.5 text-right" data-testid={tid}><div className="overflow-x-auto whitespace-nowrap tabular-nums">{v}</div></td>
         </tr>
       ))}
     </tbody>
