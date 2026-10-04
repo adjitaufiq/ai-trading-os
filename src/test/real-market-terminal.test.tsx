@@ -6,6 +6,10 @@ import type { BrokerGatewayClient } from "@/core/broker/gateway/BrokerGatewayCli
 import type { BridgeBar } from "@/core/broker/gateway/types";
 
 vi.mock("@/components/MarketCandles", () => ({ MarketCandles: ({ bars }: { bars: readonly BridgeBar[] }) => <div data-testid="mock-chart" data-count={bars.length}>{bars[0]?.broker_symbol}</div> }));
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@tanstack/react-router")>();
+  return { ...original, Link: ({ children }: { children: React.ReactNode }) => <a href="/audit">{children}</a> };
+});
 const spec = (symbol: string) => ({ broker_symbol: symbol, description: symbol, path: "Markets", currency_base: symbol.slice(0, 3), currency_profit: "USD", digits: symbol === "BTCUSD" ? 2 : 3, point: 0.001, trade_contract_size: 100 });
 const tick = (symbol: string) => ({ broker_symbol: symbol, raw_time_s: 1790974679, raw_time_msc: 1790974679954, time_precision: "ms", bid: symbol === "BTCUSD" ? 85340.34 : 4140.348, ask: symbol === "BTCUSD" ? 85347.34 : 4140.53, last: 0, volume: 0, flags: 6 });
 const bar = (symbol: string, tf: string): BridgeBar => ({ broker_symbol: symbol, timeframe: tf, raw_time_s: 1790973900, time_precision: "s", open: symbol === "BTCUSD" ? 85340.34 : 4138.554, high: 85348.71, low: 4135.741, close: 85343.58, tick_volume: 544, spread: 168, real_volume: 0 } as BridgeBar);
