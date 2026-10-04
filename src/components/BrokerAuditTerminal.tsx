@@ -216,7 +216,7 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
             <H>RAW TICK · GET /v1/ticks/latest/{AUDIT_SYMBOL}</H>
             <KV rows={[
               ["broker_symbol", t?.data.broker_symbol ?? "—"],
-              ["raw_time_s", t ? ts(t.data.raw_time_s * 1000) && <>{t.data.raw_time_s} <span className="text-muted-foreground">({utc(t.data.raw_time_s * 1000)})</span></> : "—", "raw-time-s"],
+              ["raw_time_s", t ? <>{t.data.raw_time_s} <span className="text-muted-foreground">({utc(t.data.raw_time_s * 1000)})</span></> : "—", "raw-time-s"],
               ["raw_time_msc", t ? ts(t.data.raw_time_msc) : "—", "raw-time-msc"],
               ["bid", t ? String(t.data.bid) : "—", "raw-bid"],
               ["ask", t ? String(t.data.ask) : "—", "raw-ask"],
