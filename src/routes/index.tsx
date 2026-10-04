@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   EXECUTION_ENABLED,
@@ -217,6 +217,7 @@ function Index() {
           <span className="border border-warn px-2 text-warn">{OPERATING_MODE.replace("_", " ")}</span>
           <span className="text-muted-foreground">execution.enabled = {String(EXECUTION_ENABLED)}</span>
           <span className="text-muted-foreground">MT5 NOT CONNECTED</span>
+          <Link to="/audit" className="underline">BROKER AUDIT →</Link>
         </div>
       </header>
 
