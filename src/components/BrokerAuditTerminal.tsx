@@ -28,24 +28,24 @@ const H = ({ children, right }: { children: React.ReactNode; right?: React.React
 const Box = ({ children, testid }: { children: React.ReactNode; testid?: string }) => (
   <section className="border border-border bg-card" data-testid={testid}>{children}</section>
 );
+// Two equal columns that can both shrink, so values never get clipped on phones.
 const KV = ({ rows, testid }: { rows: [string, React.ReactNode, string?][]; testid?: string }) => (
-  <table className="w-full font-mono text-xs" data-testid={testid}>
-    <tbody>
-      {rows.map(([k, v, tid]) => (
-        <tr key={k} className="border-t border-border first:border-t-0">
-          <td className="px-3 py-0.5 text-muted-foreground">{k}</td>
-          <td className="px-3 py-0.5 text-right break-all" data-testid={tid}>{v}</td>
-        </tr>
-      ))}
-    </tbody>
-  </table>
+  <div className="w-full font-mono text-xs" data-testid={testid}>
+    {rows.map(([k, v, tid]) => (
+      <div key={k} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 border-t border-border px-3 py-0.5 first:border-t-0">
+        <div className="min-w-0 break-words text-muted-foreground">{k}</div>
+        <div className="min-w-0 break-all text-right tabular-nums" data-testid={tid}>{v}</div>
+      </div>
+    ))}
+  </div>
 );
 const ErrLine = ({ e }: { e: ClientError }) => (
   <div className="px-3 py-2 font-mono text-xs text-bear" data-testid="audit-error">
     {e.kind}{e.http_status != null ? ` · HTTP ${e.http_status}` : ""} · {e.message} · NO MOCK FALLBACK
   </div>
 );
-const ts = (ms: number | null | undefined) => (ms == null ? "null" : <>{ms} <span className="text-muted-foreground">({utc(ms)})</span></>);
+// Raw value and UTC on separate lines so row height stays constant as values change.
+const ts = (ms: number | null | undefined) => (ms == null ? "null" : <>{ms} <br /><span className="text-muted-foreground">({utc(ms)})</span></>);
 const fTone = (s: AuditFreshness) => (s === "FRESH" ? "text-bull" : s === "STALE" ? "text-bear" : "text-muted-foreground");
 
 function Candles({ bars }: { bars: readonly BridgeBar[] }) {
@@ -96,16 +96,30 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
   const [inspect, setInspect] = useState<string>("tick");
   const alive = useRef(true);
 
+  // Keys whose static request already returned a validated observation. Retries
+  // only re-request the others, so a later timeout can never replace (blank out)
+  // a real observation that was already received.
+  const okKeys = useRef(new Set<string>());
   const loadStatic = useCallback(async () => {
     const at = () => now();
-    const [h, s, b] = await Promise.all([client.getHealth(), client.getSymbol(AUDIT_SYMBOL), client.getSymbols(BTC_GROUP)]);
+    const need = (k: string) => !okKeys.current.has(k);
+    const mark = (k: string, r: { ok: boolean }) => { if (r.ok) okKeys.current.add(k); };
+    await Promise.all([
+      need("health") ? client.getHealth().then((r) => { if (alive.current) { mark("health", r); setHealth({ result: r, at: at() }); } }) : null,
+      need("spec") ? client.getSymbol(AUDIT_SYMBOL).then((r) => { if (alive.current) { mark("spec", r); setSpec({ result: r, at: at() }); } }) : null,
+      need("btc") ? client.getSymbols(BTC_GROUP).then((r) => { if (alive.current) { mark("btc", r); setBtc({ result: r, at: at() }); } }) : null,
+    ]);
     if (!alive.current) return;
-    setHealth({ result: h, at: at() }); setSpec({ result: s, at: at() }); setBtc({ result: b, at: at() });
-    const t = await client.getTerminal();
-    if (alive.current) setTerm({ result: t, at: at() });
+    if (need("term")) {
+      const t = await client.getTerminal();
+      if (!alive.current) return;
+      mark("term", t); setTerm({ result: t, at: at() });
+    }
     for (const f of AUDIT_TIMEFRAMES) {
+      if (!need(`bars:${f}`)) continue;
       const r = await client.getBars({ symbol: AUDIT_SYMBOL, timeframe: f, mode: "pos", start: 0, count: BAR_COUNT });
       if (!alive.current) return;
+      mark(`bars:${f}`, r);
       setBars((o) => ({ ...o, [f]: { result: r, at: at() } }));
     }
   }, [client, now]);
@@ -201,8 +215,19 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
         <H right={<span className={fTone(age.status)} data-testid="freshness">{age.status}{age.age_ms != null ? ` · age ${age.age_ms} ms` : ""}</span>}>
           {AUDIT_SYMBOL} · BROKER OBSERVATION · delivery <span data-testid="tick-delivery">{env?.delivery ?? "—"}</span>
         </H>
-        {tick.result && !tick.result.ok ? <ErrLine e={tick.result.error} /> : null}
-        {tickIsLastGood ? <div className="px-3 text-xs text-muted-foreground" data-testid="tick-last-good">Showing LAST VALIDATED tick (latest poll failed)</div> : null}
+        {/* Fixed-height status slot: poll failures change text, never the layout height. */}
+        <div className="h-14 overflow-hidden border-b border-border" data-testid="tick-poll-status">
+          {tick.result && !tick.result.ok ? (
+            <>
+              <ErrLine e={tick.result.error} />
+              {tickIsLastGood ? <div className="-mt-1 truncate px-3 font-mono text-xs text-muted-foreground" data-testid="tick-last-good">Showing LAST VALIDATED tick (latest poll failed)</div> : null}
+            </>
+          ) : (
+            <div className="truncate px-3 py-2 font-mono text-xs text-muted-foreground">
+              {tick.result ? `latest poll OK · client ${tick.at != null ? utc(tick.at) : "—"}` : "latest poll PENDING"}
+            </div>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-2 px-3 py-2 text-2xl tabular-nums sm:grid-cols-4">
           <div className="min-w-0 break-all"><div className="text-xs text-muted-foreground">BID</div><span data-testid="top-bid">{t ? String(t.data.bid) : "—"}</span></div>
           <div className="min-w-0 break-all"><div className="text-xs text-muted-foreground">ASK</div><span data-testid="top-ask">{t ? String(t.data.ask) : "—"}</span></div>
@@ -310,10 +335,11 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
         </div>
       </Box>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 [&>*]:min-w-0">
         <Box testid="coverage">
           <H>HISTORY COVERAGE · all bar requests</H>
-          <table className="w-full text-xs">
+          <div className="overflow-x-auto">
+          <table className="w-full whitespace-nowrap text-xs">
             <thead className="text-muted-foreground"><tr className="text-left">{["tf", "request", "req_from", "req_to", "count", "oldest", "newest", "coverage_status", "reason"].map((h) => <th key={h} className="px-2 font-normal">{h}</th>)}</tr></thead>
             <tbody>
               {AUDIT_TIMEFRAMES.map((f) => {
@@ -332,6 +358,7 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
               })}
             </tbody>
           </table>
+          </div>
           <p className="border-t border-border px-3 py-1 text-xs text-muted-foreground">
             REQUEST COMPLETED = the HTTP request returned a valid envelope. It is NOT "OBSERVATION COVERAGE COMPLETE". coverage_status is reported verbatim from the gateway; for count-based (pos) requests requested_from/to are null, so interval completeness is not established by this UI.
           </p>
@@ -362,7 +389,7 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
           <div className="grid grid-cols-2 gap-2 text-lg">
             <div><div className="text-xs text-muted-foreground">Bid</div>{t ? String(t.data.bid) : "—"}</div>
             <div><div className="text-xs text-muted-foreground">Ask</div>{t ? String(t.data.ask) : "—"}</div>
-            <div><div className="text-xs text-muted-foreground">Spread (price)</div>{t ? String(spreadPrice(t.data.bid, t.data.ask)) : "—"}</div>
+            <div className="min-w-0 break-all"><div className="text-xs text-muted-foreground">Spread (price)</div>{t ? (digits != null ? spreadPrice(t.data.bid, t.data.ask).toFixed(digits) : String(spreadPrice(t.data.bid, t.data.ask))) : "—"}</div>
             <div className="text-sm"><div className="text-xs text-muted-foreground">Broker timestamp</div>{t ? `${t.data.raw_time_msc} · ${utc(t.data.raw_time_msc)}` : "—"}</div>
           </div>
           <div className="grid grid-cols-4 gap-2 text-sm" data-testid="compare-bar">
@@ -378,7 +405,8 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
       <Box testid="btc-discovery">
         <H right={<span className="text-warn" data-testid="btc-resolution">BTC SYMBOL RESOLUTION: AMBIGUOUS</span>}>BTC DISCOVERY · GET /v1/symbols?group={BTC_GROUP}</H>
         {btc.result && !btc.result.ok ? <ErrLine e={btc.result.error} /> : null}
-        <table className="w-full text-xs">
+        <div className="overflow-x-auto">
+        <table className="w-full whitespace-nowrap text-xs">
           <thead className="text-muted-foreground"><tr className="text-left">{["broker_symbol", "description", "path", "base", "profit", "digits", "point", "contract"].map((h) => <th key={h} className="px-2 font-normal">{h}</th>)}</tr></thead>
           <tbody>
             {(btc.result?.ok ? btc.result.data : []).map((s, i) => (
@@ -389,6 +417,7 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
             ))}
           </tbody>
         </table>
+        </div>
         <p className="border-t border-border px-3 py-1 text-xs text-muted-foreground">{btc.result?.ok ? btc.result.data.length : 0} candidates. None auto-selected — group filter is an optimization, not identity resolution.</p>
       </Box>
 
@@ -424,7 +453,7 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
             <button key={k} onClick={() => setInspect(k)} className={`border border-border px-2 ${inspect === k ? "bg-muted text-primary" : ""}`}>{k}</button>
           ))}
         </div>
-        <pre className="max-h-96 overflow-auto border-t border-border p-3 text-xs" data-testid="envelope-json">{JSON.stringify(envelopes[inspect] ?? null, null, 2)}</pre>
+        <pre className="h-96 overflow-auto border-t border-border p-3 text-xs" data-testid="envelope-json">{JSON.stringify(envelopes[inspect] ?? null, null, 2)}</pre>
       </details>
     </div>
   );
