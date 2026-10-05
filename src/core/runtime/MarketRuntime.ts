@@ -121,11 +121,6 @@ export class MarketRuntime {
       return this.boot.state; // never fabricate an epoch; stays UNINITIALIZED / previous state
     }
     await this.bootstrap(h.envelope.connection_epoch, req);
-    if (!this.stream) {
-      this.stream = this.o.gateway.subscribeMarketData({ stream: "ticks", symbols: [this.o.binding.broker_symbol] }, {
-        onTick: (t) => this.onGatewayTick(t),
-      });
-    }
     this.lifecycle = "RUNNING";
     return this.boot.state;
   }
@@ -144,6 +139,12 @@ export class MarketRuntime {
     const carry = this.pending.filter((p) => p.connection_epoch >= epoch);
     this.pending = [];
     for (const p of carry) this.safeLive(p);
+    if (!this.stream) {
+      // Subscribed only after BUFFERING_LIVE, so every LIVE observation is buffered by the coordinator.
+      this.stream = this.o.gateway.subscribeMarketData({ stream: "ticks", symbols: [this.o.binding.broker_symbol] }, {
+        onTick: (t) => this.onGatewayTick(t),
+      });
+    }
     this.boot.beginHistory({ requested_from: req.history_from, requested_to: req.history_to });
     // Live that arrives while the history request is in flight is buffered by the coordinator.
     const r = await this.o.gateway.getTicks({ symbol: this.o.binding.broker_symbol, mode: "range", from: req.history_from, to: req.history_to });
