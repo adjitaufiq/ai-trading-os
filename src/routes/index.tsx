@@ -21,14 +21,19 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
+const RUNTIMES = Object.freeze([{ symbol: "XAUUSD", reader: null }, { symbol: "BTCUSD", reader: null }]);
+const CANONICAL_RUNTIME_BLOCKERS = "CANONICAL_RUNTIME_NOT_MOUNTED: G2 broker_utc_offset_ms unverified (no default allowed); real gateway LIVE stream /v1/stream unavailable (HTTP 404); WebSocket injection deferred";
+
 function Terminal() {
   const client = useMemo(() => new BrokerGatewayClient({
     config: makeGatewayConfig({ timeoutMs: 15_000 }), wallClock: new LiveClock(), monoClock: { now: () => performance.now() },
   }), []);
   const explain = useServerFn(explainTradingState);
+  // Technical state consumes ONLY the canonical MarketRuntime. It is not mounted yet: missing canonical capabilities are
+  // reported instead of falling back to direct REST bars (see CANONICAL_RUNTIME_BLOCKERS).
   return <>
     <RealMarketTerminal client={client} />
-    <TechnicalSlicePanel client={client} explain={(snapshot) => explain({ data: { snapshot } })} />
+    <TechnicalSlicePanel runtimes={RUNTIMES} unmountedReason={CANONICAL_RUNTIME_BLOCKERS} explain={(snapshot) => explain({ data: { snapshot } })} />
   </>;
 }
 
