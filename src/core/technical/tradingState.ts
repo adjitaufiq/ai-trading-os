@@ -211,7 +211,7 @@ function frozenPlan(o: SignalOrigin): ReferencePlan {
   return { status: "AVAILABLE", policy_version: REFERENCE_PLAN_POLICY_VERSION, ...rest, rr_tp1: 1, rr_tp2: 2 };
 }
 
-function deriveSignalLifecycle(
+export function deriveSignalLifecycle(
   i: EvaluationInput, prev: TradingSnapshot["signal"] | null, setup: TradingSnapshot["setup"], op: OperatorAnalysis,
   evidence: Readonly<Record<Timeframe, TimeframeEvidence>>,
 ): TradingSnapshot["signal"] {
