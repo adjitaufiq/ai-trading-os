@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { TechnicalSlicePanel, TradeActions, cockpitSignal, referenceEntry } from "@/components/TechnicalSlicePanel";
+import { PaperJournalStore } from "@/lib/paperJournal";
 import type { TradingSnapshot } from "@/core/technical/tradingState";
 
 const snapshot = (entry: TradingSnapshot["entry"]["state"]): TradingSnapshot => ({
@@ -33,8 +34,8 @@ describe("clean trading cockpit", () => {
     expect(screen.getByTestId("cockpit-XAUUSD")).toBeInTheDocument();
     expect(screen.queryByTestId("cockpit-BTCUSD")).not.toBeInTheDocument();
     expect(screen.queryByText(/CANONICAL_MARKET_RUNTIME|BACKFILL_HISTORY|LIVE_MUTATION|QUARANTINED|protocol errors|state transitions/i)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "BUY rencana acuan" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "SELL rencana acuan" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "BUY simulasi" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "SELL simulasi" })).toBeEnabled();
   });
   it("switches cockpit selection without rendering both technical cards", () => {
     const runtimes = [{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }, { symbol: "BTCUSD", reader: reader("BTCUSD", "WAIT") }];
@@ -48,33 +49,37 @@ describe("clean trading cockpit", () => {
     expect(snapshot("SHORT_CANDIDATE").execution.state).toBe("BLOCKED");
     expect(snapshot("LONG_CANDIDATE").reference_plan.status).toBe("NOT_AVAILABLE");
   });
-  it("keeps both actions visible and disabled while HOLD", () => {
-    render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);
-    expect(screen.getByTestId("action-buy")).toBeDisabled();
-    expect(screen.getByTestId("action-sell")).toBeDisabled();
-    expect(screen.getByTestId("action-disabled-reason")).toHaveTextContent(/menunggu|test/i);
-  });
-  it("enables only BUY and opens a read-only plan without execution", () => {
-    const brokerOrder = vi.fn();
-    render(<TradeActions signal="BUY" entry={101} plan={{ sl: 98, tp1: 104, tp2: 107, rr: "TP1 1:1 · TP2 1:2" }} reason="TEST" confirmations={["H4 bullish", "H1 bullish"]} />);
+  it("keeps both paper actions clickable and unhighlighted while HOLD", () => {
+    render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} store={new PaperJournalStore(null)} />);
     expect(screen.getByTestId("action-buy")).toBeEnabled();
-    expect(screen.getByTestId("action-sell")).toBeDisabled();
-    fireEvent.click(screen.getByTestId("action-buy"));
-    expect(screen.getByRole("dialog")).toHaveTextContent("Rencana acuan BUY");
-    expect(screen.getByTestId("no-order-status")).toHaveTextContent("MONITOR SAJA — TIDAK ADA ORDER DIKIRIM");
-    expect(screen.getByRole("dialog")).toHaveTextContent("98.000");
-    expect(screen.getByRole("dialog")).toHaveTextContent("104.000");
-    expect(screen.getByRole("dialog")).toHaveTextContent("107.000");
-    expect(screen.getByRole("dialog")).toHaveTextContent("TP1 1:1 · TP2 1:2");
-    expect(brokerOrder).not.toHaveBeenCalled();
-  });
-  it("enables only SELL and opens its read-only plan", () => {
-    render(<TradeActions signal="SELL" entry={100} reason="TEST" confirmations={["H4 bearish", "H1 bearish"]} />);
-    expect(screen.getByTestId("action-buy")).toBeDisabled();
     expect(screen.getByTestId("action-sell")).toBeEnabled();
+    expect(screen.getByTestId("action-buy")).toHaveAttribute("data-highlighted", "false");
+    expect(screen.getByTestId("action-disabled-reason")).toHaveTextContent(/SIMULASI — TIDAK ADA ORDER NYATA/);
+  });
+  it("BUY ticket on HOLD uses ASK, is labelled manual, and only calls the local paper callback", () => {
+    const onConfirm = vi.fn();
+    render(<TradeActions symbol="XAUUSD" signal="HOLD" quote={{ bid: 100, ask: 101 }} reason="TEST" confirmations={[]} onConfirm={onConfirm} />);
+    fireEvent.click(screen.getByTestId("action-buy"));
+    expect(screen.getByTestId("ticket-entry")).toHaveTextContent("101.000");
+    expect(screen.getByTestId("manual-label")).toHaveTextContent("MANUAL SIMULATION — ENGINE SIGNAL: HOLD");
+    expect(screen.getByTestId("no-order-status")).toHaveTextContent("SIMULASI — TIDAK ADA ORDER NYATA");
+    fireEvent.click(screen.getByTestId("confirm-paper"));
+    expect(onConfirm).toHaveBeenCalledWith("BUY");
+  });
+  it("highlights BUY on a BUY signal and shows the same-side plan", () => {
+    render(<TradeActions signal="BUY" quote={{ bid: 100, ask: 101 }} plan={{ side: "BUY", sl: 98, tp1: 104, tp2: 107, rr: "TP1 1:1 · TP2 1:2" }} reason="TEST" confirmations={["H4 bullish"]} />);
+    expect(screen.getByTestId("action-buy")).toHaveAttribute("data-highlighted", "true");
+    expect(screen.getByTestId("action-sell")).toHaveAttribute("data-highlighted", "false");
+    fireEvent.click(screen.getByTestId("action-buy"));
+    expect(screen.getByRole("dialog")).toHaveTextContent("107.000");
+    expect(screen.queryByTestId("manual-label")).not.toBeInTheDocument();
+  });
+  it("SELL ticket uses BID; MONITOR mode has no confirm", () => {
+    render(<TradeActions signal="SELL" quote={{ bid: 100, ask: 101 }} reason="TEST" confirmations={[]} mode="MONITOR" />);
     fireEvent.click(screen.getByTestId("action-sell"));
-    expect(screen.getByRole("dialog")).toHaveTextContent("Rencana acuan SELL");
-    expect(screen.getByTestId("no-order-status")).toBeInTheDocument();
+    expect(screen.getByTestId("ticket-entry")).toHaveTextContent("100.000");
+    expect(screen.queryByTestId("confirm-paper")).not.toBeInTheDocument();
+    expect(screen.getByTestId("no-order-status")).toHaveTextContent("MONITOR SAJA");
   });
   it("uses concise Indonesian labels on the main cockpit", () => {
     render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);

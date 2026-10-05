@@ -1,0 +1,157 @@
+// PAPER / SIMULATION trading + journal. Frontend-only, local persistence.
+// SIMULATION ONLY: nothing here talks to a broker, gateway, account or order API. There is no order path.
+import type { TradingSnapshot } from "@/core/technical/tradingState";
+import { compactSummary, engineSignalOf, type CompactSummary, type EngineSignal } from "./tradeSummary";
+
+export type PaperSide = "BUY" | "SELL";
+export type ExitReason = "MANUAL" | "SL" | "TP1" | "TP2" | "SIGNAL_CHANGE";
+/** Auto-close target for paper positions (and quick backtest). Explicit, not a tuned parameter. */
+export const PAPER_TARGET = "TP2" as const;
+
+export interface PaperPosition {
+  readonly id: string;
+  readonly symbol: string;
+  readonly side: PaperSide;
+  readonly mode: "SIMULATION";
+  readonly opened_at: number;
+  readonly entry: number;
+  readonly mark: number;
+  readonly sl: number | null;
+  readonly tp1: number | null;
+  readonly tp2: number | null;
+  readonly engine_signal: EngineSignal;
+  readonly manual_against_engine: boolean;
+  readonly context: CompactSummary | null;
+  readonly status: "OPEN" | "CLOSED";
+  readonly closed_at: number | null;
+  readonly exit_price: number | null;
+  readonly pnl: number | null;
+  readonly r_multiple: number | null;
+  readonly exit_reason: ExitReason | null;
+}
+
+export type JournalEntry =
+  | { readonly id: string; readonly type: "SIGNAL"; readonly at: number; readonly symbol: string; readonly from: EngineSignal; readonly to: EngineSignal; readonly context: CompactSummary | null }
+  | { readonly id: string; readonly type: "TRADE_OPEN" | "TRADE_CLOSE"; readonly at: number; readonly symbol: string; readonly position: PaperPosition };
+
+export interface Quote { readonly bid: number; readonly ask: number }
+
+/** BUY fills at ASK, SELL at BID (paper). SL/TP only from a reference plan on the same side. */
+export function openPaper(args: { symbol: string; side: PaperSide; quote: Quote; now: number; snapshot: TradingSnapshot | null; id: string }): PaperPosition {
+  const { symbol, side, quote, now, snapshot, id } = args;
+  const entry = side === "BUY" ? quote.ask : quote.bid;
+  const plan = snapshot?.reference_plan.status === "AVAILABLE" && snapshot.reference_plan.side === side ? snapshot.reference_plan : null;
+  const engine = engineSignalOf(snapshot);
+  return Object.freeze({
+    id, symbol, side, mode: "SIMULATION", opened_at: now, entry, mark: side === "BUY" ? quote.bid : quote.ask,
+    sl: plan?.sl ?? null, tp1: plan?.tp1 ?? null, tp2: plan?.tp2 ?? null,
+    engine_signal: engine, manual_against_engine: engine !== side,
+    context: snapshot && snapshot.availability !== "UNAVAILABLE" ? compactSummary(snapshot) : null,
+    status: "OPEN", closed_at: null, exit_price: null, pnl: null, r_multiple: null, exit_reason: null,
+  });
+}
+
+const pnlOf = (p: PaperPosition, px: number) => (p.side === "BUY" ? px - p.entry : p.entry - px);
+const rOf = (p: PaperPosition, px: number) => {
+  if (p.sl === null) return null;
+  const risk = p.side === "BUY" ? p.entry - p.sl : p.sl - p.entry;
+  return risk > 0 ? pnlOf(p, px) / risk : null;
+};
+
+export function closePaper(p: PaperPosition, price: number, now: number, reason: ExitReason): PaperPosition {
+  return Object.freeze({ ...p, mark: price, status: "CLOSED", closed_at: now, exit_price: price, pnl: pnlOf(p, price), r_multiple: rOf(p, price), exit_reason: reason });
+}
+
+/** Mark-to-market from a live quote (exit side: BUY→BID, SELL→ASK). Auto-closes on SL / target touch. */
+export function markPaper(p: PaperPosition, quote: Quote, now: number): PaperPosition {
+  if (p.status !== "OPEN") return p;
+  const px = p.side === "BUY" ? quote.bid : quote.ask;
+  const target = p.tp2;
+  if (p.sl !== null && (p.side === "BUY" ? px <= p.sl : px >= p.sl)) return closePaper(p, px, now, "SL");
+  if (target !== null && (p.side === "BUY" ? px >= target : px <= target)) return closePaper(p, px, now, PAPER_TARGET);
+  return px === p.mark ? p : Object.freeze({ ...p, mark: px, pnl: pnlOf(p, px), r_multiple: rOf(p, px) });
+}
+
+// ---------------- store ----------------
+export interface KV { getItem(k: string): string | null; setItem(k: string, v: string): void }
+const KEY = "paper-journal-v1";
+export const JOURNAL_MAX = 500;
+export const ENTRY_MAX_CHARS = 20_000;
+
+interface State { positions: PaperPosition[]; journal: JournalEntry[]; lastSignal: Record<string, EngineSignal> }
+
+export class PaperJournalStore {
+  private state: State;
+  private listeners = new Set<() => void>();
+  private seq = 0;
+  constructor(private readonly kv: KV | null) {
+    let s: State = { positions: [], journal: [], lastSignal: {} };
+    try { const raw = kv?.getItem(KEY); if (raw) s = { ...s, ...JSON.parse(raw) }; } catch { /* corrupt store ⇒ start empty */ }
+    this.state = s;
+  }
+  subscribe = (l: () => void) => { this.listeners.add(l); return () => { this.listeners.delete(l); }; };
+  getState = () => this.state;
+  private nextId(prefix: string, now: number) { return `${prefix}-${now}-${++this.seq}`; }
+  private commit(next: State) {
+    this.state = next;
+    try { this.kv?.setItem(KEY, JSON.stringify(next)); } catch { /* quota: keep in memory */ }
+    for (const l of this.listeners) l();
+  }
+  private push(entries: JournalEntry[], e: JournalEntry) {
+    const fits = JSON.stringify(e).length <= ENTRY_MAX_CHARS;
+    const safe: JournalEntry = fits ? e : e.type === "SIGNAL" ? { ...e, context: null } : { ...e, position: { ...e.position, context: null } };
+    return [safe, ...entries].slice(0, JOURNAL_MAX);
+  }
+
+  /** Records only real ENGINE signal changes per symbol (not every tick). Returns true when recorded. */
+  recordSignal(snapshot: TradingSnapshot | null, symbol: string, now: number): boolean {
+    if (!snapshot || snapshot.availability === "UNAVAILABLE") return false;
+    const to = engineSignalOf(snapshot);
+    const from = this.state.lastSignal[symbol];
+    if (from === to) return false;
+    const lastSignal = { ...this.state.lastSignal, [symbol]: to };
+    if (from === undefined) { this.commit({ ...this.state, lastSignal }); return false; } // baseline, not a transition
+    this.commit({ ...this.state, lastSignal, journal: this.push(this.state.journal, { id: this.nextId("sig", now), type: "SIGNAL", at: now, symbol, from, to, context: compactSummary(snapshot) }) });
+    return true;
+  }
+
+  open(args: { symbol: string; side: PaperSide; quote: Quote; now: number; snapshot: TradingSnapshot | null }): PaperPosition {
+    const p = openPaper({ ...args, id: this.nextId("paper", args.now) });
+    this.commit({ ...this.state, positions: [p, ...this.state.positions].slice(0, JOURNAL_MAX), journal: this.push(this.state.journal, { id: this.nextId("open", args.now), type: "TRADE_OPEN", at: args.now, symbol: p.symbol, position: p }) });
+    return p;
+  }
+
+  private replace(updated: PaperPosition[], closed: PaperPosition[], now: number) {
+    let journal = this.state.journal;
+    for (const c of closed) journal = this.push(journal, { id: this.nextId("close", now), type: "TRADE_CLOSE", at: now, symbol: c.symbol, position: c });
+    this.commit({ ...this.state, positions: updated, journal });
+  }
+
+  close(id: string, quote: Quote, now: number, reason: ExitReason = "MANUAL") {
+    const p = this.state.positions.find((x) => x.id === id && x.status === "OPEN");
+    if (!p) return;
+    const c = closePaper(p, p.side === "BUY" ? quote.bid : quote.ask, now, reason);
+    this.replace(this.state.positions.map((x) => (x.id === id ? c : x)), [c], now);
+  }
+
+  mark(symbol: string, quote: Quote, now: number) {
+    let changed = false; const closed: PaperPosition[] = [];
+    const next = this.state.positions.map((p) => {
+      if (p.symbol !== symbol || p.status !== "OPEN") return p;
+      const m = markPaper(p, quote, now);
+      if (m !== p) { changed = true; if (m.status === "CLOSED") closed.push(m); }
+      return m;
+    });
+    if (!changed) return;
+    if (closed.length) this.replace(next, closed, now);
+    else { this.state = { ...this.state, positions: next }; for (const l of this.listeners) l(); }
+  }
+
+  clear() { this.commit({ positions: [], journal: [], lastSignal: this.state.lastSignal }); }
+}
+
+let shared: PaperJournalStore | null = null;
+export function sharedPaperJournal(): PaperJournalStore {
+  if (!shared) shared = new PaperJournalStore(typeof window !== "undefined" ? window.localStorage : null);
+  return shared;
+}
