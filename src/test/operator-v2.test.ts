@@ -91,7 +91,7 @@ describe("operator v2 — trend setups", () => {
   it("trend SELL: H4 DOWN, resistance/EMA confluence, H1 RSI < 50, CLOSED bearish trigger", () => {
     const H1 = series("H1", down(60));
     const price = (ema(H1, 21) as { value: number }).value;
-    const m5 = withLast(series("M5", down(40)), [180, 180.2, 178.8, 179], [178.9, 179.3, 177, 177.5]);
+    const m5 = withLast(series("M5", down(40)), [179, 180.2, 178.8, 180], [180.1, 180.3, 177, 177.5]);
     const s = evaluate(input({ M5: m5, M15: series("M15", down(60)), H1, H4: series("H4", down(60)) }, price));
     expect(s.operator).toMatchObject({ h4_primary: "DOWN", regime: "TREND", status: "CARI_SELL", candidate: "SELL" });
     expect(s.operator!.checks).toEqual({ context: true, location: true, rsi: true, trigger: true });
