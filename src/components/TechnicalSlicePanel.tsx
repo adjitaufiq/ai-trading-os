@@ -8,7 +8,7 @@ import { TechnicalSliceService } from "@/core/technical/TechnicalSliceService";
 import type { MarketRuntimeReader } from "@/core/runtime/MarketRuntime";
 import type { Indicator } from "@/core/technical/indicators";
 import type { Relation, Structure } from "@/core/technical/indicators";
-import type { TradingSnapshot, WhyFact } from "@/core/technical/tradingState";
+import { buildSidePlan, type RadarPlan, type TradingSnapshot, type WhyFact } from "@/core/technical/tradingState";
 import type { AiWhyResult } from "@/lib/ai-why.functions";
 import { sharedPaperJournal, type PaperJournalStore } from "@/lib/paperJournal";
 import { aiSummaryPayload } from "@/lib/tradeSummary";
@@ -182,7 +182,7 @@ function PaperTicket({ symbol, side, signal, quote, plan, confirmations, mode, o
 }
 
 /** BUY/SELL always clickable; they only open a local paper ticket. There is no broker/order callback. */
-export function TradeActions({ symbol = "", signal, quote = null, plan = null, reason, confirmations, mode = "SIMULASI", onConfirm }: { symbol?: string; signal: CockpitSignal; quote?: TicketQuote | null; plan?: DisplayPlan; reason: string; confirmations: readonly string[]; mode?: CockpitMode; onConfirm?: ((side: "BUY" | "SELL") => void) | undefined }) {
+export function TradeActions({ symbol = "", signal, quote = null, plan = null, planFor, reason, confirmations, mode = "SIMULASI", onConfirm }: { symbol?: string; signal: CockpitSignal; quote?: TicketQuote | null; plan?: DisplayPlan; planFor?: (side: "BUY" | "SELL") => DisplayPlan; reason: string; confirmations: readonly string[]; mode?: CockpitMode; onConfirm?: ((side: "BUY" | "SELL") => void) | undefined }) {
   const [planSide, setPlanSide] = useState<"BUY" | "SELL" | null>(null);
   return <>
     <div className="mt-5 grid grid-cols-2 gap-2" aria-label="Aksi simulasi">
@@ -191,9 +191,49 @@ export function TradeActions({ symbol = "", signal, quote = null, plan = null, r
     </div>
     <p className="mt-2 text-center text-xs text-muted-foreground" data-testid="action-disabled-reason">{signal === "HOLD" ? `Engine HOLD — ${reason}` : `Engine merekomendasikan ${signal}`} · SIMULASI — TIDAK ADA ORDER NYATA</p>
     <Dialog.Root open={planSide !== null} onOpenChange={(open) => { if (!open) setPlanSide(null); }}>
-      {planSide ? <PaperTicket symbol={symbol} side={planSide} signal={signal} quote={quote} plan={plan} confirmations={confirmations} mode={mode} onConfirm={onConfirm} onClose={() => setPlanSide(null)} /> : null}
+      {planSide ? <PaperTicket symbol={symbol} side={planSide} signal={signal} quote={quote} plan={planFor ? planFor(planSide) : plan} confirmations={confirmations} mode={mode} onConfirm={onConfirm} onClose={() => setPlanSide(null)} /> : null}
     </Dialog.Root>
   </>;
+}
+
+const radarReason = (r: string) => ({ NO_LOCAL_ENTRY_ZONE: "Belum ada area support/resistance atau EMA21/50 lokal yang valid", PRICE_BELOW_BUY_ZONE: "Harga sudah di bawah area BUY", PRICE_ABOVE_SELL_ZONE: "Harga sudah di atas area SELL" } as Record<string, string>)[r] ?? technicalCopy(r);
+
+/** Radar-first plan card: RADAR (dynamic projection) vs SIGNAL (READY) vs no direction. Presentation of engine output only. */
+export function RadarPlanView({ radar, signal, entry }: { radar: RadarPlan | null; signal: CockpitSignal; entry: number | null }) {
+  const mode = radar?.mode ?? "NONE";
+  const ready = mode === "SIGNAL";
+  const side = radar?.side ?? null;
+  const sideTone = side === "BUY" ? "text-bull" : side === "SELL" ? "text-bear" : "text-muted-foreground";
+  const ok = radar?.status === "AVAILABLE";
+  const val = (x: number | null | undefined) => (ok ? n(x) : "—");
+  const status = ready ? (ok ? "SIAP — MENUNGGU EKSEKUSI" : "SIGNAL READY · LEVEL TIDAK TERSEDIA")
+    : mode === "RADAR" ? (radar?.status === "WAITING_FOR_AREA" ? "MENUNGGU AREA" : "MENUNGGU TRIGGER") : "BELUM ADA ARAH";
+  const refEntry = ready ? (radar?.reference_entry ?? entry) : radar?.reference_entry ?? null;
+  return <div data-testid="radar-plan" data-mode={mode}>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">Rencana acuan</h3></div>
+      {mode !== "NONE" ? <span data-testid="radar-badge" className={`border px-1.5 py-0.5 text-[10px] font-semibold ${ready ? (side === "BUY" ? "border-bull text-bull" : "border-bear text-bear") : "border-dashed border-border text-foreground"}`}>{ready ? "SIGNAL PLAN" : "RADAR DINAMIS"}</span> : null}
+    </div>
+    <div className="mt-3 flex items-baseline justify-between gap-2">
+      <span className={`text-2xl font-semibold ${sideTone}`} data-testid="radar-side">{side ?? "—"}</span>
+      <span className="text-right text-xs font-semibold" data-testid="radar-status">{status}</span>
+    </div>
+    {mode === "RADAR" ? <p className="mt-1 text-[11px] font-semibold text-muted-foreground" data-testid="radar-projection-label">PROYEKSI — BELUM SIGNAL ENTRY</p> : null}
+    <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-3 text-sm">
+      <div className="col-span-2"><div className="text-xs text-muted-foreground">Area entry</div><div className="mt-0.5 font-mono" data-testid="radar-zone">{radar?.zone ? `${n(radar.zone.low)} – ${n(radar.zone.high)}` : "—"}</div>{radar?.zone ? <div className="mt-0.5 text-[11px] text-muted-foreground" data-testid="radar-sources">{radar.zone.sources.join(" + ")} · {radar.zone.quality}</div> : null}</div>
+      <div><div className="text-xs text-muted-foreground">Acuan Entry{mode === "RADAR" && radar?.reference_entry != null ? (radar.executable_now ? " (harga kini)" : " (proyeksi)") : ""}</div><div className="mt-0.5 font-mono font-semibold" data-testid="reference-entry">{refEntry == null ? "—" : n(refEntry)}</div></div>
+      <div><div className="text-xs text-muted-foreground">{mode === "RADAR" ? "SL proyeksi" : "Stop Loss"}</div><div className="mt-0.5 font-mono" data-testid="plan-sl">{val(radar?.sl)}</div></div>
+      <div><div className="text-xs text-muted-foreground">{mode === "RADAR" ? "TP1 proyeksi" : "TP1"}</div><div className="mt-0.5 font-mono" data-testid="plan-tp1">{val(radar?.tp1)}</div></div>
+      <div><div className="text-xs text-muted-foreground">{mode === "RADAR" ? "TP2 proyeksi" : "TP2"}</div><div className="mt-0.5 font-mono" data-testid="plan-tp2">{val(radar?.tp2)}</div></div>
+      <div><div className="text-xs text-muted-foreground">R:R</div><div className="mt-0.5" data-testid="plan-rr">{ok ? "TP1 1:1 · TP2 1:2" : "—"}</div></div>
+      <div><div className="text-xs text-muted-foreground">Target S/R berikutnya</div><div className="mt-0.5 font-mono" data-testid="radar-target">{ok && radar?.structural_target != null ? n(radar.structural_target) : "—"}</div></div>
+    </div>
+    <p className="mt-3 text-[11px] text-muted-foreground" data-testid="radar-note">{
+      ready ? (ok ? "Gunakan angka signal ini sebagai acuan; paper trade akan membekukan plan saat entry." : radarReason(radar?.reason ?? ""))
+      : mode === "RADAR" ? (ok ? "Proyeksi dapat berubah sampai signal READY." : radarReason(radar?.reason ?? ""))
+      : signal === "HOLD" ? "Engine belum mencari BUY/SELL; tidak ada target yang ditampilkan." : ""
+    }</p>
+  </div>;
 }
 
 function PaperPositions({ store, symbol, quote }: { store: PaperJournalStore; symbol: string; quote: TicketQuote | null }) {
@@ -219,6 +259,13 @@ function Cockpit({ service, explain, store }: { service: TechnicalSliceService; 
   const signal = cockpitSignal(snapshot);
   const entry = referenceEntry(snapshot);
   const plan: DisplayPlan = snapshot?.reference_plan.status === "AVAILABLE" ? { side: snapshot.reference_plan.side, sl: snapshot.reference_plan.sl, tp1: snapshot.reference_plan.tp1, tp2: snapshot.reference_plan.tp2, rr: "TP1 1:1 · TP2 1:2" } : null;
+  // Ticket preview: same plan builder rebased to the actual click price (what paper open will freeze).
+  const ticketPlan = (side: "BUY" | "SELL"): DisplayPlan => {
+    if (signal === side && plan) return plan;
+    if (!quote || !snapshot) return null;
+    const p = buildSidePlan(side, side === "BUY" ? quote.ask : quote.bid, snapshot.evidence, snapshot.operator ?? null);
+    return p.ok ? { side, sl: p.sl, tp1: p.tp1, tp2: p.tp2, rr: "TP1 1:1 · TP2 1:2" } : null;
+  };
   const unavailable = !snapshot || snapshot.availability === "UNAVAILABLE" || snapshot.entry.state === "NOT_EVALUABLE";
   const signalReason = unavailable ? "menunggu bukti teknikal yang valid" : technicalCopy(snapshot?.entry.reason ?? "tunggu setup valid");
   const signalTone = signal === "BUY" ? "text-bull" : signal === "SELL" ? "text-bear" : "text-foreground";
@@ -263,17 +310,9 @@ function Cockpit({ service, explain, store }: { service: TechnicalSliceService; 
         <p className="mt-3 max-w-2xl text-sm text-muted-foreground" data-testid="cockpit-signal-reason">{signalReason}</p>
       </section>
 
-      <section className="border border-border bg-card p-4 sm:p-5" aria-label="Rencana transaksi acuan">
-        <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">Rencana acuan</h3></div>
-        <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3 text-sm">
-          <div><div className="text-xs text-muted-foreground">Acuan Entry</div><div className="mt-0.5 font-mono font-semibold" data-testid="reference-entry">{entry == null ? "—" : n(entry)}</div></div>
-          <div><div className="text-xs text-muted-foreground">Status</div><div className="mt-0.5 font-semibold">{signal === "HOLD" ? "TUNGGU SETUP VALID" : "MONITOR SAJA"}</div></div>
-          <div><div className="text-xs text-muted-foreground">Stop Loss</div><div className="mt-0.5 font-mono" data-testid="plan-sl">{plan ? n(plan.sl) : "—"}</div></div>
-          <div><div className="text-xs text-muted-foreground">TP1</div><div className="mt-0.5 font-mono" data-testid="plan-tp1">{plan ? n(plan.tp1) : "—"}</div></div>
-          <div><div className="text-xs text-muted-foreground">TP2</div><div className="mt-0.5 font-mono" data-testid="plan-tp2">{plan ? n(plan.tp2) : "—"}</div></div>
-          <div><div className="text-xs text-muted-foreground">R:R</div><div className="mt-0.5" data-testid="plan-rr">{plan?.rr ?? "—"}</div></div>
-        </div>
-        <TradeActions symbol={view.symbol} signal={signal} quote={quote} plan={plan} reason={signalReason} confirmations={planConfirmations} mode={mode}
+      <section className="border border-border bg-card p-4 sm:p-5" aria-label="Rencana transaksi acuan" data-testid="radar-card">
+        <RadarPlanView radar={snapshot?.radar_plan ?? null} signal={signal} entry={entry} />
+        <TradeActions symbol={view.symbol} signal={signal} quote={quote} plan={plan} planFor={ticketPlan} reason={signalReason} confirmations={planConfirmations} mode={mode}
           onConfirm={(side) => { if (quote) store.open({ symbol: view.symbol, side, quote, now: uiClock.now(), snapshot }); }} />
       </section>
     </div>
@@ -301,16 +340,16 @@ function Cockpit({ service, explain, store }: { service: TechnicalSliceService; 
       })()}
     </section>
 
-    <section aria-label="Konfirmasi teknikal">
-      <div className="mb-2 flex items-center gap-2"><Activity className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">Konfirmasi teknikal</h3></div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
+    <details className="border-t border-border pt-3" aria-label="Konfirmasi teknikal" data-testid="legacy-confirmations">
+      <summary className="flex cursor-pointer items-center gap-2 text-xs font-semibold uppercase text-muted-foreground"><Activity className="h-4 w-4" /><span>Detail teknikal</span><span className="sr-only">Konfirmasi teknikal</span></summary>
+      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
         <ConfirmationLight label="Struktur H1" value={evidence?.H1.structure.summary.replace("_", "/") ?? "DATA BELUM CUKUP"} tone={h1StructureTone} testId="confirm-structure" />
         <ConfirmationLight label="Pemicu M5" value={triggerText} tone={triggerTone} testId="confirm-trigger" />
         <ConfirmationLight label="RSI14 H1" value={indicator(evidence?.H1.rsi14)} tone={rsiTone} testId="confirm-rsi" />
         <ConfirmationLight label="Lokasi S/R" value={location} tone="NEUTRAL" testId="confirm-snr" />
         <ConfirmationLight label="ATR14 M15" value={indicator(evidence?.M15.atr14, 3)} tone="NEUTRAL" testId="confirm-atr" />
       </div>
-    </section>
+    </details>
 
     <div className="grid gap-4 lg:grid-cols-2">
       <section className="border-t border-border pt-4" aria-label="Alasan konfirmasi">
