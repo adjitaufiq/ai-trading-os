@@ -18,6 +18,8 @@ export interface CanonicalVisibility {
   readonly route_counts: MarketRuntimeSnapshot["route_counts"];
   readonly held_count: number;
   readonly silent_ambiguous_drops: number;
+  readonly stream_protocol_errors: number;
+  readonly last_stream_error: string | null;
   readonly missing_intervals: Readonly<Record<Timeframe, number>>;
   readonly forming_open_time: Readonly<Record<Timeframe, number | null>>;
 }
@@ -79,7 +81,8 @@ export class TechnicalSliceService {
       this.canonical = Object.freeze({
         lifecycle: snap.lifecycle, bootstrap_state: snap.bootstrap_state, active_epoch: snap.active_epoch, degraded_reason: snap.degraded_reason,
         history_coverage_status: snap.history_coverage_status, route_counts: snap.route_counts, held_count: snap.held.length,
-        silent_ambiguous_drops: snap.silent_ambiguous_drops, missing_intervals: Object.freeze(mi), forming_open_time: Object.freeze(forming),
+        silent_ambiguous_drops: snap.silent_ambiguous_drops,
+        stream_protocol_errors: snap.stream_protocol_errors ?? 0, last_stream_error: snap.last_stream_error ?? null, missing_intervals: Object.freeze(mi), forming_open_time: Object.freeze(forming),
       });
       const live = r.latestLiveObservation();
       const fresh = live !== null && live.seq !== this.lastSeq; // a new LIVE_MUTATION since the previous cycle
@@ -88,7 +91,7 @@ export class TechnicalSliceService {
       barsCurrent = running;
       if (live && fresh) { this.lastSeq = live.seq; this.spread.push(live.ask - live.bid); }
       if (marketCurrent && live) quote = { bid: live.bid, ask: live.ask, spread: live.ask - live.bid, tick_time_ms: live.event_at, observed_at: live.ingested_at };
-      else this.lastError = !running ? `CANONICAL_${snap.lifecycle}_${snap.bootstrap_state}${snap.degraded_reason ? `: ${snap.degraded_reason}` : ""}` : "NO_NEW_LIVE_MUTATION";
+      else this.lastError = !running ? `CANONICAL_${snap.lifecycle}_${snap.bootstrap_state}${snap.degraded_reason ? `: ${snap.degraded_reason}` : ""}` : snap.last_stream_error ? `NO_NEW_LIVE_MUTATION · stream protocol errors ${snap.stream_protocol_errors}: ${snap.last_stream_error}` : "NO_NEW_LIVE_MUTATION";
     }
     const snap = evaluate({ symbol: this.symbol, market_current: marketCurrent, bars_current: barsCurrent, quote, closed, as_of: asOf, env: SLICE_ENV }, this.current?.signal ?? null);
     this.evalMs.push(this.clock.now() - asOf);

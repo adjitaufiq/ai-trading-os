@@ -1,13 +1,16 @@
 // The single typed boundary for gateway location. No broker credentials live here:
 // a gateway URL carrying userinfo is rejected.
 
-export type GatewayEnvironment = "FAKE_MT5_LOCAL";
+/**
+ * Configured gateway TARGET label (product configuration, not verified state).
+ * Verified source/source_mode always come from validated wire envelopes. FAKE_MT5_LOCAL is test-only.
+ */
+export type GatewayEnvironment = "EXNESS_MT5_GATEWAY" | "FAKE_MT5_LOCAL";
 
 export interface GatewayConfig {
   readonly httpBaseUrl: string;
   readonly wsBaseUrl: string;
   readonly timeoutMs: number;
-  /** Acceptance environment label shown in UI. Stage 3.0B-2C: always fake. */
   readonly environment: GatewayEnvironment;
 }
 
@@ -26,14 +29,23 @@ function check(url: string, schemes: readonly string[]): string {
   return url.replace(/\/+$/, "");
 }
 
-export function makeGatewayConfig(p: Partial<Omit<GatewayConfig, "environment">> = {}): GatewayConfig {
+/** WS base derived from the HTTP origin (https → wss, http → ws), same host/port/path. */
+export function deriveWsBaseUrl(httpBaseUrl: string): string {
+  const u = new URL(httpBaseUrl);
+  u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
+  return u.toString().replace(/\/+$/, "");
+}
+
+export function makeGatewayConfig(p: Partial<GatewayConfig> = {}): GatewayConfig {
   const env = (import.meta as { env?: Record<string, string | undefined> }).env ?? {};
   const timeoutMs = p.timeoutMs ?? 5_000;
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new GatewayConfigError("timeoutMs must be > 0");
+  const httpBaseUrl = check(p.httpBaseUrl ?? env["VITE_GATEWAY_HTTP_URL"] ?? "http://127.0.0.1:8000", ["http:", "https:"]);
+  const wsExplicit = p.wsBaseUrl ?? (env["VITE_GATEWAY_WS_URL"] || undefined);
   return Object.freeze({
-    httpBaseUrl: check(p.httpBaseUrl ?? env["VITE_GATEWAY_HTTP_URL"] ?? "http://127.0.0.1:8000", ["http:", "https:"]),
-    wsBaseUrl: check(p.wsBaseUrl ?? env["VITE_GATEWAY_WS_URL"] ?? "ws://127.0.0.1:8000", ["ws:", "wss:"]),
+    httpBaseUrl,
+    wsBaseUrl: check(wsExplicit ?? deriveWsBaseUrl(httpBaseUrl), ["ws:", "wss:"]),
     timeoutMs,
-    environment: "FAKE_MT5_LOCAL",
+    environment: p.environment ?? "EXNESS_MT5_GATEWAY",
   });
 }

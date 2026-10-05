@@ -237,6 +237,9 @@ describe("D2 canonical runtime — hermetic application chain", () => {
     await x.rt.start(REQ);
     x.tr.ws!.onmessage!({ data: JSON.stringify({ schema_version: "3.0B-1", hello: 1 }) });
     expect(x.r.snapshot().route_counts.LIVE_MUTATION).toBe(0);
+    // Surfaced, never hidden: the runtime exposes the protocol error count and last error.
+    expect(x.r.snapshot().stream_protocol_errors).toBeGreaterThan(0);
+    expect(x.r.snapshot().last_stream_error).toMatch(/CLIENT_PROTOCOL_ERROR/);
   });
 
   it("replay determinism: two runs of the same transport script give identical snapshots", async () => {

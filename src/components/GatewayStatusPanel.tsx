@@ -5,7 +5,7 @@ import { BrokerGatewayClient } from "@/core/broker/gateway/BrokerGatewayClient";
 import { makeGatewayConfig, type GatewayEnvironment } from "@/core/broker/gateway/config";
 import type { FreshnessStatus, GatewayHealthState, HealthStatus } from "@/core/broker/gateway/types";
 
-const ENV_LABEL: Record<GatewayEnvironment, string> = { FAKE_MT5_LOCAL: "Fake MT5 / Local Gateway" };
+const ENV_LABEL: Record<GatewayEnvironment, string> = { EXNESS_MT5_GATEWAY: "Configured target: Exness MT5 gateway (unverified)", FAKE_MT5_LOCAL: "Fake MT5 / Local Gateway" };
 
 const tone = (s: HealthStatus | FreshnessStatus) =>
   s === "HEALTHY" || s === "FRESH" ? "text-bull" : s === "DOWN" || s === "STALE" ? "text-bear" : s === "DEGRADED" ? "text-warn" : "text-muted-foreground";
@@ -49,7 +49,7 @@ export function GatewayStatusView({ state, environment, mode = OPERATING_MODE }:
         ))}
       </ul>
       <p className="border-t border-border px-4 py-2 font-mono text-xs text-muted-foreground">
-        Acceptance environment only. Market Data freshness stays UNKNOWN until a configured policy exists (TRS-03).
+        Read-only observation. Market Data freshness stays UNKNOWN until a configured policy exists (TRS-03).
       </p>
     </div>
   );
