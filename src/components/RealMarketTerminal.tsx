@@ -3,7 +3,8 @@ import { Link } from "@tanstack/react-router";
 import { ArrowLeft, Expand, Settings2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarketCandles } from "@/components/MarketCandles";
-import { EXECUTION_ENABLED, OPERATING_MODE, type Timeframe } from "@/core/contracts";
+import { EXECUTION_ENABLED, OPERATING_MODE, TIMEFRAME_MS, type Timeframe } from "@/core/contracts";
+import type { MarketRuntimeReader } from "@/core/runtime/MarketRuntime";
 import type { BrokerGatewayClient } from "@/core/broker/gateway/BrokerGatewayClient";
 import type { BridgeBar, BridgeHealth, BridgeSymbolInfo, BridgeTick, GatewayResult, TerminalInfoObservation, WireHistoryResult } from "@/core/broker/gateway/types";
 
@@ -13,6 +14,49 @@ export const TERMINAL_TIMEFRAMES: readonly Timeframe[] = ["M5", "M15", "H1", "H4
 const NAMES: Record<TerminalMarket, string> = { XAUUSD: "Gold vs US Dollar", BTCUSD: "Bitcoin vs US Dollar" };
 const STALE_AFTER_MS = 60_000; // UI observation policy, not a broker market-hours assertion.
 const BAR_COUNT = 200;
+/** Same finite source-clock skew tolerance as the canonical runtime (RUNTIME_POLICY.max_source_time_skew_ms). */
+export const FRESH_SKEW_TOLERANCE_MS = 10_000;
+const TF_S = (tf: Timeframe) => TIMEFRAME_MS[tf] / 1000;
+
+/** FRESH when −skew ≤ age ≤ stale; beyond the skew tolerance in the future the age is UNKNOWN (never clamped). */
+export function quoteFreshness(ageMs: number | null, failed: boolean, hasQuote: boolean): "DATA UNAVAILABLE" | "DATA STALE" | "UNKNOWN" | "FRESH" {
+  if (!hasQuote) return "DATA UNAVAILABLE";
+  if (failed || (ageMs != null && ageMs > STALE_AFTER_MS)) return "DATA STALE";
+  if (ageMs == null || ageMs < -FRESH_SKEW_TOLERANCE_MS) return "UNKNOWN";
+  return "FRESH";
+}
+
+/** Display-only live overlay bar built from canonical LIVE ticks (bid). Not broker evidence; never ingested. */
+export type LiveBar = { readonly raw_time_s: number; readonly open: number; readonly high: number; readonly low: number; readonly close: number; readonly ticks: number };
+
+/** Apply one LIVE tick to the per-timeframe overlay: update the forming bucket or open a new one at the boundary. */
+export function applyLiveTick(live: readonly LiveBar[], tf: Timeframe, eventAtMs: number, bid: number): readonly LiveBar[] {
+  const t = Math.floor(eventAtMs / 1000 / TF_S(tf)) * TF_S(tf);
+  const last = live.at(-1);
+  if (last && t < last.raw_time_s) return live; // late tick for an already-closed bucket: ignore
+  if (last && t === last.raw_time_s) return [...live.slice(0, -1), { ...last, high: Math.max(last.high, bid), low: Math.min(last.low, bid), close: bid, ticks: last.ticks + 1 }];
+  return [...live, { raw_time_s: t, open: bid, high: bid, low: bid, close: bid, ticks: 1 }].slice(-BAR_COUNT);
+}
+
+/** REST broker bars stay the reference; live overlay only extends the newest REST bar or appends newer buckets. */
+export function mergeLiveBars(rest: readonly BridgeBar[], live: readonly LiveBar[]): { bars: readonly BridgeBar[]; liveFrom: number | null } {
+  const last = rest.at(-1);
+  if (!last || live.length === 0) return { bars: rest, liveFrom: null };
+  const out = [...rest];
+  let liveFrom: number | null = null;
+  for (const l of live) {
+    const tail = out.at(-1)!;
+    if (l.raw_time_s < last.raw_time_s) continue;
+    if (l.raw_time_s === tail.raw_time_s) {
+      out[out.length - 1] = { ...tail, high: Math.max(tail.high, l.high), low: Math.min(tail.low, l.low), close: l.close };
+      liveFrom ??= l.raw_time_s;
+    } else if (l.raw_time_s > tail.raw_time_s) {
+      out.push({ ...tail, raw_time_s: l.raw_time_s, open: l.open, high: l.high, low: l.low, close: l.close, tick_volume: l.ticks, spread: 0, real_volume: 0 });
+      liveFrom ??= l.raw_time_s;
+    }
+  }
+  return { bars: out, liveFrom };
+}
 
 type Slot<T> = { value: T | null; error: string | null; failed: boolean };
 type SymbolState = {
@@ -38,9 +82,13 @@ export interface RealMarketTerminalProps {
   client: BrokerGatewayClient;
   now?: () => number;
   pollMs?: number;
+  /** Canonical runtime readers; their LIVE observations drive the display-only forming candle. */
+  liveReaders?: Partial<Record<TerminalMarket, MarketRuntimeReader | null>>;
 }
 
-export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000 }: RealMarketTerminalProps) {
+export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000, liveReaders }: RealMarketTerminalProps) {
+  const [live, setLive] = useState<Record<string, readonly LiveBar[]>>({});
+  const liveSeq = useRef<Record<string, number>>({});
   const [selected, setSelected] = useState<TerminalMarket>("XAUUSD");
   const [timeframe, setTimeframe] = useState<Timeframe>("M5");
   const [states, setStates] = useState(initial);
@@ -147,6 +195,23 @@ export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000 }: Re
     return () => { clearInterval(timer); clearInterval(clockTimer); };
   }, [selected, pollMs, pollQuote, now]);
 
+  // Realtime forming candle: poll the canonical runtime's latest LIVE observation (no transport here).
+  useEffect(() => {
+    const reader = liveReaders?.[selected];
+    if (!reader) return;
+    const step = () => {
+      const e = reader.latestLiveObservation();
+      if (!e || e.symbol !== selected) return;
+      const key = `${selected}:${timeframe}`;
+      if (liveSeq.current[key] === e.seq) return;
+      liveSeq.current[key] = e.seq;
+      setLive((old) => ({ ...old, [key]: applyLiveTick(old[key] ?? [], timeframe, e.event_at, e.bid) }));
+    };
+    step();
+    const t = setInterval(step, 250);
+    return () => clearInterval(t);
+  }, [liveReaders, selected, timeframe]);
+
   useEffect(() => { setInspected(null); }, [selected, timeframe]);
   useEffect(() => {
     if (!focus) return;
@@ -159,10 +224,12 @@ export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000 }: Re
   const digits = state.spec.value?.digits ?? null;
   const quote = state.quote.value;
   const bars = state.bars[timeframe];
-  const chartBars = useMemo(() => bars?.value ?? [], [bars?.value]);
+  const liveBars = live[`${selected}:${timeframe}`];
+  const merged = useMemo(() => mergeLiveBars(bars?.value ?? [], liveBars ?? []), [bars?.value, liveBars]);
+  const chartBars = merged.bars;
   const candle = inspected && chartBars.includes(inspected) ? inspected : chartBars.at(-1) ?? null;
   const ageMs = quote && clock != null ? clock - quote.raw_time_msc : null;
-  const freshness = !quote ? "DATA UNAVAILABLE" : state.quote.failed || (ageMs != null && ageMs > STALE_AFTER_MS) ? "DATA STALE" : ageMs == null || ageMs < 0 ? "UNKNOWN" : "FRESH";
+  const freshness = quoteFreshness(ageMs, state.quote.failed, !!quote);
   // Verified terminal connectivity requires BOTH health.terminal_connected and /v1/terminal connected=true.
   const termOk = !!terminal.value?.connected && !terminal.failed;
   const connection = health.value?.terminal_connected && !health.failed && termOk ? "CONNECTED" : health.value?.terminal_connected || terminal.value?.connected ? "DATA DEGRADED" : health.value || terminal.value ? "DISCONNECTED" : healthBusy ? "CONNECTING" : "DATA UNAVAILABLE";
@@ -206,7 +273,7 @@ export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000 }: Re
           <div className="relative h-[380px] min-w-0 overflow-hidden border-y border-border sm:h-[580px] lg:h-[650px]" data-testid="chart-area">
             {chartBars.length > 0 && digits != null ? <MarketCandles bars={chartBars} digits={digits} onInspect={setInspected} onActivate={() => setFocus(true)} focus={false} /> : <div className="grid h-full place-items-center text-sm text-muted-foreground" data-testid="chart-empty">{bars?.failed ? "CHART DATA UNAVAILABLE" : "Loading real broker candles…"}</div>}
           </div>
-          <div className="mt-2 flex min-h-6 items-center justify-between gap-2 text-xs text-muted-foreground"><span>{selected} · {timeframe} · BROKER CANDLES</span><span className="text-right">{bars?.failed && chartBars.length ? "LAST VALIDATED DATA" : bars?.failed ? "DATA UNAVAILABLE" : "REAL DATA"}</span></div>
+          <div className="mt-2 flex min-h-6 items-center justify-between gap-2 text-xs text-muted-foreground"><span>{selected} · {timeframe} · BROKER CANDLES{merged.liveFrom != null ? " + LIVE FORMING (tick-derived, display only)" : ""}</span><span className="text-right">{bars?.failed && chartBars.length ? "LAST VALIDATED DATA" : bars?.failed ? "DATA UNAVAILABLE" : "REAL DATA"}</span></div>
           {candle && <div className="mt-1 text-xs text-muted-foreground" data-testid="candle-time">{new Date(candle.raw_time_s * 1000).toISOString().replace("T", " ").replace(".000Z", " UTC")}{inspected ? " · selected candle" : " · latest candle"}</div>}
         </section>
         <section aria-label="Candle snapshot" className="grid grid-cols-4 gap-2 border-t border-border pt-4" data-testid="ohlc-snapshot">{ohlc.map(({ label, value }) => <div key={label} className="min-w-0"><div className="text-[10px] text-muted-foreground sm:text-xs">{label}</div><div className="mt-1 truncate font-mono text-xs tabular-nums sm:text-lg" title={value} data-testid={`ohlc-${label.toLowerCase()}`}>{value}</div></div>)}</section>

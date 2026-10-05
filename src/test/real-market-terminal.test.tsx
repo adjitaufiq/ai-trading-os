@@ -81,3 +81,29 @@ describe("real dual-market monitor terminal", () => {
     expect(formatMarketPrice(85340.34, 2)).toBe("85340.34");
   });
 });
+
+import { applyLiveTick, mergeLiveBars, quoteFreshness } from "@/components/RealMarketTerminal";
+describe("freshness skew + live forming candle", () => {
+  it("treats skew within 10s as FRESH, beyond as UNKNOWN", () => {
+    expect(quoteFreshness(-2300, false, true)).toBe("FRESH");
+    expect(quoteFreshness(-10000, false, true)).toBe("FRESH");
+    expect(quoteFreshness(-10001, false, true)).toBe("UNKNOWN");
+    expect(quoteFreshness(60001, false, true)).toBe("DATA STALE");
+  });
+  it("updates forming OHLC per tick and opens a new candle at the M5 boundary", () => {
+    const base = 1790973900;
+    let l = applyLiveTick([], "M5", base * 1000 + 1000, 10);
+    l = applyLiveTick(l, "M5", base * 1000 + 2000, 12);
+    l = applyLiveTick(l, "M5", base * 1000 + 3000, 9);
+    expect(l).toEqual([{ raw_time_s: base, open: 10, high: 12, low: 9, close: 9, ticks: 3 }]);
+    l = applyLiveTick(l, "M5", (base + 300) * 1000, 11);
+    expect(l).toHaveLength(2);
+    const rest = [bar("XAUUSD", "M5")];
+    const m = mergeLiveBars(rest, l);
+    expect(m.bars).toHaveLength(2);
+    expect(m.bars[0]!.open).toBe(rest[0]!.open);
+    expect(m.bars[0]!.close).toBe(9);
+    expect(m.bars[1]).toMatchObject({ raw_time_s: base + 300, open: 11, close: 11 });
+    expect(rest[0]!.close).toBe(85343.58); // REST input never mutated
+  });
+});

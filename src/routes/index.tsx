@@ -42,10 +42,11 @@ function Terminal() {
   const xau = mounted["XAUUSD"]?.reader ?? null, btc = mounted["BTCUSD"]?.reader ?? null;
   // Recreated only when a reader identity changes (so transition trails survive status updates).
   const runtimes = useMemo(() => [{ symbol: "XAUUSD", reader: xau }, { symbol: "BTCUSD", reader: btc }], [xau, btc]);
+  const liveReaders = useMemo(() => ({ XAUUSD: xau, BTCUSD: btc }), [xau, btc]);
   const unmountedReason = SYMBOLS.filter((s) => !mounted[s]?.reader).map((s) => `${s}: ${mounted[s]?.status ?? "PENDING"}`).join(" · ");
   const explain = useServerFn(explainTradingState);
   return <>
-    <RealMarketTerminal client={client} />
+    <RealMarketTerminal client={client} liveReaders={liveReaders} />
     <TechnicalSlicePanel runtimes={runtimes} unmountedReason={`CANONICAL_RUNTIME_NOT_MOUNTED ${unmountedReason}`} explain={(snapshot) => explain({ data: { snapshot } })} />
   </>;
 }
