@@ -36,8 +36,8 @@ class FakeWS implements WebSocketLike {
 class HermeticTransport {
   epoch = 1;
   inst = "gw-hermetic";
-  private httpSeq = new Map<number, number>();
-  private streamSeq = new Map<number, number>();
+  /** Mirrors vps/mt5_gateway/envelope.py: one counter per bridge instance, strictly increasing across epochs and channels. */
+  private seq = 0;
   history: HT[] = [];
   coverage: "COMPLETE" | "PARTIAL" | "EMPTY" | "UNKNOWN" = "COMPLETE";
   historyFails = false;
@@ -46,7 +46,7 @@ class HermeticTransport {
   requests: string[] = [];
   constructor(private readonly clock: ReplayClock) {}
 
-  private next(m: Map<number, number>, e: number) { const n = (m.get(e) ?? 0) + 1; m.set(e, n); return n; }
+  private next() { return ++this.seq; }
   private tick(t: HT) {
     return { broker_symbol: "XAUUSD", raw_time_s: Math.floor(t.ms / 1000), raw_time_msc: t.ms, time_precision: "ms", bid: t.bid, ask: +(t.bid + 0.2).toFixed(2), last: 0, volume: 0, flags: 6 };
   }
@@ -64,7 +64,7 @@ class HermeticTransport {
     const now = this.clock.now();
     const res = (b: unknown, status = 200) => ({ status, text: async () => JSON.stringify(b) });
     if (url.includes("/v1/health")) {
-      return res(this.env(this.epoch, this.next(this.httpSeq, this.epoch), "SYSTEM.HEALTH", "LIVE",
+      return res(this.env(this.epoch, this.next(), "SYSTEM.HEALTH", "LIVE",
         { bridge_instance_id: this.inst, connection_epoch: this.epoch, source_mode: "SIMULATION", terminal_connected: true }, null, now - 2));
     }
     if (url.includes("/v1/ticks/XAUUSD")) {
@@ -73,7 +73,7 @@ class HermeticTransport {
       const q = new URL(url).searchParams;
       const from = Date.parse(q.get("from")!), to = Date.parse(q.get("to")!);
       const items = this.history.map((t) => this.tick(t));
-      return res(this.env(this.epoch, this.next(this.httpSeq, this.epoch), "MARKET_DATA.TICKS", "BACKFILL", {
+      return res(this.env(this.epoch, this.next(), "MARKET_DATA.TICKS", "BACKFILL", {
         items, coverage: { requested_from: from, requested_to: to, returned_count: items.length,
           oldest_returned_at: items[0]?.raw_time_msc ?? null, newest_returned_at: items[items.length - 1]?.raw_time_msc ?? null,
           coverage_status: this.coverage, reason: null },
@@ -85,7 +85,7 @@ class HermeticTransport {
   /** LIVE stream tick. Bridge receives it 20ms after source time; canonical clock is advanced past that first. */
   live(t: HT, epoch = this.epoch) {
     if (this.clock.now() < t.ms + 30) this.clock.advanceTo(t.ms + 30);
-    const e = this.env(epoch, this.next(this.streamSeq, epoch), "MARKET_DATA.TICKS", "LIVE", this.tick(t), t.ms, t.ms + 20);
+    const e = this.env(epoch, this.next(), "MARKET_DATA.TICKS", "LIVE", this.tick(t), t.ms, t.ms + 20);
     this.ws!.onmessage!({ data: JSON.stringify(e) });
   }
 }
@@ -199,7 +199,6 @@ describe("D2 canonical runtime — hermetic application chain", () => {
     s.tr.history = [];
     s.tr.coverage = "EMPTY";
     s.tr.live({ ms: t, bid: 2010 }, 2);
-    console.log("DBG", JSON.stringify(s.r.snapshot().held.slice(-3)));
     expect(s.r.snapshot().bootstrap_state).toBe("DEGRADED");
     expect(s.r.snapshot().held.some((h) => h.reason === "AWAITING_REBOOTSTRAP" && h.connection_epoch === 2)).toBe(true);
     const lm = s.r.snapshot().route_counts.LIVE_MUTATION;
