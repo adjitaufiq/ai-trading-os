@@ -12,6 +12,10 @@ it("d",()=>{
   const m5=series("M5",up(40));m5[38]={...m5[38]!,open:120,high:120.2,low:118.8,close:119};m5[39]={...m5[39]!,open:118.9,high:121.2,low:118.7,close:121};
   const o=operatorAnalysis({M5:m5,M15,H1,H4:series("H4",up(60))} as any,p);
   console.log("R",o.h4_primary,o.h1_context,JSON.stringify(o.checks),o.candidate,o.reason,o.alignment,o.ema_confluence.timeframe);}
- const cl:any={M5:series("M5",down(40)),M15:series("M15",down(60)),H1:series("H1",down(60)),H4:series("H4",down(60))};
- const pr=operatorAnalysis(cl,0);console.log("sup",pr.nearest_support?.high, pr.location);
+ {const H1=series("H1",R(60));const M15=series("M15",up(60));const H4=series("H4",down(60));
+  const m5=series("M5",up(40));m5[38]={...m5[38]!,open:120,high:120.2,low:118.8,close:119};m5[39]={...m5[39]!,open:118.9,high:121.2,low:118.7,close:121};
+  const pr=operatorAnalysis({M5:m5,M15,H1,H4} as any,(ema(M15,21) as any).value);
+  console.log("C0",pr.location,pr.nearest_support?.low,pr.nearest_support?.high,pr.status,pr.reason);
+  for (const p of [pr.nearest_support?.high, pr.nearest_support?.low, 100, 101, 102]) { if(p==null)continue;
+   const o=operatorAnalysis({M5:m5,M15,H1,H4} as any,p);console.log("C",p,o.h4_primary,o.location,JSON.stringify(o.checks),o.status,o.candidate,o.reason,o.alignment);}}
 });
