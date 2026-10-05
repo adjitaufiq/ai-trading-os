@@ -32,8 +32,8 @@ describe("clean trading cockpit", () => {
     expect(screen.getByTestId("cockpit-XAUUSD")).toBeInTheDocument();
     expect(screen.queryByTestId("cockpit-BTCUSD")).not.toBeInTheDocument();
     expect(screen.queryByText(/CANONICAL_MARKET_RUNTIME|BACKFILL_HISTORY|LIVE_MUTATION|QUARANTINED|protocol errors|state transitions/i)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "BUY reference plan" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "SELL reference plan" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "BUY rencana acuan" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "SELL rencana acuan" })).toBeDisabled();
   });
   it("switches cockpit selection without rendering both technical cards", () => {
     const runtimes = [{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }, { symbol: "BTCUSD", reader: reader("BTCUSD", "WAIT") }];
@@ -50,7 +50,7 @@ describe("clean trading cockpit", () => {
     render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);
     expect(screen.getByTestId("action-buy")).toBeDisabled();
     expect(screen.getByTestId("action-sell")).toBeDisabled();
-    expect(screen.getByTestId("action-disabled-reason")).toHaveTextContent(/waiting|test/i);
+    expect(screen.getByTestId("action-disabled-reason")).toHaveTextContent(/menunggu|test/i);
   });
   it("enables only BUY and opens a read-only plan without execution", () => {
     const brokerOrder = vi.fn();
@@ -58,9 +58,9 @@ describe("clean trading cockpit", () => {
     expect(screen.getByTestId("action-buy")).toBeEnabled();
     expect(screen.getByTestId("action-sell")).toBeDisabled();
     fireEvent.click(screen.getByTestId("action-buy"));
-    expect(screen.getByRole("dialog")).toHaveTextContent("BUY reference plan");
-    expect(screen.getByTestId("no-order-status")).toHaveTextContent("MONITOR ONLY — NO ORDER SENT");
-    expect(screen.getByRole("dialog")).toHaveTextContent("POLICY PENDING");
+    expect(screen.getByRole("dialog")).toHaveTextContent("Rencana acuan BUY");
+    expect(screen.getByTestId("no-order-status")).toHaveTextContent("MONITOR SAJA — TIDAK ADA ORDER DIKIRIM");
+    expect(screen.getByRole("dialog")).toHaveTextContent("ATURAN BELUM DITETAPKAN");
     expect(brokerOrder).not.toHaveBeenCalled();
   });
   it("enables only SELL and opens its read-only plan", () => {
@@ -68,7 +68,16 @@ describe("clean trading cockpit", () => {
     expect(screen.getByTestId("action-buy")).toBeDisabled();
     expect(screen.getByTestId("action-sell")).toBeEnabled();
     fireEvent.click(screen.getByTestId("action-sell"));
-    expect(screen.getByRole("dialog")).toHaveTextContent("SELL reference plan");
+    expect(screen.getByRole("dialog")).toHaveTextContent("Rencana acuan SELL");
     expect(screen.getByTestId("no-order-status")).toBeInTheDocument();
+  });
+  it("uses concise Indonesian labels on the main cockpit", () => {
+    render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);
+    expect(screen.getByText(/Sinyal saat ini/i)).toBeInTheDocument();
+    expect(screen.getByText("Rencana acuan")).toBeInTheDocument();
+    expect(screen.getByText("Konfirmasi teknikal")).toBeInTheDocument();
+    expect(screen.getByText("Alasan")).toBeInTheDocument();
+    expect(screen.getByText("Penjelasan AI")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Jelaskan" })).toBeInTheDocument();
   });
 });
