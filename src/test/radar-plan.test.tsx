@@ -11,7 +11,7 @@ const NA = { status: "INSUFFICIENT_HISTORY" };
 const zone = (low: number, high: number, role: "SUPPORT" | "RESISTANCE") => ({ source_tf: "M15", low, high, center: (low + high) / 2, touches: 2, role, distance: 1, confluence_tfs: [] });
 const evidence = { M15: { atr14: { status: "OK", value: 4 } }, H1: { structure: { swings: [{ kind: "LOW", price: 90 }, { kind: "HIGH", price: 120 }] } } } as never;
 const op = (status: "CARI_BUY" | "CARI_SELL" | "HOLD", zones: ReturnType<typeof zone>[]) => ({
-  status, reason: "TRIGGER_PENDING", zones: { M15: zones }, scalp: { local_zones: zones, M15: { ema21: NA, ema50: NA, atr14: NA }, M5: { ema21: NA, ema50: NA, atr14: NA } },
+  status, reason: "TRIGGER_PENDING", ema_confluence: { zone: "NOT_NEAR", timeframe: null }, patterns: { M5: { bullish: [], bearish: [] }, M15: { bullish: [], bearish: [] } }, zones: { M15: zones }, scalp: { local_zones: zones, M15: { ema21: NA, ema50: NA, atr14: NA }, M5: { ema21: NA, ema50: NA, atr14: NA } },
 }) as never;
 const q = (bid: number, ask: number) => ({ bid, ask, spread: ask - bid, tick_time_ms: 1, observed_at: 1 });
 const WAIT = { state: "WAIT" as const, reason: "NO_CLOSED_TRIGGER" };
@@ -78,7 +78,7 @@ describe("manual early paper trades freeze a rebased plan", () => {
     st.open({ symbol: "BTCUSD", side: "BUY", quote: { bid: 104.9, ask: 105.1 }, now: 1, snapshot: s });
     const e = st.getState().journal[0]!;
     expect(e.type).toBe("TRADE_OPEN");
-    if (e.type !== "SIGNAL") { expect(e.position).toMatchObject({ action_source: "MANUAL_EARLY", sl: 89, entry: 105.1 }); expect(e.position.policy_versions?.radar_plan_policy_version).toBe(RADAR_PLAN_POLICY_VERSION); }
+    if (e.type !== "SIGNAL") { expect(e.position).toMatchObject({ action_source: "MANUAL_EARLY", sl: 89, entry: 105.1 }); expect(e.position.policy_versions?.['radar_plan_policy_version']).toBe(RADAR_PLAN_POLICY_VERSION); }
     expect(compactSummary(s)).toMatchObject({ radar_plan_status: "RADAR:AVAILABLE", radar_side: "BUY", radar_reference_entry: 99, projected_sl: 89, radar_plan_policy_version: RADAR_PLAN_POLICY_VERSION });
     expect(JSON.stringify(e).length).toBeLessThan(20_000);
   });
@@ -100,7 +100,7 @@ describe("radar card UI", () => {
     expect(screen.getByTestId("plan-tp1")).toHaveTextContent("—");
   });
   it("old H4/H1 EMA5 vs EMA21 cards absent from the main cockpit", () => {
-    const reader = { symbol: "XAUUSD", now: () => 1, closedBars: () => [], formingBar: () => null, missingIntervals: () => [], brokerHistoryBars: () => [], firstLiveEventAt: () => null, latestLiveObservation: () => null, snapshot: () => ({ timeframes: {} }) } as never;
+    const reader = { symbol: "XAUUSD", now: () => 1, closedBars: () => [], formingBar: () => null, missingIntervals: () => [], brokerHistoryBars: () => [], firstLiveEventAt: () => null, latestLiveObservation: () => null, snapshot: () => ({ kind: "CANONICAL_MARKET_RUNTIME", operating_mode: "MONITOR_ONLY", execution_enabled: false, symbol: "XAUUSD", lifecycle: "RUNNING", bootstrap_state: "SYNCHRONIZED", active_epoch: 1, degraded_reason: null, history_coverage_status: "PARTIAL", market_coverage_proven_complete: false, route_counts: { LIVE_MUTATION: 1, BACKFILL_HISTORY: 0, RECONCILIATION_CANDIDATE: 0, QUARANTINED: 0, REJECTED: 0 }, held: [], silent_ambiguous_drops: 0, stream_protocol_errors: 0, last_stream_error: null, timeframes: {} }) } as never;
     render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader }]} selectedSymbol="XAUUSD" tickMs={60_000} store={new PaperJournalStore(null)} />);
     expect(screen.queryByText(/Tren H[14]/)).not.toBeInTheDocument();
     expect(screen.getByTestId("radar-card")).toBeInTheDocument();
