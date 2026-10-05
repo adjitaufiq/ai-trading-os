@@ -78,7 +78,7 @@ describe("manual early paper trades freeze a rebased plan", () => {
     st.open({ symbol: "BTCUSD", side: "BUY", quote: { bid: 104.9, ask: 105.1 }, now: 1, snapshot: s });
     const e = st.getState().journal[0]!;
     expect(e.type).toBe("TRADE_OPEN");
-    if (e.type !== "SIGNAL") { expect(e.position).toMatchObject({ action_source: "MANUAL_EARLY", sl: 89, entry: 105.1 }); expect(e.position.policy_versions?.['radar_plan_policy_version']).toBe(RADAR_PLAN_POLICY_VERSION); }
+    if (e.type === "TRADE_OPEN" || e.type === "TRADE_CLOSE") { expect(e.position).toMatchObject({ action_source: "MANUAL_EARLY", sl: 89, entry: 105.1 }); expect(e.position.policy_versions?.['radar_plan_policy_version']).toBe(RADAR_PLAN_POLICY_VERSION); }
     expect(compactSummary(s)).toMatchObject({ radar_plan_status: "RADAR:AVAILABLE", radar_side: "BUY", radar_reference_entry: 99, projected_sl: 89, radar_plan_policy_version: RADAR_PLAN_POLICY_VERSION });
     expect(JSON.stringify(e).length).toBeLessThan(20_000);
   });
