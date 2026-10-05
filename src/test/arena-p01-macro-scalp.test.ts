@@ -55,7 +55,7 @@ describe("ARENA v0.4 P0.1 — macro/scalp split", () => {
   it("H4 mixed (range) local candidate ⇒ NEUTRAL_MACRO", () => {
     const range = (k: number) => Array.from({ length: k }, (_, i) => 100 + 2 * ZIG[i % 8]!);
     const base = { M15: series("M15", range(60)), H1: series("H1", range(60)), H4: series("H4", range(60)) };
-    const op = operatorAnalysis({ ...base, M5: withLast(series("M5", range(60)), [99.8, 100.1, 98.6, 100]) }, 100);
+    const op = operatorAnalysis({ ...base, M5: withLast(series("M5", Array.from({ length: 50 }, (_, i) => 95 + 0.1 * i)), [99.8, 100.1, 98.6, 100]) }, 100);
     expect(op.macro.macro_direction).toBe("NEUTRAL_OR_MIXED");
     expect(op.candidate).toBe("BUY");
     expect(op.alignment).toBe("NEUTRAL_MACRO");

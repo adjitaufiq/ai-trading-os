@@ -2,6 +2,7 @@
 // Pure read of existing deterministic state; never derives a signal.
 import type { TradingSnapshot } from "@/core/technical/tradingState";
 import type { Indicator } from "@/core/technical/indicators";
+import type { ScalpTf } from "@/core/technical/operator";
 
 export type EngineSignal = "BUY" | "SELL" | "HOLD";
 
@@ -34,7 +35,15 @@ export interface CompactSummary {
   readonly patterns: { readonly M5: readonly string[]; readonly M15: readonly string[] };
   readonly plan: { readonly side: string; readonly entry: number; readonly sl: number; readonly tp1: number; readonly tp2: number } | { readonly unavailable: string };
   readonly why: readonly string[];
+  readonly scalp_momentum_combined: string | null;
+  readonly momentum_policy_version: string | null;
+  readonly momentum: { readonly M5: MomentumCompact | null; readonly M15: MomentumCompact | null };
+  readonly local_ema: { readonly M5: string | null; readonly M15: string | null };
 }
+type MomentumCompact = { readonly state: string; readonly cross: string | null; readonly s5: number | null; readonly s21: number | null; readonly gap: number | null; readonly gd: number | null };
+const r3 = (x: number | null) => (x === null ? null : Math.round(x * 1000) / 1000);
+const mom = (t: ScalpTf | undefined): MomentumCompact | null => t?.momentum ? { state: t.momentum.state, cross: t.momentum.cross, s5: r3(t.momentum.slope5_norm), s21: r3(t.momentum.slope21_norm), gap: r3(t.momentum.gap_norm), gd: r3(t.momentum.gap_delta) } : null;
+const localEma = (t: ScalpTf | undefined) => t ? `${t.ema_location}${t.ema_reaction.length ? ` ${t.ema_reaction.map((x) => `${x.kind}_EMA${x.ema}`).join(",")}` : ""}` : null;
 
 export function compactSummary(s: TradingSnapshot): CompactSummary {
   const op = s.operator ?? null, ev = s.evidence;
@@ -50,6 +59,8 @@ export function compactSummary(s: TradingSnapshot): CompactSummary {
     atr_m15: ind(ev?.M15.atr14), trigger: op?.trigger ?? null,
     patterns: { M5: [...(op?.patterns.M5.bullish ?? []), ...(op?.patterns.M5.bearish ?? [])], M15: [...(op?.patterns.M15.bullish ?? []), ...(op?.patterns.M15.bearish ?? [])] },
     plan, why: s.why.slice(0, 8).map((f) => f.text.slice(0, 240)),
+    scalp_momentum_combined: op?.scalp?.combined_momentum ?? null, momentum_policy_version: op?.scalp?.momentum_policy_version ?? null,
+    momentum: { M5: mom(op?.scalp?.M5), M15: mom(op?.scalp?.M15) }, local_ema: { M5: localEma(op?.scalp?.M5), M15: localEma(op?.scalp?.M15) },
   };
 }
 

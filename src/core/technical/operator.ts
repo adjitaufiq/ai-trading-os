@@ -11,7 +11,7 @@ import {
   type Indicator, type LabelledSwing, type Structure, type TechBar,
 } from "./indicators";
 
-export const OPERATOR_POLICY_VERSION = "operator-v2.1-p0.1-macro-scalp-split";
+export const OPERATOR_POLICY_VERSION = "operator-v2.2-p0.2-scalp-momentum";
 export const PATTERN_DEFINITION_VERSION = "candle-patterns-v1";
 export const ZONE_DEFINITION_VERSION = "sr-zone-swing-cluster-atr-v1";
 
@@ -48,9 +48,10 @@ export const OPERATOR_RULES = Object.freeze({
   ema_zone: "BAND = price inside [EMA21, EMA50]; else NEAR_EMA21 / NEAR_EMA50 within 0.25×ATR14(TF); else NOT_NEAR",
   location: "AT_SUPPORT / AT_RESISTANCE = within 0.5×ATR14(M15) of a support / resistance zone edge (inside counts); both ⇒ AMBIGUOUS; neither ⇒ MID",
   regime: "TREND = H4 UP/DOWN; RANGE = H4 not directional AND H1 has a support zone and a resistance zone each with ≥2 touches; otherwise CHOPPY",
-  trend_setup: "P0.1 macro/scalp split. Macro d = H4. Scalp side = d, except price AT the opposite S/R wall (support in DOWN / resistance in UP) ⇒ local counter side. Location = S/R zone on the side's entry edge OR (macro side only) EMA21/50 confluence (H1 or M15); H1 RSI14 gate passes for the side; CLOSED M5/M15 trigger in side with no opposing trigger. H1 alignment is METADATA (checks.context, legacy), never a gate; H1 REVERSAL_CANDIDATE/INSUFFICIENT still ⇒ HOLD",
-  alignment: "WITH_MACRO = side matches H4 direction; COUNTER_MACRO = opposes clear H4; NEUTRAL_MACRO = H4 MIXED; NOT_APPLICABLE = no side or H4 INSUFFICIENT. Classification only, no veto in P0.1",
-  range_setup: "AT_SUPPORT + bullish CLOSED trigger ⇒ BUY; AT_RESISTANCE + bearish ⇒ SELL; MID/AMBIGUOUS ⇒ HOLD. RSI gate not applied in range (RESEARCH_REQUIRED)",
+  trend_setup: "P0.2: scalp side = combined M5/M15 EMA5/21 momentum (STRONG_BUY/BUY ⇒ BUY, STRONG_SELL/SELL ⇒ SELL, CONFLICT/HOLD ⇒ HOLD). H4/H1 never pick a side. TREND regime: location = S/R zone on the side's entry edge OR M5/M15 EMA21/50 local confluence; retained H1 RSI14 gate (until P0.8); CLOSED M5/M15 trigger in side. Legacy vetoes: H4 INSUFFICIENT, CHOPPY, H1 REVERSAL_CANDIDATE/INSUFFICIENT ⇒ HOLD",
+  scalp_momentum: "Per M5/M15 (CLOSED): slope = (EMA_now − EMA_3barsAgo)/ATR14_now; gap = |EMA5−EMA21|/ATR14_now; gap_delta = gap − gap_3barsAgo. Sign comparisons only. M5 drives, M15 confirms/conflicts",
+  alignment: "WITH_MACRO = side matches H4 direction; COUNTER_MACRO = opposes clear H4; NEUTRAL_MACRO = H4 MIXED; NOT_APPLICABLE = no side or H4 INSUFFICIENT. Derived after the local side exists; classification only",
+  range_setup: "Momentum side required; BUY needs AT_SUPPORT + bullish CLOSED trigger, SELL AT_RESISTANCE + bearish; MID/AMBIGUOUS ⇒ HOLD. RSI gate not applied in range (RESEARCH_REQUIRED)",
   rsi_support: "M15/M5 RSI14 > 50 bullish, < 50 bearish — supporting evidence only; overbought/oversold thresholds RESEARCH_REQUIRED (not used)",
   patterns: "See candle-patterns-v1: engulfing (strict body), hammer-like, shooting-star-like, rejection wick, morning/evening-star-like on the last 3 CLOSED bars",
 });
@@ -270,7 +271,7 @@ export interface OperatorTf {
 }
 
 /** ARENA v0.4 P0.1 — H4/H1 = macro context, M15/M5 = scalp decision domain. */
-export const ARCHITECTURE_VERSION = "arena-architecture-v0.4-p0.1-macro-scalp-split";
+export const ARCHITECTURE_VERSION = "arena-architecture-v0.4-p0.2-scalp-momentum-decision";
 export type MacroDirection = "BULLISH" | "BEARISH" | "NEUTRAL_OR_MIXED" | "INSUFFICIENT";
 export type MacroAlignment = "WITH_MACRO" | "COUNTER_MACRO" | "NEUTRAL_MACRO" | "NOT_APPLICABLE";
 export interface MacroContext {
@@ -285,6 +286,9 @@ export interface MacroContext {
 export interface ScalpTf {
   readonly ema5: Indicator; readonly ema21: Indicator; readonly ema50: Indicator;
   readonly atr14: Indicator; readonly rsi14: Indicator; readonly trend: TrendState; readonly structure: StructureEvents;
+  readonly momentum: MomentumTf;
+  readonly ema_location: EmaZone;
+  readonly ema_reaction: readonly EmaReaction[];
 }
 /** Structured read model only (no slope/gap rules in P0.1). */
 export interface ScalpContext {
@@ -297,6 +301,9 @@ export interface ScalpContext {
   readonly ema_confluence: { readonly timeframe: Timeframe | null; readonly zone: EmaZone };
   readonly patterns: { readonly M5: PatternRead; readonly M15: PatternRead };
   readonly trigger: TriggerDirection;
+  readonly momentum_policy_version: typeof SCALP_MOMENTUM_POLICY_VERSION;
+  readonly combined_momentum: CombinedMomentum;
+  readonly momentum_side: "BUY" | "SELL" | null;
 }
 
 export interface OperatorAnalysis {
@@ -361,10 +368,14 @@ export function operatorAnalysis(closed: Readonly<Record<Timeframe, readonly Tec
     const atS = !!ns && ns.distance <= k, atR = !!nr && nr.distance <= k;
     location = atS && atR ? "AMBIGUOUS" : atS ? "AT_SUPPORT" : atR ? "AT_RESISTANCE" : "MID";
   }
-  const emaTf = (["H1", "M15"] as const).find((tf) => per[tf].ema_zone === "BAND" || per[tf].ema_zone === "NEAR_EMA21" || per[tf].ema_zone === "NEAR_EMA50") ?? null;
-  const emaConf = { timeframe: emaTf, zone: emaTf ? per[emaTf].ema_zone : per.H1.ema_zone === "INSUFFICIENT" && per.M15.ema_zone === "INSUFFICIENT" ? "INSUFFICIENT" as const : "NOT_NEAR" as const };
+  // P0.2: EMA21/50 local dynamic S/R is read on the scalp TFs only (M5 first = most relevant, then M15).
+  const emaTf = (["M5", "M15"] as const).find((tf) => emaNear(per[tf].ema_zone)) ?? null;
+  const emaConf = { timeframe: emaTf, zone: emaTf ? per[emaTf].ema_zone : per.M5.ema_zone === "INSUFFICIENT" && per.M15.ema_zone === "INSUFFICIENT" ? "INSUFFICIENT" as const : "NOT_NEAR" as const };
   const patterns = { M5: readPatterns(closed.M5, "M5"), M15: readPatterns(closed.M15, "M15") };
   const trigger = combinedTrigger(patterns.M5, patterns.M15);
+  const sM5 = scalpTf(per.M5, closed.M5, price), sM15 = scalpTf(per.M15, closed.M15, price);
+  const combined = combineMomentum(sM5.momentum.state, sM15.momentum.state);
+  const mSide = momentumSide(combined);
 
   const h1Zones = zones.H1 ?? [];
   const bounded = h1Zones.some((z) => z.role === "SUPPORT" && z.touches >= P.range_min_touches) && h1Zones.some((z) => z.role === "RESISTANCE" && z.touches >= P.range_min_touches);
@@ -373,43 +384,42 @@ export function operatorAnalysis(closed: Readonly<Record<Timeframe, readonly Tec
   let status: OperatorStatus = "HOLD", candidateSide: "BUY" | "SELL" | null = null;
   let checks: OperatorAnalysis["checks"] = { context: false, location: false, rsi: null, trigger: false };
   let reason: string;
+  // Legacy veto (documented P0.x blocker): regime INSUFFICIENT / CHOPPY still ⇒ HOLD. They veto, never pick a side.
   if (regime === "INSUFFICIENT") reason = "H4_TREND_INSUFFICIENT_HISTORY";
   else if (regime === "CHOPPY") reason = "REGIME_CHOPPY_NO_CLEAR_BOUNDS";
-  else if (regime === "TREND") {
-    const d = h4 as "UP" | "DOWN";
-    const macroSide = d === "UP" ? "BUY" : "SELL";
-    // P0.1: scalp side is chosen from LOCAL location evidence. Default = macro side; the opposite S/R wall
-    // (support in a DOWN macro / resistance in an UP macro) yields a local COUNTER_MACRO scalp side.
-    const counterWall = macroSide === "BUY" ? location === "AT_RESISTANCE" : location === "AT_SUPPORT";
-    const side: "BUY" | "SELL" = counterWall ? (macroSide === "BUY" ? "SELL" : "BUY") : macroSide;
-    // Legacy H1 alignment flag — macro METADATA only since P0.1 (no longer a gate).
-    const context = ctx === "ALIGNED" || ctx === "RETURNING_TO_H4" || (ctx === "PULLBACK_AGAINST_H4" && per.M15.fast === d);
+  else if (!mSide) reason = `SCALP_MOMENTUM_${combined}`;
+  else {
+    // P0.2: side comes ONLY from combined M5/M15 momentum. H4/H1 never pick BUY/SELL.
+    const side = mSide;
     const zoneOk = side === "BUY" ? location === "AT_SUPPORT" : location === "AT_RESISTANCE";
-    const loc = zoneOk || (!counterWall && emaTf !== null);
-    const rsi = rsiDirectionGate(side, per.H1.rsi14);
     const trig = trigger === (side === "BUY" ? "BULLISH" : "BEARISH");
-    checks = { context, location: loc, rsi: rsi.pass, trigger: trig };
-    if (ctx === "REVERSAL_CANDIDATE" || ctx === "INSUFFICIENT") reason = `H1_${ctx}`;
-    else {
-      status = side === "BUY" ? "CARI_BUY" : "CARI_SELL";
-      if (!loc) reason = "NOT_AT_SR_OR_EMA_CONFLUENCE";
-      else if (!rsi.pass) reason = rsi.reason;
-      else if (!trig) reason = `NO_CLOSED_${side === "BUY" ? "BULLISH" : "BEARISH"}_TRIGGER`;
-      else { candidateSide = side; reason = `TREND_${side}_H4_${h4}_H1_${ctx}_${zoneOk ? "SR_ZONE" : `EMA_${emaConf.zone}`}_RSI_TRIGGER`; }
-    }
-  } else {
-    // RANGE
-    const side = location === "AT_SUPPORT" ? "BUY" : location === "AT_RESISTANCE" ? "SELL" : null;
-    if (!side) reason = location === "AMBIGUOUS" ? "RANGE_LOCATION_AMBIGUOUS" : "RANGE_MIDDLE";
-    else {
-      status = side === "BUY" ? "CARI_BUY" : "CARI_SELL";
-      const trig = trigger === (side === "BUY" ? "BULLISH" : "BEARISH");
-      checks = { context: true, location: true, rsi: null, trigger: trig };
-      if (trig) { candidateSide = side; reason = `RANGE_${side}_${side === "BUY" ? "SUPPORT" : "RESISTANCE"}_TRIGGER`; }
-      else reason = `NO_CLOSED_${side === "BUY" ? "BULLISH" : "BEARISH"}_TRIGGER`;
+    const dirTag = side === "BUY" ? "BULLISH" : "BEARISH";
+    if (regime === "TREND") {
+      const d = h4 as "UP" | "DOWN";
+      const context = ctx === "ALIGNED" || ctx === "RETURNING_TO_H4" || (ctx === "PULLBACK_AGAINST_H4" && per.M15.fast === d);
+      const loc = zoneOk || emaTf !== null;
+      const rsi = rsiDirectionGate(side, per.H1.rsi14); // retained H1 RSI hard gate until P0.8
+      checks = { context, location: loc, rsi: rsi.pass, trigger: trig };
+      // Legacy H1 REVERSAL_CANDIDATE / INSUFFICIENT veto retained (known P0.8/P0.x blocker).
+      if (ctx === "REVERSAL_CANDIDATE" || ctx === "INSUFFICIENT") reason = `H1_${ctx}`;
+      else {
+        status = side === "BUY" ? "CARI_BUY" : "CARI_SELL";
+        if (!loc) reason = "NOT_AT_SR_OR_EMA_CONFLUENCE";
+        else if (!rsi.pass) reason = rsi.reason;
+        else if (!trig) reason = `NO_CLOSED_${dirTag}_TRIGGER`;
+        else { candidateSide = side; reason = `SCALP_${side}_${combined}_${zoneOk ? "SR_ZONE" : `EMA_${emaConf.zone}_${emaTf}`}_RSI_TRIGGER`; }
+      }
+    } else {
+      // RANGE: static S/R edge on the momentum side is required; RSI gate not applied.
+      checks = { context: true, location: zoneOk, rsi: null, trigger: trig };
+      if (!zoneOk) reason = location === "AMBIGUOUS" ? "RANGE_LOCATION_AMBIGUOUS" : location === "MID" ? "RANGE_MIDDLE" : `RANGE_${side}_NOT_AT_${side === "BUY" ? "SUPPORT" : "RESISTANCE"}`;
+      else {
+        status = side === "BUY" ? "CARI_BUY" : "CARI_SELL";
+        if (trig) { candidateSide = side; reason = `RANGE_${side}_${combined}_${side === "BUY" ? "SUPPORT" : "RESISTANCE"}_TRIGGER`; }
+        else reason = `NO_CLOSED_${dirTag}_TRIGGER`;
+      }
     }
   }
-  // P0.1: H1 alignment (checks.context) is no longer part of setup readiness.
   const setupReady = status !== "HOLD" && checks.location && checks.rsi !== false;
   let triggerBar: OperatorAnalysis["trigger_bar"] = null;
   if (candidateSide) {
@@ -422,10 +432,12 @@ export function operatorAnalysis(closed: Readonly<Record<Timeframe, readonly Tec
     major_zones: { H4: zones.H4 ?? [], H1: zones.H1 ?? [] }, macro_direction: macroDirectionOf(h4),
   };
   const scalp: ScalpContext = {
-    M15: scalpTf(per.M15), M5: scalpTf(per.M5), local_zones: zones.M15 ?? [], location, nearest_support: ns, nearest_resistance: nr,
+    M15: sM15, M5: sM5, local_zones: zones.M15 ?? [], location, nearest_support: ns, nearest_resistance: nr,
     ema_confluence: emaConf, patterns, trigger,
+    momentum_policy_version: SCALP_MOMENTUM_POLICY_VERSION, combined_momentum: combined, momentum_side: mSide,
   };
-  const searchSide = candidateSide ?? (status === "CARI_BUY" ? "BUY" : status === "CARI_SELL" ? "SELL" : null);
+  // Alignment derived AFTER the local side exists.
+  const searchSide = candidateSide ?? (status === "CARI_BUY" ? "BUY" : status === "CARI_SELL" ? "SELL" : mSide);
   return {
     policy_version: OPERATOR_POLICY_VERSION, architecture_version: ARCHITECTURE_VERSION, macro, scalp, alignment: macroAlignment(searchSide, macro.macro_direction),
     price, per_tf: per, h4_primary: h4, h1_context: ctx, zones, nearest_support: ns, nearest_resistance: nr,
@@ -433,7 +445,93 @@ export function operatorAnalysis(closed: Readonly<Record<Timeframe, readonly Tec
   };
 }
 
-const scalpTf = (t: OperatorTf): ScalpTf => ({ ema5: t.ema5, ema21: t.ema21, ema50: t.ema50, atr14: t.atr14, rsi14: t.rsi14, trend: t.trend, structure: t.events });
+const scalpTf = (t: OperatorTf, bars: readonly TechBar[], price: number): ScalpTf => ({
+  ema5: t.ema5, ema21: t.ema21, ema50: t.ema50, atr14: t.atr14, rsi14: t.rsi14, trend: t.trend, structure: t.events,
+  momentum: scalpMomentumTf(bars), ema_location: emaZone(price, t.ema21, t.ema50, t.atr14), ema_reaction: emaReaction(bars),
+});
+
+// ---------------- P0.2 scalp momentum (EMA5/21 slope + gap) & EMA21/50 local dynamic S/R ----------------
+
+export const SCALP_MOMENTUM_POLICY_VERSION = "scalp-momentum-v0.4-p0.2-ema-slope-gap";
+export const SCALP_MOMENTUM_PARAMS = Object.freeze({
+  slope_lookback_bars: 3,
+  gap_lookback_bars: 3,
+  /** Only sign comparisons; no magnitude thresholds. */
+  status: "OPERATOR_DEFINED_NOT_OPTIMIZED_RESEARCH_REQUIRED",
+});
+export type MomentumState = "BULLISH_EXPANDING" | "BULLISH" | "BEARISH_EXPANDING" | "BEARISH" | "CROSS_UP" | "CROSS_DOWN" | "FLAT_OR_WEAK" | "INSUFFICIENT";
+export type CombinedMomentum = "STRONG_BUY" | "BUY" | "STRONG_SELL" | "SELL" | "CONFLICT" | "HOLD";
+export interface MomentumTf {
+  readonly state: MomentumState;
+  /** Cross evidence kept separate so a cross never overrides a stronger directional state. */
+  readonly cross: "UP" | "DOWN" | null;
+  readonly slope5_norm: number | null;
+  readonly slope21_norm: number | null;
+  readonly gap_norm: number | null;
+  readonly prior_gap_norm: number | null;
+  readonly gap_delta: number | null;
+}
+const NO_MOMENTUM: MomentumTf = { state: "INSUFFICIENT", cross: null, slope5_norm: null, slope21_norm: null, gap_norm: null, prior_gap_norm: null, gap_delta: null };
+
+/** CLOSED bars only. Lookback EMAs are computed on the causal prefix ending N bars ago. */
+export function scalpMomentumTf(bars: readonly TechBar[]): MomentumTf {
+  const n = SCALP_MOMENTUM_PARAMS.slope_lookback_bars, g = SCALP_MOMENTUM_PARAMS.gap_lookback_bars;
+  const e5 = ema(bars, P.timing_ema), e21 = ema(bars, P.trend_ema_fast), atr = atrWilder(bars, P.atr_period);
+  const s5 = ema(bars.slice(0, bars.length - n), P.timing_ema), s21 = ema(bars.slice(0, bars.length - n), P.trend_ema_fast);
+  const g5 = ema(bars.slice(0, bars.length - g), P.timing_ema), g21 = ema(bars.slice(0, bars.length - g), P.trend_ema_fast);
+  if (bars.length <= Math.max(n, g) || [e5, e21, atr, s5, s21, g5, g21].some((x) => x.status !== "OK")) return NO_MOMENTUM;
+  const v = (x: Indicator) => (x as { value: number }).value;
+  const a = v(atr);
+  if (!(a > 0)) return NO_MOMENTUM;
+  const slope5 = (v(e5) - v(s5)) / a, slope21 = (v(e21) - v(s21)) / a;
+  const gap = Math.abs(v(e5) - v(e21)) / a, prior = Math.abs(v(g5) - v(g21)) / a, delta = gap - prior;
+  const above = v(e5) > v(e21), below = v(e5) < v(e21);
+  const cross = v(s5) <= v(s21) && above ? "UP" : v(s5) >= v(s21) && below ? "DOWN" : null;
+  let state: MomentumState;
+  if (above && slope5 > 0 && slope21 >= 0 && delta > 0) state = "BULLISH_EXPANDING";
+  else if (above && slope5 > 0) state = "BULLISH";
+  else if (below && slope5 < 0 && slope21 <= 0 && delta > 0) state = "BEARISH_EXPANDING";
+  else if (below && slope5 < 0) state = "BEARISH";
+  else if (cross === "UP") state = "CROSS_UP";
+  else if (cross === "DOWN") state = "CROSS_DOWN";
+  else state = "FLAT_OR_WEAK";
+  const r = (x: number) => Math.round(x * 1e4) / 1e4;
+  return { state, cross, slope5_norm: r(slope5), slope21_norm: r(slope21), gap_norm: r(gap), prior_gap_norm: r(prior), gap_delta: r(delta) };
+}
+
+const bullFam = (s: MomentumState) => s === "BULLISH" || s === "BULLISH_EXPANDING" || s === "CROSS_UP";
+const bearFam = (s: MomentumState) => s === "BEARISH" || s === "BEARISH_EXPANDING" || s === "CROSS_DOWN";
+/** M5 = fast driver, M15 confirms or conflicts. H4/H1 never participate. */
+export function combineMomentum(m5: MomentumState, m15: MomentumState): CombinedMomentum {
+  if ((bullFam(m5) && bearFam(m15)) || (bearFam(m5) && bullFam(m15))) return "CONFLICT";
+  if (bullFam(m5)) return bullFam(m15) ? "STRONG_BUY" : "BUY";
+  if (bearFam(m5)) return bearFam(m15) ? "STRONG_SELL" : "SELL";
+  return "HOLD";
+}
+export const momentumSide = (c: CombinedMomentum): "BUY" | "SELL" | null => c === "STRONG_BUY" || c === "BUY" ? "BUY" : c === "STRONG_SELL" || c === "SELL" ? "SELL" : null;
+
+export type EmaReactionKind = "REJECTED_UP" | "REJECTED_DOWN" | "BROKE_ABOVE" | "BROKE_BELOW" | "TOUCHED";
+export interface EmaReaction { readonly ema: 21 | 50; readonly kind: EmaReactionKind }
+/** Latest CLOSED bar vs EMA21/EMA50 at that bar (EMA including it); prior side from the previous CLOSED bar and its EMA. */
+export function emaReaction(bars: readonly TechBar[]): readonly EmaReaction[] {
+  if (bars.length < 2) return [];
+  const last = bars[bars.length - 1]!, prev = bars[bars.length - 2]!, out: EmaReaction[] = [];
+  for (const n of [21, 50] as const) {
+    const now = ema(bars, n), before = ema(bars.slice(0, -1), n);
+    if (now.status !== "OK") continue;
+    const e = now.value, touched = last.low <= e && last.high >= e;
+    const prevSide = before.status === "OK" ? Math.sign(prev.close - before.value) : 0;
+    let kind: EmaReactionKind | null = null;
+    if (prevSide < 0 && last.close > e) kind = "BROKE_ABOVE";
+    else if (prevSide > 0 && last.close < e) kind = "BROKE_BELOW";
+    else if (touched && last.close > e && last.close > last.open) kind = "REJECTED_UP";
+    else if (touched && last.close < e && last.close < last.open) kind = "REJECTED_DOWN";
+    else if (touched) kind = "TOUCHED";
+    if (kind) out.push({ ema: n, kind });
+  }
+  return out;
+}
+const emaNear = (z: EmaZone) => z === "BAND" || z === "NEAR_EMA21" || z === "NEAR_EMA50";
 
 export function macroDirectionOf(h4: TrendState): MacroDirection {
   return h4 === "UP" ? "BULLISH" : h4 === "DOWN" ? "BEARISH" : h4 === "MIXED" ? "NEUTRAL_OR_MIXED" : "INSUFFICIENT";
