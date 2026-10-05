@@ -22,7 +22,7 @@ function Cell({ label, value, reason, testId }: { label: string; value: string; 
   return <div className="rounded border border-border bg-card p-2" data-testid={testId}>
     <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
     <div className="font-mono text-sm font-semibold text-foreground">{value}</div>
-    {reason ? <div className="font-mono text-[10px] text-muted-foreground">{reason}</div> : null}
+    {reason ? <div className="break-all font-mono text-[10px] text-muted-foreground">{reason}</div> : null}
   </div>;
 }
 
