@@ -1,0 +1,1 @@
+- InternalAggregatedBar and BrokerObservedBar (src/core/candles/BarSchemas.ts) are separate types; compareBars reports volumes side by side and never subtracts or copies them. Why: PRE-2D R8, observed_tick_count != tick_volume != real_volume.

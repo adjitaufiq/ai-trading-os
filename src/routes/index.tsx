@@ -3,6 +3,9 @@ import { lazy, Suspense, useMemo } from "react";
 import { BrokerGatewayClient } from "@/core/broker/gateway/BrokerGatewayClient";
 import { makeGatewayConfig } from "@/core/broker/gateway/config";
 import { LiveClock } from "@/core/temporal/CanonicalClock";
+import { useServerFn } from "@tanstack/react-start";
+import { TechnicalSlicePanel } from "@/components/TechnicalSlicePanel";
+import { explainTradingState } from "@/lib/ai-why.functions";
 
 const RealMarketTerminal = lazy(() => import("@/components/RealMarketTerminal").then((m) => ({ default: m.RealMarketTerminal })));
 
@@ -22,7 +25,11 @@ function Terminal() {
   const client = useMemo(() => new BrokerGatewayClient({
     config: makeGatewayConfig({ timeoutMs: 15_000 }), wallClock: new LiveClock(), monoClock: { now: () => performance.now() },
   }), []);
-  return <RealMarketTerminal client={client} />;
+  const explain = useServerFn(explainTradingState);
+  return <>
+    <RealMarketTerminal client={client} />
+    <TechnicalSlicePanel client={client} explain={(snapshot) => explain({ data: { snapshot } })} />
+  </>;
 }
 
 function Index() {
