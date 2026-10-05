@@ -1,5 +1,6 @@
 import type { CanonicalClock } from "../temporal/CanonicalClock";
-import { AnomalyClassifier, resolveDisposition, type ClassifierConfig } from "./AnomalyClassifier";
+import { AnomalyClassifier, resolveDisposition, type ClassifierConfig, type IdentityHint } from "./AnomalyClassifier";
+import { RetentionIdentityStore } from "./identity/RetentionDomains";
 import { BrokerNormalizer } from "./BrokerNormalizer";
 import type {
   AnomalyDisposition,
@@ -82,6 +83,11 @@ export class BrokerFeedPipeline {
   private readonly classifier: AnomalyClassifier;
   private readonly log: AuditRecord[] = [];
   private seq = 0;
+  /**
+   * C1: identity authority for STANDALONE use (no upstream ObservationIdentityRegistry hint, e.g.
+   * GatewayMarketIngest). When a hint is supplied this store is never consulted — one authority per composition.
+   */
+  private fallback: RetentionIdentityStore | null = null;
 
   constructor(
     spec: SymbolSpecification,
@@ -95,15 +101,17 @@ export class BrokerFeedPipeline {
     this.classifier = new AnomalyClassifier(cfg);
   }
 
-  process(env: BrokerEventEnvelope<RawBrokerTick>): AuditRecord {
+  process(env: BrokerEventEnvelope<RawBrokerTick>, identity?: IdentityHint): AuditRecord {
     const frozenEnv = Object.freeze({ ...env, raw: Object.freeze({ ...env.raw }) });
     const candidate = this.normalizer.normalizeTick(frozenEnv, this.seq);
-    const anomalies = Object.freeze(this.classifier.classify(candidate));
+    const hint = identity ?? this.fallbackHint(candidate);
+    const anomalies = Object.freeze(this.classifier.classify(candidate, hint));
     const disposition = resolveDisposition(anomalies);
     const route = routeFor(disposition, frozenEnv.delivery);
     const live = route === "LIVE_MUTATION";
     const temporallyValid = !anomalies.some((a) => a.classification === "TEMPORAL_INVALID");
     this.classifier.commit(candidate, live, temporallyValid);
+    if (!identity && temporallyValid) this.fallbackCommit(candidate, live);
     const record = Object.freeze<AuditRecord>({
       envelope: frozenEnv,
       candidate,
@@ -124,6 +132,36 @@ export class BrokerFeedPipeline {
       this.nonLive.onReconcileCandidate?.(record);
     }
     return record;
+  }
+
+  private fallbackHint(e: BrokerMarketEvent): IdentityHint {
+    const f = (this.fallback ??= new RetentionIdentityStore());
+    if (f.hasRawEvent(e.provenance.raw_event_id)) return { dedup_class: "EXACT_TRANSPORT_DUPLICATE", evidence_status: "PROVEN" };
+    if (f.byFingerprint(BrokerFeedPipeline.contentKey(e)).length > 0) return { dedup_class: "AMBIGUOUS_COLLISION", evidence_status: "PROVEN" };
+    const h = f.evidenceHorizon(e.symbol);
+    if (h !== null && e.event_at <= h) return { dedup_class: "AMBIGUOUS_COLLISION", evidence_status: "EVIDENCE_EVICTED" };
+    return { dedup_class: "DISTINCT_OBSERVATION", evidence_status: "PROVEN" };
+  }
+
+  private fallbackCommit(e: BrokerMarketEvent, live: boolean): void {
+    const f = this.fallback!;
+    if (f.hasRawEvent(e.provenance.raw_event_id)) return;
+    f.add(BrokerFeedPipeline.contentKey(e), {
+      observation_id: `pipe:${e.provenance.connection_epoch}:${e.provenance.raw_event_id}`, raw_event_id: e.provenance.raw_event_id,
+      delivery: e.provenance.delivery === "STREAM" ? "LIVE" : "BACKFILL", channel: e.provenance.delivery === "STREAM" ? "STREAM" : "HISTORY",
+      source_event_ms: e.event_at, broker_symbol: e.symbol, connection_epoch: e.provenance.connection_epoch,
+    });
+    // Partition policy: entries strictly behind the live watermark are no longer in the active partition.
+    if (live) f.settleThrough(e.symbol, e.event_at);
+  }
+
+  private static contentKey(e: BrokerMarketEvent): string {
+    return `${e.symbol}|${e.event_at}|${e.bid}|${e.ask}`;
+  }
+
+  /** C1 metrics of the standalone fallback identity authority (null when an upstream authority is used). */
+  get fallbackIdentityRetention() {
+    return this.fallback?.metrics ?? null;
   }
 
   private static isClean(r: AuditRecord): boolean {

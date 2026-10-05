@@ -3,6 +3,7 @@
 // History stays BACKFILL and goes through the existing BACKFILL_HISTORY route (never live mutation).
 // The coordinator is step-driven (no timers, no Date.now) so LIVE and REPLAY runs are identical.
 import type { AuditRecord } from "../BrokerFeedPipeline";
+import type { IdentityHint } from "../AnomalyClassifier";
 import type { BrokerEventEnvelope, RawBrokerTick } from "../types";
 import {
   ObservationIdentityRegistry,
@@ -22,7 +23,7 @@ export type BootstrapState =
 
 /** Minimal pipeline surface (BrokerFeedPipeline satisfies it). */
 export interface FeedPipelinePort {
-  process(env: BrokerEventEnvelope<RawBrokerTick>): AuditRecord;
+  process(env: BrokerEventEnvelope<RawBrokerTick>, identity?: IdentityHint): AuditRecord;
 }
 
 export interface BootstrapHistoryRequest {
@@ -165,6 +166,7 @@ export class BootstrapCoordinator {
   /** LIVE arrival. Buffered during bootstrap; processed through identity → pipeline once SYNCHRONIZED. */
   onLive(o: ObservationOccurrence): void {
     if (o.delivery !== "LIVE") throw new Error("onLive requires delivery LIVE");
+    this.lastSymbol = o.broker_symbol;
     switch (this._state) {
       case "UNINITIALIZED":
         throw new Error("live observation before bootstrap start");
@@ -269,10 +271,14 @@ export class BootstrapCoordinator {
       history_newest_returned_at: this.history?.coverage?.newest_returned_at ?? null,
     });
     this.releasePin();
+    if (this.liveFrontier && this.lastSymbol) this.settle(this.lastSymbol, this.liveFrontier.event_at);
     this.go("SYNCHRONIZED", "history replayed, overlap classified, buffer drained, no unresolved uncertainty");
   }
 
+  private lastSymbol: string | null = null;
+
   private handle(o: ObservationOccurrence): OccurrenceAudit {
+    this.lastSymbol = o.broker_symbol;
     const identity = this.identity.classify(o, this.activeEpoch);
     let action: OccurrenceAction;
     switch (identity.dedup_class) {
@@ -281,21 +287,26 @@ export class BootstrapCoordinator {
       case "PROBABLE_SOURCE_DUPLICATE": {
         // LIVE vs earlier LIVE on another channel: unproven → explicit reconcile hold (not a drop).
         // LIVE vs BACKFILL: the BACKFILL copy never entered live state, so the LIVE occurrence is forwarded.
-        const priorLive = o.delivery === "LIVE" && this.identity.audit.some(
-          (e) => identity.related.includes(e.classification.observation_id) && e.occurrence.delivery === "LIVE");
+        // C1: decided from retained store evidence (related_live), not from the trimmable audit log.
+        const priorLive = o.delivery === "LIVE" && identity.related_live;
         action = priorLive ? "HELD_RECONCILE" : "FORWARDED";
         break;
       }
       case "AMBIGUOUS_COLLISION": // preserved: uncertainty never deletes a market observation
+        // C1 §5: forgotten evidence → distinctness unprovable → explicit reconcile hold, never a fresh live mutation.
+        action = identity.evidence_status === "EVIDENCE_EVICTED" ? "HELD_RECONCILE" : "FORWARDED";
+        break;
       case "DISTINCT_OBSERVATION": action = "FORWARDED"; break;
     }
     let pipeline: AuditRecord | null = null;
     if (action === "FORWARDED") {
-      pipeline = this.pipeline.process(toEnvelope(o));
+      pipeline = this.pipeline.process(toEnvelope(o), { dedup_class: identity.dedup_class, evidence_status: identity.evidence_status });
       if (pipeline.route === "LIVE_MUTATION") {
         if (o.delivery !== "LIVE") throw new Error("non-LIVE occurrence produced LIVE_MUTATION");
         if (this.liveFrontier && pipeline.candidate.event_at < this.liveFrontier.event_at) throw new Error("live frontier regression");
         this.liveFrontier = Object.freeze({ event_at: pipeline.candidate.event_at, canonical_seq: pipeline.canonical_seq!, raw_event_id: o.raw_event_id });
+        // C1 partition: once SYNCHRONIZED, evidence strictly behind the live frontier leaves the active partition.
+        if (this._state === "SYNCHRONIZED") this.settle(o.broker_symbol, o.source_event_ms);
       } else if (pipeline.route === "RECONCILIATION_CANDIDATE") {
         this.recon = Object.freeze({ candidates: this.recon.candidates + 1, last_source_event_ms: o.source_event_ms });
       }
@@ -338,8 +349,19 @@ export class BootstrapCoordinator {
     });
   }
 
+  private settle(symbol: string, ms: number): void {
+    const st = this.identity.identityStore as { settleThrough?: (s: string, m: number) => void };
+    st.settleThrough?.(symbol, ms);
+  }
+
   private degrade(reason: string): void {
     this.degradedReason = reason;
+    // C1: a degraded run leaves continuity unproven → coverage dependency blocks eviction of that range.
+    const st = this.identity.identityStore;
+    const req = this.history?.request;
+    if (st.openDependency && this.lastSymbol && req) {
+      st.openDependency({ kind: "COVERAGE", symbol: this.lastSymbol, from_ms: req.requested_from, to_ms: Math.max(req.requested_to, this.liveFrontier?.event_at ?? req.requested_to), reason: `DEGRADED: ${reason}` });
+    }
     this.go("DEGRADED", reason);
     // Fail-fast keeps an invalidated audit snapshot; buffered evidence is NOT discarded.
     // DEGRADED is a terminal, auditable state: the snapshot is archived first, then the pin is released (no leak).
@@ -362,6 +384,9 @@ export class BootstrapCoordinator {
 
   private releasePin(): void {
     if (!this.holdsPin) return;
+    // C1 retirement: transport epochs older than the active one are covered by compact stale-epoch metadata.
+    const st = this.identity.identityStore as { retireEpochsThrough?: (e: number) => void };
+    if (this.activeEpoch !== null && this.activeEpoch > 0) st.retireEpochsThrough?.(this.activeEpoch - 1);
     this.holdsPin = false;
     this.identity.identityStore.unpin();
     this.identity.trimAudit();

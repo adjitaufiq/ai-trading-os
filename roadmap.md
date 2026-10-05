@@ -8,6 +8,9 @@
 - [x] D2: canonical MarketRuntime wires Gateway → client → Bootstrap → Identity → Pipeline → fanout → CandleStore (hermetic application-chain tests). Open: UI consumer migration; app start blocked on G2 (no verified broker-time offset).
 - [ ] D3: Drain order (source_event_ms, connection_epoch, sequence, arrival) — tie-break must be deterministic processing order only, never inferred market/causal order; same-ms ambiguous occurrences must not gain transport-sequence "market truth".
 
+## C1 retention
+- [x] C1 Retention Contract v1 implemented (candidate for source audit; independent audit pending)
+
 ## Technical Validation Probe
 - [x] v1a — BACKFILL + deterministic replay diagnostics (EMA5/21, ATR14, retrospective vs causal swing). Real gateway was unreachable during the run.
 - [ ] v1b — application-wiring validation PASS on hermetic transport; real-data validation pending (gateway unreachable, G2 open).
