@@ -110,7 +110,7 @@ describe("v1d adversarial MarketRuntime scenarios", () => {
     expect(json(s)).not.toMatch(NO_SIGNAL);
   });
   it("I. closed price below confirmed low → BELOW_CONFIRMED_SWING_LOW (no short field)", async () => {
-    const s = structureLocationReport((await run(waves([...UP, 1995]))).r);
+    const s = structureLocationReport((await run(waves([...UP, 2013, 1995]))).r);
     expect(s.location.H1.latest_low!.pivot_price).toBe(H1lo(2008));
     expect(s.location.H1.location).toBe("BELOW_CONFIRMED_SWING_LOW");
     expect(json(s)).not.toMatch(NO_SIGNAL);
