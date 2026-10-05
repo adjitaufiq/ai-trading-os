@@ -15,7 +15,7 @@ const snap = (entry: TradingSnapshot["entry"]["state"], plan?: { side: "BUY" | "
   signal: { state: "WAITING", reason: "T", triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED" },
   execution: { state: "BLOCKED", reasons: ["CAPABILITY_UNAUTHORIZED"] }, entry: { state: entry, reason: "T" },
   why: Array.from({ length: 30 }, (_, i) => ({ ok: null, text: `fact ${i} ${"x".repeat(2000)}` })),
-  reference_plan: plan ? { status: "AVAILABLE", policy_version: tech.REFERENCE_PLAN_POLICY_VERSION, side: plan.side, entry: 101, anchor_kind: "CONFIRMED_H1_SWING_LOW", anchor_price: 99, atr14_m15: 4, atr_buffer: 1, risk: 3, sl: plan.sl, tp1: plan.tp1, tp2: plan.tp2, rr_tp1: 1, rr_tp2: 2, structural: { invalidation_zone: null, structural_sl: null, target_zone: null, structural_target: null, rr_structural: null } } as TradingSnapshot["reference_plan"]
+  reference_plan: plan ? { status: "AVAILABLE", policy_version: tech.REFERENCE_PLAN_POLICY_VERSION, side: plan.side, entry: 101, anchor_kind: "CONFIRMED_H1_SWING_LOW", anchor_price: 99, atr14_m15: 4, atr_buffer: 1, risk: 3, sl: plan.sl, tp1: plan.tp1, tp2: plan.tp2, rr_tp1: 1, rr_tp2: 2, economics_status: "OK", final_rr: 2, structural: { invalidation_zone: null, structural_sl: null, target_zone: null, structural_target: null, rr_structural: null } } as unknown as TradingSnapshot["reference_plan"]
     : { status: "NOT_AVAILABLE", policy_version: tech.REFERENCE_PLAN_POLICY_VERSION, reason: "T" },
   versions: { technical_engine_version: "t", setup_policy_version: "t", signal_policy_version: "t", reference_plan_policy_version: "t", guard_policy_version: "t" },
 });
