@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { TechnicalSlicePanel, cockpitSignal, referenceEntry } from "@/components/TechnicalSlicePanel";
+import { TechnicalSlicePanel, TradeActions, cockpitSignal, referenceEntry } from "@/components/TechnicalSlicePanel";
 import type { TradingSnapshot } from "@/core/technical/tradingState";
 
 const snapshot = (entry: TradingSnapshot["entry"]["state"]): TradingSnapshot => ({
@@ -54,7 +54,7 @@ describe("clean trading cockpit", () => {
   });
   it("enables only BUY and opens a read-only plan without execution", () => {
     const brokerOrder = vi.fn();
-    render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "LONG_CANDIDATE") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);
+    render(<TradeActions signal="BUY" entry={101} reason="TEST" confirmations={["H4 bullish", "H1 bullish"]} />);
     expect(screen.getByTestId("action-buy")).toBeEnabled();
     expect(screen.getByTestId("action-sell")).toBeDisabled();
     fireEvent.click(screen.getByTestId("action-buy"));
@@ -64,7 +64,7 @@ describe("clean trading cockpit", () => {
     expect(brokerOrder).not.toHaveBeenCalled();
   });
   it("enables only SELL and opens its read-only plan", () => {
-    render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "SHORT_CANDIDATE") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);
+    render(<TradeActions signal="SELL" entry={100} reason="TEST" confirmations={["H4 bearish", "H1 bearish"]} />);
     expect(screen.getByTestId("action-buy")).toBeDisabled();
     expect(screen.getByTestId("action-sell")).toBeEnabled();
     fireEvent.click(screen.getByTestId("action-sell"));

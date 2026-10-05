@@ -71,8 +71,8 @@ function FactIcon({ value }: { value: boolean | null }) {
 
 function ActionButton({ side, enabled, onClick }: { side: "BUY" | "SELL"; enabled: boolean; onClick: () => void }) {
   const activeClass = side === "BUY"
-    ? "border-bull bg-bull text-bull-foreground hover:bg-bull/90"
-    : "border-bear bg-bear text-bear-foreground hover:bg-bear/90";
+    ? "border-bull bg-bull text-primary-foreground hover:bg-bull/90"
+    : "border-bear bg-bear text-primary-foreground hover:bg-bear/90";
   return <Button
     type="button"
     size="lg"
@@ -86,7 +86,7 @@ function ActionButton({ side, enabled, onClick }: { side: "BUY" | "SELL"; enable
 
 function ReadOnlyPlan({ side, entry, confirmations, onClose }: { side: "BUY" | "SELL"; entry: number | null; confirmations: readonly string[]; onClose: () => void }) {
   return <Dialog.Portal>
-    <Dialog.Overlay className="fixed inset-0 z-50 bg-overlay/70" />
+    <Dialog.Overlay className="fixed inset-0 z-50 bg-background/80" />
     <Dialog.Content className="fixed inset-x-4 top-1/2 z-50 max-h-[85vh] -translate-y-1/2 overflow-y-auto border border-border bg-card p-5 shadow-2xl sm:left-1/2 sm:right-auto sm:w-full sm:max-w-md sm:-translate-x-1/2" aria-describedby="trade-plan-description">
       <div className="flex items-start justify-between gap-4">
         <div><Dialog.Title className={`text-2xl font-semibold ${side === "BUY" ? "text-bull" : "text-bear"}`}>{side} reference plan</Dialog.Title><Dialog.Description id="trade-plan-description" className="mt-1 text-sm text-muted-foreground">Read-only review based on the current deterministic signal.</Dialog.Description></div>
@@ -110,6 +110,20 @@ function ReadOnlyPlan({ side, entry, confirmations, onClose }: { side: "BUY" | "
   </Dialog.Portal>;
 }
 
+export function TradeActions({ signal, entry, reason, confirmations }: { signal: CockpitSignal; entry: number | null; reason: string; confirmations: readonly string[] }) {
+  const [planSide, setPlanSide] = useState<"BUY" | "SELL" | null>(null);
+  return <>
+    <div className="mt-5 grid grid-cols-2 gap-2" aria-label="Trade actions">
+      <ActionButton side="BUY" enabled={signal === "BUY"} onClick={() => setPlanSide("BUY")} />
+      <ActionButton side="SELL" enabled={signal === "SELL"} onClick={() => setPlanSide("SELL")} />
+    </div>
+    {signal === "HOLD" ? <p className="mt-2 text-center text-xs text-muted-foreground" data-testid="action-disabled-reason">{reason}</p> : null}
+    <Dialog.Root open={planSide !== null} onOpenChange={(open) => { if (!open) setPlanSide(null); }}>
+      {planSide ? <ReadOnlyPlan side={planSide} entry={entry} confirmations={confirmations} onClose={() => setPlanSide(null)} /> : null}
+    </Dialog.Root>
+  </>;
+}
+
 function Cockpit({ service, explain }: { service: TechnicalSliceService; explain?: TechnicalSlicePanelProps["explain"] }) {
   useSyncExternalStore(service.subscribe, service.getVersion, service.getVersion);
   const view = service.view();
@@ -122,7 +136,6 @@ function Cockpit({ service, explain }: { service: TechnicalSliceService; explain
   const signalTone = signal === "BUY" ? "text-bull" : signal === "SELL" ? "text-bear" : "text-foreground";
   const signalBorder = signal === "BUY" ? "border-bull/45" : signal === "SELL" ? "border-bear/45" : "border-border";
   const [ai, setAi] = useState<AiWhyResult | { status: "PENDING" } | null>(null);
-  const [planSide, setPlanSide] = useState<"BUY" | "SELL" | null>(null);
 
   const runAi = async () => {
     if (!snapshot || !explain) { setAi({ status: "AI_ANALYST_UNAVAILABLE", reason: "No AI provider configured" }); return; }
@@ -165,17 +178,9 @@ function Cockpit({ service, explain }: { service: TechnicalSliceService; explain
           <div><div className="text-xs text-muted-foreground">TP2</div><div className="mt-0.5" data-testid="plan-tp2">{signal === "HOLD" ? "—" : "POLICY PENDING"}</div></div>
           <div><div className="text-xs text-muted-foreground">R:R</div><div className="mt-0.5">—</div></div>
         </div>
-        <div className="mt-5 grid grid-cols-2 gap-2" aria-label="Trade actions">
-          <ActionButton side="BUY" enabled={signal === "BUY"} onClick={() => setPlanSide("BUY")} />
-          <ActionButton side="SELL" enabled={signal === "SELL"} onClick={() => setPlanSide("SELL")} />
-        </div>
-        {signal === "HOLD" ? <p className="mt-2 text-center text-xs text-muted-foreground" data-testid="action-disabled-reason">{signalReason}</p> : null}
+        <TradeActions signal={signal} entry={entry} reason={signalReason} confirmations={planConfirmations} />
       </section>
     </div>
-
-    <Dialog.Root open={planSide !== null} onOpenChange={(open) => { if (!open) setPlanSide(null); }}>
-      {planSide ? <ReadOnlyPlan side={planSide} entry={entry} confirmations={planConfirmations} onClose={() => setPlanSide(null)} /> : null}
-    </Dialog.Root>
 
     <section aria-label="Technical confirmations">
       <div className="mb-2 flex items-center gap-2"><Activity className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">Technical confirmations</h3></div>
