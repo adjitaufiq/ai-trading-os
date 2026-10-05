@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { MarketCandles } from "@/components/MarketCandles";
 import { EXECUTION_ENABLED, OPERATING_MODE, type Timeframe } from "@/core/contracts";
 import type { BrokerGatewayClient } from "@/core/broker/gateway/BrokerGatewayClient";
-import type { BridgeBar, BridgeHealth, BridgeSymbolInfo, BridgeTick, GatewayResult, WireHistoryResult } from "@/core/broker/gateway/types";
+import type { BridgeBar, BridgeHealth, BridgeSymbolInfo, BridgeTick, GatewayResult, TerminalInfoObservation, WireHistoryResult } from "@/core/broker/gateway/types";
 
 export const TERMINAL_MARKETS = ["XAUUSD", "BTCUSD"] as const;
 export type TerminalMarket = typeof TERMINAL_MARKETS[number];
@@ -46,6 +46,7 @@ export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000 }: Re
   const [states, setStates] = useState(initial);
   const [health, setHealth] = useState<Slot<BridgeHealth>>(blank);
   const [healthBusy, setHealthBusy] = useState(false);
+  const [terminal, setTerminal] = useState<Slot<TerminalInfoObservation>>(blank);
   const [clock, setClock] = useState<number | null>(null);
   const [inspected, setInspected] = useState<BridgeBar | null>(null);
   const [focus, setFocus] = useState(false);
@@ -162,7 +163,10 @@ export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000 }: Re
   const candle = inspected && chartBars.includes(inspected) ? inspected : chartBars.at(-1) ?? null;
   const ageMs = quote && clock != null ? clock - quote.raw_time_msc : null;
   const freshness = !quote ? "DATA UNAVAILABLE" : state.quote.failed || (ageMs != null && ageMs > STALE_AFTER_MS) ? "DATA STALE" : ageMs == null || ageMs < 0 ? "UNKNOWN" : "FRESH";
-  const connection = health.value?.terminal_connected && !health.failed ? "CONNECTED" : health.value?.terminal_connected ? "DATA DEGRADED" : health.value ? "DISCONNECTED" : healthBusy ? "CONNECTING" : "DATA UNAVAILABLE";
+  // Verified terminal connectivity requires BOTH health.terminal_connected and /v1/terminal connected=true.
+  const termOk = !!terminal.value?.connected && !terminal.failed;
+  const connection = health.value?.terminal_connected && !health.failed && termOk ? "CONNECTED" : health.value?.terminal_connected || terminal.value?.connected ? "DATA DEGRADED" : health.value || terminal.value ? "DISCONNECTED" : healthBusy ? "CONNECTING" : "DATA UNAVAILABLE";
+  const terminalLine = terminal.value ? `MT5 terminal ${terminal.value.connected ? "connected" : "disconnected"} · ping ${terminal.value.terminal_ping_ms.toFixed(1)} ms · ${terminal.value.authority}${terminal.failed ? " · LAST VALIDATED" : ""}` : terminal.failed ? `MT5 terminal status unavailable · ${terminal.error ?? ""}` : "MT5 terminal status pending";
   const price = (n: number | null) => formatMarketPrice(n, digits);
   const ohlc = (["OPEN", "HIGH", "LOW", "CLOSE"] as const).map((label) => ({ label, value: candle ? price(candle[label.toLowerCase() as "open" | "high" | "low" | "close"]) : "—" }));
 
@@ -170,7 +174,7 @@ export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000 }: Re
     <div className="min-h-screen overflow-x-clip bg-background text-foreground">
       <header className="border-b border-border px-4 py-3 sm:px-8">
         <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-4">
-          <div className="min-w-0"><div className="truncate text-sm font-semibold uppercase tracking-widest sm:text-base">PERSONAL AI TRADING OS</div><div className="mt-0.5 text-[11px] text-muted-foreground">EXNESS DEMO <span className="text-border">/</span> REAL DATA <span className="text-border">/</span> READ-ONLY</div></div>
+          <div className="min-w-0"><div className="truncate text-sm font-semibold uppercase tracking-widest sm:text-base">PERSONAL AI TRADING OS</div><div className="mt-0.5 text-[11px] text-muted-foreground">CONFIGURED TARGET: EXNESS DEMO <span className="text-border">/</span> READ-ONLY</div></div>
           <Button asChild size="icon" variant="ghost" aria-label="Developer diagnostics" title="Developer diagnostics" className="shrink-0 text-muted-foreground"><Link to="/audit"><Settings2 /></Link></Button>
         </div>
       </header>
@@ -187,9 +191,10 @@ export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000 }: Re
             {([{ label: "BID", value: quote?.bid ?? null }, { label: "ASK", value: quote?.ask ?? null }, { label: "SPREAD", value: quote ? quote.ask - quote.bid : null }] as const).map(({ label, value }) => <div key={label} className="min-w-0"><div className="text-[10px] font-medium text-muted-foreground sm:text-xs">{label}</div><div className="mt-1 truncate font-mono text-base font-semibold tabular-nums sm:text-3xl" title={price(value)} data-testid={label.toLowerCase()}>{price(value)}</div></div>)}
           </div>
           <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-xs sm:flex sm:gap-6">
-            <span className="min-w-0 truncate text-muted-foreground">EXNESS DEMO · <strong className={connection === "CONNECTED" ? "text-bull" : "text-warn"} data-testid="connection">{connection}</strong></span>
+            <span className="min-w-0 truncate text-muted-foreground">GATEWAY · <strong className={connection === "CONNECTED" ? "text-bull" : "text-warn"} data-testid="connection">{connection}</strong></span>
             <span className={freshness === "FRESH" ? "text-bull" : "text-warn"} data-testid="freshness">{freshness}</span>
           </div>
+          <div className="mt-1 truncate text-[11px] text-muted-foreground" data-testid="terminal-status" title="Account identity/login is not exposed by the read-only gateway">{terminalLine}</div>
           {state.quote.failed && quote && <div className="mt-2 text-xs text-warn" data-testid="last-validated">LAST VALIDATED DATA · latest quote unavailable</div>}
           {!quote && state.quote.failed && <div className="mt-2 text-xs text-warn" data-testid="quote-error">{selected} · DATA UNAVAILABLE</div>}
         </section>
@@ -205,7 +210,7 @@ export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000 }: Re
           {candle && <div className="mt-1 text-xs text-muted-foreground" data-testid="candle-time">{new Date(candle.raw_time_s * 1000).toISOString().replace("T", " ").replace(".000Z", " UTC")}{inspected ? " · selected candle" : " · latest candle"}</div>}
         </section>
         <section aria-label="Candle snapshot" className="grid grid-cols-4 gap-2 border-t border-border pt-4" data-testid="ohlc-snapshot">{ohlc.map(({ label, value }) => <div key={label} className="min-w-0"><div className="text-[10px] text-muted-foreground sm:text-xs">{label}</div><div className="mt-1 truncate font-mono text-xs tabular-nums sm:text-lg" title={value} data-testid={`ohlc-${label.toLowerCase()}`}>{value}</div></div>)}</section>
-        <footer className="flex flex-wrap justify-between gap-2 border-t border-border py-3 text-[11px] text-muted-foreground"><span>EXNESS DEMO · {connection === "CONNECTED" ? "MT5 CONNECTED" : connection} · REAL DATA</span><span>{OPERATING_MODE.replace("_", " ")} · EXECUTION {EXECUTION_ENABLED ? "ENABLED" : "ABSENT"}</span></footer>
+        <footer className="flex flex-wrap justify-between gap-2 border-t border-border py-3 text-[11px] text-muted-foreground"><span>CONFIGURED TARGET EXNESS DEMO · VERIFIED {connection === "CONNECTED" ? "MT5 TERMINAL CONNECTED" : connection} · account identity not exposed</span><span>{OPERATING_MODE.replace("_", " ")} · EXECUTION {EXECUTION_ENABLED ? "ENABLED" : "ABSENT"}</span></footer>
       </main>
       {focus && <div role="dialog" aria-label="Chart focus mode" aria-modal="true" className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background">
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-3"><div className="min-w-0 truncate font-mono text-sm">{selected} <span className="text-muted-foreground">/ {timeframe}</span></div><Button type="button" size="icon" variant="ghost" onClick={() => setFocus(false)} aria-label="Close chart focus" title="Close chart focus"><X /></Button></div>

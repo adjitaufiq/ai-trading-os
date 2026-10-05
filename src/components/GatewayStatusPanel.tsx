@@ -49,7 +49,7 @@ export function GatewayStatusView({ state, environment, mode = OPERATING_MODE }:
         ))}
       </ul>
       <p className="border-t border-border px-4 py-2 font-mono text-xs text-muted-foreground">
-        Acceptance environment only. Market Data freshness stays UNKNOWN until a configured policy exists (TRS-03).
+        Read-only observation. Market Data freshness stays UNKNOWN until a configured policy exists (TRS-03).
       </p>
     </div>
   );
