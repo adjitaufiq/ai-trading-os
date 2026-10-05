@@ -120,12 +120,13 @@ describe("R7 bounded retention", () => {
     for (let i = 0; i < 200; i++) r.boot.onLive(occ(`S${i}`, 1000 + i * 10, 2000 + i * 0.01));
     expect(r.store.size).toBeLessThanOrEqual(5);
     expect(r.store.metrics.evicted_total).toBe(195);
-    const clock = new ReplayClock(BROKER_T0 + 3_600_000);
+    const clock = new ReplayClock(BROKER_T0);
     const p = new BrokerFeedPipeline(SYNTHETIC_SPEC, CFG, clock, () => {}, {}, { maxAuditRecords: 10 });
-    for (let i = 0; i < 100; i++) p.process({ raw: { raw_event_id: `P${i}`, symbol: "XAUUSD", broker_time_ms: BROKER_T0 + OFFSET + i * 10, bid: 2000, ask: 2000.2 + i * 0.01 },
+    for (let i = 0; i < 100; i++) clock.advanceTo(BROKER_T0 + i * 10 + 30), p.process({ raw: { raw_event_id: `P${i}`, symbol: "XAUUSD", broker_time_ms: BROKER_T0 + OFFSET + i * 10, bid: 2000, ask: 2000.2 + i * 0.01 },
       source: "EXNESS_MT5", symbol: "XAUUSD", received_at: BROKER_T0 + i * 10 + 20, connection_epoch: 1, delivery: "STREAM" });
     expect(p.audit.length).toBeLessThanOrEqual(10);
     expect(p.retentionMetrics.cumulative_by_route.LIVE_MUTATION).toBe(100);
+    expect(p.retentionMetrics.evicted_clean_total).toBe(90);
   });
 
   it("8+17: bootstrap-pinned identity evidence is not evicted; ambiguous occurrence stays audited", () => {
