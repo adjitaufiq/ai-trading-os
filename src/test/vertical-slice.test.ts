@@ -18,9 +18,11 @@ function series(tf: keyof typeof TF, closes: number[], start = 1_700_000_000_000
 const up = (k: number) => Array.from({ length: k }, (_, i) => 100 + i * 0.3 + [0, 1, 2, 3, 4, 3, 2, 1][i % 8]!);
 const bullEngulfM5 = () => { const b = series("M5", up(40)); const p = b[b.length - 2]!, l = b[b.length - 1]!;
   b[b.length - 2] = { ...p, open: 120, close: 119, high: 120.2, low: 118.8 }; b[b.length - 1] = { ...l, open: 118.9, close: 121, high: 121.2, low: 118.7 }; return b; };
+// Operator v2 needs location: quote sits on the H1 EMA21 (EMA21/50 confluence) of the uptrend fixture.
+const H1_EMA21 = (ema(series("H1", up(60)), 21) as { value: number }).value;
 const base = (over: Partial<EvaluationInput> = {}): EvaluationInput => ({
   symbol: "XAUUSD", market_current: true, bars_current: true,
-  quote: { bid: 125, ask: 125.2, spread: 0.2, tick_time_ms: 1, observed_at: 2 },
+  quote: { bid: H1_EMA21 - 0.1, ask: H1_EMA21 + 0.1, spread: 0.2, tick_time_ms: 1, observed_at: 2 },
   closed: { M5: bullEngulfM5(), M15: series("M15", up(40)), H1: series("H1", up(60)), H4: series("H4", up(60)) },
   as_of: 10, env: { operating_mode: "MONITOR_ONLY", execution_enabled: false }, ...over,
 });
@@ -65,7 +67,7 @@ describe("vertical slice — four-state contract", () => {
     const s = evaluate(base());
     expect(s.bias.state).toBe("BUY");
     expect(s.setup.state).toBe("ACTIVE");
-    expect(s.signal).toMatchObject({ state: "READY", reason: "M5_CLOSED_BULLISH_ENGULFING", validity_policy: "RESEARCH_REQUIRED" });
+    expect(s.signal).toMatchObject({ state: "READY", reason: "M5_CLOSED_BULLISH_BULLISH_ENGULFING", validity_policy: "RESEARCH_REQUIRED" });
     expect(s.execution.state).toBe("BLOCKED");
     expect(s.execution.reasons).toContain("CAPABILITY_UNAUTHORIZED");
     expect(EXECUTION_ENABLED).toBe(false);
@@ -122,7 +124,7 @@ describe("vertical slice — four-state contract", () => {
     const i = base(); const before = JSON.stringify(i.closed.M5); evaluate(i); expect(JSON.stringify(i.closed.M5)).toBe(before);
   });
   it("execution/spread changes do not mutate setup", () => {
-    const a = evaluate(base()), b = evaluate(base({ quote: { ...base().quote!, ask: 130, spread: 5 }, env: { operating_mode: "DEMO", execution_enabled: true } }));
+    const a = evaluate(base()), b = evaluate(base({ quote: { ...base().quote!, spread: 5 }, env: { operating_mode: "DEMO", execution_enabled: true } }));
     expect(b.setup).toEqual(a.setup);
     expect(b.execution.state).toBe("ALLOWED");
   });
@@ -130,7 +132,7 @@ describe("vertical slice — four-state contract", () => {
   it("transitions preserve reason/time/evidence/versions; trail bounded", () => {
     const t = new TransitionTrail(3); const a = evaluate(base()); t.record(null, a); const out = t.record(a, un);
     const sig = out.find((x) => x.domain === "SIGNAL")!;
-    expect(sig).toMatchObject({ from: "READY", to: "NOT_EVALUABLE", reason_code: "MARKET_STATE_UNAVAILABLE", signal_policy_version: "signal-v1-h1-rsi-direction-gate" });
+    expect(sig).toMatchObject({ from: "READY", to: "NOT_EVALUABLE", reason_code: "MARKET_STATE_UNAVAILABLE", signal_policy_version: "signal-v2-operator-closed-m5-m15-patterns" });
     expect(t.entries.length).toBe(3); expect(t.total).toBe(9);
   });
 });

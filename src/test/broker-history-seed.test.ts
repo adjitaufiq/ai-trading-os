@@ -16,7 +16,7 @@ describe("broker history → technical engine", () => {
   });
 
   it("history warmup clears INSUFFICIENT_HISTORY and yields a BUY bias with entry analysis", () => {
-    const rising = (ms: number, n: number) => Array.from({ length: n }, (_, i) => bar(i, ms, 100 + i + (i % 3 === 0 ? -2 : 0)));
+    const rising = (ms: number, n: number) => Array.from({ length: n }, (_, i) => bar(i, ms, 100 + i * 0.5 + [0, 1, 2, 3, 4, 3, 2, 1][i % 8]!));
     const m5 = rising(300_000, 60);
     const s = evaluate({ symbol: "XAUUSD", market_current: true, bars_current: true, quote: { bid: 200, ask: 200.2, spread: 0.2, tick_time_ms: 0, observed_at: 0 },
       closed: { M5: m5, M15: rising(900_000, 60), H1: rising(H, 60), H4: rising(4 * H, 60) }, as_of: 1e15, env: SLICE_ENV });
