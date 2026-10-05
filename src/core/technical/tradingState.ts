@@ -355,10 +355,12 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
   const execution: TradingSnapshot["execution"] = capabilityReasons.length ? { state: "BLOCKED", reasons } : availability === "STALE" ? { state: "INHIBITED", reasons } : { state: "ALLOWED", reasons };
 
   // ENTRY ANALYSIS (label only; READY requires a CLOSED M5 trigger, so forming candles can never produce it)
+  const readySide = signal.state === "READY" ? signal.origin?.side ?? side : null;
   const entry: TradingSnapshot["entry"] = signal.state === "NOT_EVALUABLE" ? { state: "NOT_EVALUABLE", reason: signal.reason }
-    : signal.state === "READY" ? { state: side === "BUY" ? "LONG_CANDIDATE" : "SHORT_CANDIDATE", reason: `${bias.reason} + ${setup.reason} + ${signal.reason}` }
-    : { state: "WAIT", reason: `${setup.state === "ACTIVE" ? signal.reason : setup.reason}` };
-  const referencePlan = deriveReferencePlan(entry, i.quote, evidence, op);
+    : signal.state === "READY" && readySide ? { state: readySide === "BUY" ? "LONG_CANDIDATE" : "SHORT_CANDIDATE", reason: `${bias.reason} + ${setup.reason} + ${signal.reason}` }
+    : { state: "WAIT", reason: `${setup.state === "ACTIVE" || signal.state === "EXPIRED" || signal.state === "INVALIDATED" ? signal.reason : setup.reason}` };
+  // READY ⇒ frozen origin plan (never recomputed from the current quote).
+  const referencePlan = signal.state === "READY" && signal.origin ? frozenPlan(signal.origin) : deriveReferencePlan(entry, i.quote, evidence, op);
   const radarPlan = deriveRadarPlan(entry, i.quote, evidence, op, referencePlan);
 
   const why: WhyFact[] = [];
