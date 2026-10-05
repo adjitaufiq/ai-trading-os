@@ -7,7 +7,7 @@ import type { Timeframe } from "../contracts";
 import type { TechBar } from "./indicators";
 import { SLICE_ENV, TIMEFRAMES, evaluate, type TradingSnapshot } from "./tradingState";
 
-export const BACKTEST_VERSION = "quick-backtest-v2-gross-ohlc-signal-lifecycle";
+export const BACKTEST_VERSION = "quick-backtest-v3-gross-ohlc-lifecycle-structural-clamp";
 export const BACKTEST_DISCLAIMER = "Backtest gross berdasarkan OHLC broker; spread/slippage/latency historis tidak dimodelkan kecuali data tersedia.";
 
 export type BacktestOutcome = "WIN" | "LOSS" | "AMBIGUOUS" | "OPEN_AT_END";
@@ -34,6 +34,9 @@ export interface BacktestResult {
   readonly signals_expired: number;
   readonly signals_invalidated: number;
   readonly signals_missed_chasing: number;
+  readonly bad_rr_veto_count: number;
+  readonly no_structural_target_count: number;
+  readonly avg_win_r: number | null;
   readonly trades: readonly BacktestTrade[];
   readonly wins: number;
   readonly losses: number;
@@ -76,7 +79,7 @@ export function runQuickBacktest(history: Readonly<Record<Timeframe, readonly Te
   const trades: BacktestTrade[] = [];
   let prev: TradingSnapshot["signal"] | null = null;
   let busyUntil = -Infinity;
-  let created = 0, expired = 0, invalidated = 0, missed = 0;
+  let created = 0, expired = 0, invalidated = 0, missed = 0, badRr = 0, noStruct = 0;
   const traded = new Set<string>();
   for (const bar of steps) {
     const t = bar.available_at;
@@ -93,16 +96,20 @@ export function runQuickBacktest(history: Readonly<Record<Timeframe, readonly Te
     if (snap.entry.state === "LONG_CANDIDATE") buy++; else if (snap.entry.state === "SHORT_CANDIDATE") sell++; else hold++;
     const plan = snap.reference_plan;
     const sid = snap.signal.origin?.signal_id ?? null;
+    const born = ev === "READY_CREATED" || ev === "FRESH_READY_CREATED";
+    if (born && snap.entry.reason === "BAD_RR_AFTER_STRUCTURAL_CLAMP") { badRr++; continue; } // economics veto ⇒ no trade
+    if (born && plan.status === "AVAILABLE" && plan.economics_status === "NO_STRUCTURAL_TARGET") noStruct++;
     // Trade only at READY birth, once per signal_id, one position at a time.
-    if (plan.status !== "AVAILABLE" || t < busyUntil || !sid || traded.has(sid) || (ev !== "READY_CREATED" && ev !== "FRESH_READY_CREATED")) continue;
+    if (plan.status !== "AVAILABLE" || plan.tp2 === null || (snap.entry.state !== "LONG_CANDIDATE" && snap.entry.state !== "SHORT_CANDIDATE") || t < busyUntil || !sid || traded.has(sid) || (ev !== "READY_CREATED" && ev !== "FRESH_READY_CREATED")) continue;
     traded.add(sid);
+    const target = plan.tp2;
     const future = m5.filter((b) => b.open_time >= bar.close_time);
-    const { outcome, index } = resolveTrade(plan.side, plan.sl, plan.tp2, future);
+    const { outcome, index } = resolveTrade(plan.side, plan.sl, target, future);
     const exitBar = future[index] ?? null;
     trades.push({
-      side: plan.side, regime: snap.operator?.regime ?? "UNKNOWN", entry_at: t, entry: plan.entry, sl: plan.sl, target: plan.tp2,
+      side: plan.side, regime: snap.operator?.regime ?? "UNKNOWN", entry_at: t, entry: plan.entry, sl: plan.sl, target,
       exit_at: outcome === "OPEN_AT_END" ? null : exitBar?.close_time ?? null, outcome,
-      r: outcome === "WIN" ? 2 : outcome === "LOSS" ? -1 : null, holding_bars: outcome === "OPEN_AT_END" ? future.length : index + 1, signal_id: sid,
+      r: outcome === "WIN" ? plan.final_rr : outcome === "LOSS" ? -1 : null, holding_bars: outcome === "OPEN_AT_END" ? future.length : index + 1, signal_id: sid,
     });
     busyUntil = outcome === "OPEN_AT_END" ? Infinity : exitBar?.close_time ?? Infinity; // one position at a time
   }
@@ -119,7 +126,8 @@ export function runQuickBacktest(history: Readonly<Record<Timeframe, readonly Te
   }
   return {
     version: BACKTEST_VERSION, evaluated, buy_candidates: buy, sell_candidates: sell, hold, trades,
-    signals_created: created, signals_expired: expired, signals_invalidated: invalidated, signals_missed_chasing: missed,
+    signals_created: created, signals_expired: expired, signals_invalidated: invalidated, signals_missed_chasing: missed, bad_rr_veto_count: badRr, no_structural_target_count: noStruct,
+    avg_win_r: wins ? trades.filter((x) => x.outcome === "WIN").reduce((a, x) => a + x.r!, 0) / wins : null,
     wins, losses, ambiguous: trades.filter((x) => x.outcome === "AMBIGUOUS").length, open_at_end: trades.filter((x) => x.outcome === "OPEN_AT_END").length,
     win_rate: wins + losses ? wins / (wins + losses) : null, gross_r: gross, avg_r: decided.length ? gross / decided.length : null, max_drawdown_r: dd,
     avg_holding_bars: closedTrades.length ? closedTrades.reduce((a, x) => a + x.holding_bars, 0) / closedTrades.length : null,
