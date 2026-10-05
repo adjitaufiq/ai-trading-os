@@ -25,3 +25,5 @@
 - Missing intervals are MissingInterval objects (src/core/candles/MissingInterval.ts) with explicit reasons, never candles; no session contract is hardcoded, so absent authority yields OUTSIDE_SESSION_CONTRACT_UNRESOLVED. Why: PRE-2D R5, uncertainty must not become fabricated OHLC or assumed broker failure.
 - Production code never imports src/probe/**. Why: probe ≠ Stage 4.
 - Stage 3 chain is composed only in MarketRuntime (src/core/runtime); consumers get the frozen MarketRuntimeReader and tests swap only the gateway transport, never the middle components. Why: D2 — one canonical runtime, React never owns market-state transitions.
+- BrokerGatewayClient accepts the non-3.0B-1 capability "MARKET_DATA.TICK" only on LIVE /v1/stream frames (counted via streamCapabilityAliasCount); REST validation stays exact. Why: real gateway dialect, contract debt to fix on the gateway side.
+- CandleAggregator skew tolerance (from ClassifierConfig.maxSourceTimeSkewMs) defers next-bucket ticks until the canonical clock reaches close_time; bars never close early. Why: source clock runs a few seconds ahead of bridge/client.
