@@ -105,7 +105,7 @@ export class MarketRuntime {
     const count = (r: AuditRecord) => { this.routeCounts[r.route]++; };
     this.pipeline = new BrokerFeedPipeline(o.spec, o.classifier, o.clock, (e) => this.fanout.ingest(e));
     const pipe = this.pipeline;
-    this.boot = new BootstrapCoordinator({ process: (env) => { const r = pipe.process(env); count(r); return r; } }, new ObservationIdentityRegistry());
+    this.boot = new BootstrapCoordinator({ process: (env, id) => { const r = pipe.process(env, id); count(r); return r; } }, new ObservationIdentityRegistry());
     this.reader = this.makeReader();
   }
 

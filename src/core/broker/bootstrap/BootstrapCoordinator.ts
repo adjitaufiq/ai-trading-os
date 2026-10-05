@@ -3,6 +3,7 @@
 // History stays BACKFILL and goes through the existing BACKFILL_HISTORY route (never live mutation).
 // The coordinator is step-driven (no timers, no Date.now) so LIVE and REPLAY runs are identical.
 import type { AuditRecord } from "../BrokerFeedPipeline";
+import type { IdentityHint } from "../AnomalyClassifier";
 import type { BrokerEventEnvelope, RawBrokerTick } from "../types";
 import {
   ObservationIdentityRegistry,
