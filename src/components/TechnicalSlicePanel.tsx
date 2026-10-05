@@ -65,7 +65,7 @@ export function referenceEntry(snapshot: TradingSnapshot | null): number | null 
 export function operatorSummary(snapshot: TradingSnapshot | null) {
   const op = snapshot?.operator ?? null;
   const dash = "—";
-  if (!op) return { mode: "TIDAK JELAS", h4: dash, h1: dash, area: dash, ema: dash, trigger: "belum ada", status: "HOLD" };
+  if (!op) return { mode: "TIDAK JELAS", h4: dash, h1: dash, area: dash, ema: dash, trigger: "belum ada", status: "HOLD", alignment: null as string | null };
   const mode = op.regime === "TREND" ? "TREND" : op.regime === "RANGE" ? "RANGE" : "TIDAK JELAS";
   const h4 = op.h4_primary === "UP" ? "NAIK" : op.h4_primary === "DOWN" ? "TURUN" : op.h4_primary === "MIXED" ? "CAMPURAN" : "DATA BELUM CUKUP";
   const h1 = ({ ALIGNED: "SEARAH", PULLBACK_AGAINST_H4: "PULLBACK", RETURNING_TO_H4: "MULAI KEMBALI", REVERSAL_CANDIDATE: "CAMPURAN", MIXED: "CAMPURAN", NO_PRIMARY_DIRECTION: "CAMPURAN", INSUFFICIENT: "DATA BELUM CUKUP" } as const)[op.h1_context];
@@ -73,7 +73,8 @@ export function operatorSummary(snapshot: TradingSnapshot | null) {
   const ema = ({ BAND: "BAND", NEAR_EMA21: "DEKAT EMA21", NEAR_EMA50: "DEKAT EMA50", NOT_NEAR: "TIDAK DEKAT", INSUFFICIENT: "DATA BELUM CUKUP" } as const)[op.ema_confluence.zone];
   const trigger = op.trigger === "BULLISH" ? "bullish" : op.trigger === "BEARISH" ? "bearish" : op.trigger === "CONFLICT" ? "bertentangan" : "belum ada";
   const status = op.status === "CARI_BUY" ? "CARI BUY" : op.status === "CARI_SELL" ? "CARI SELL" : "HOLD";
-  return { mode, h4, h1, area, ema, trigger, status };
+  const alignment = ({ WITH_MACRO: "WITH MACRO", COUNTER_MACRO: "COUNTER MACRO", NEUTRAL_MACRO: "NEUTRAL MACRO", NOT_APPLICABLE: null } as const)[op.alignment ?? "NOT_APPLICABLE"];
+  return { mode, h4, h1, area, ema, trigger, status, alignment: alignment as string | null };
 }
 
 export interface TechnicalSlicePanelProps {
@@ -274,13 +275,24 @@ function Cockpit({ service, explain, store }: { service: TechnicalSliceService; 
     <PaperPositions store={store} symbol={view.symbol} quote={quote} />
 
     <section aria-label="Ringkasan trader" data-testid="operator-summary">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-        {(() => { const o = operatorSummary(snapshot); return ([
-          ["Mode", o.mode, "op-mode"], ["H4", o.h4, "op-h4"], ["H1", o.h1, "op-h1"], ["Area", o.area, "op-area"],
-          ["EMA", o.ema, "op-ema"], ["Trigger", o.trigger, "op-trigger"], ["Status", o.status, "op-status"],
-        ] as const).map(([label, value, id]) => <ConfirmationLight key={id} label={label} value={value}
-          tone={value === "NAIK" || value === "bullish" || value === "CARI BUY" ? "BULL" : value === "TURUN" || value === "bearish" || value === "CARI SELL" ? "BEAR" : "NEUTRAL"} testId={id} />); })()}
-      </div>
+      {(() => {
+        const o = operatorSummary(snapshot);
+        const tone = (value: string) => value === "NAIK" || value === "bullish" || value === "CARI BUY" ? "BULL" as const : value === "TURUN" || value === "bearish" || value === "CARI SELL" ? "BEAR" as const : "NEUTRAL" as const;
+        const light = ([label, value, id]: readonly [string, string, string]) => <ConfirmationLight key={id} label={label} value={value} tone={tone(value)} testId={id} />;
+        return <div className="grid gap-3 lg:grid-cols-[3fr_4fr]">
+          <div data-testid="macro-context">
+            <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Macro context · H4/H1</h3>
+            <div className="grid grid-cols-3 gap-2">{([["Mode", o.mode, "op-mode"], ["H4", o.h4, "op-h4"], ["H1", o.h1, "op-h1"]] as const).map(light)}</div>
+          </div>
+          <div data-testid="scalp-context">
+            <div className="mb-1.5 flex items-center gap-2">
+              <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Scalp engine · M15/M5</h3>
+              {o.alignment && <span data-testid="op-alignment" className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${o.alignment === "COUNTER MACRO" ? "border-destructive/50 text-destructive" : "border-border text-foreground"}`}>{o.alignment}</span>}
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{([["Area", o.area, "op-area"], ["EMA", o.ema, "op-ema"], ["Trigger", o.trigger, "op-trigger"], ["Status", o.status, "op-status"]] as const).map(light)}</div>
+          </div>
+        </div>;
+      })()}
     </section>
 
     <section aria-label="Konfirmasi teknikal">
