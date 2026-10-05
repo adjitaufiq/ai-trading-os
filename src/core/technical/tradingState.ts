@@ -323,7 +323,7 @@ export function buildSidePlan(
   // Local scalp stop: latest CONFIRMED M15 swing on the protective side, fallback M5. Never H1.
   let anchorTf: "M15" | "M5" | null = null, anchorPrice = NaN;
   for (const tf of SCALP_STOP_PARAMS.anchor_priority) {
-    const a = [...(evidence[tf]?.structure.swings ?? [])].reverse().find((s) => s.kind === kind && Number.isFinite(s.price) && (side === "BUY" ? s.price < reference : s.price > reference));
+    const a = [...(evidence[tf]?.structure?.swings ?? [])].reverse().find((s) => s.kind === kind && Number.isFinite(s.price) && (side === "BUY" ? s.price < reference : s.price > reference));
     if (a) { anchorTf = tf; anchorPrice = a.price; break; }
   }
   if (!anchorTf) return { ok: false, reason: `LOCAL_SCALP_SWING_${kind}_UNAVAILABLE` };
