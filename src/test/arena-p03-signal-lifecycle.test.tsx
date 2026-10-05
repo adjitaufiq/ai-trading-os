@@ -21,7 +21,7 @@ type OpArgs = { candidate?: "BUY" | "SELL" | null; trigK?: number; momentum?: st
 const op = ({ candidate = null, trigK = 10, momentum = "BUY", m5 = pat() }: OpArgs = {}) => ({
   candidate, status: candidate ? `CARI_${candidate}` : "CARI_BUY", reason: "NO_CLOSED_BULLISH_TRIGGER", alignment: "COUNTER_MACRO", location: "AT_SUPPORT",
   trigger_bar: candidate ? { timeframe: "M5", open_time: trigK * M5, available_at: (trigK + 1) * M5, patterns: [candidate === "BUY" ? "BULLISH_ENGULFING" : "BEARISH_ENGULFING"] } : null,
-  scalp: { combined_momentum: momentum }, patterns: { M5: m5, M15: pat() },
+  scalp: { combined_momentum: momentum, local_zones: [] }, patterns: { M5: m5, M15: pat() }, zones: { H4: [], H1: [], M15: [] },
 }) as never;
 const ACTIVE = { state: "ACTIVE" as const, reason: "TREND_BUY_LOCATION_RSI" };
 const input = (bars: TechBar[], bid: number, ask: number): EvaluationInput => ({
