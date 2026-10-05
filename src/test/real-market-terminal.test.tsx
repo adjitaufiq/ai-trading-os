@@ -54,31 +54,31 @@ describe("real dual-market monitor terminal", () => {
       fireEvent.click(screen.getByTestId(`timeframe-${tf}`));
       await waitFor(() => expect(client.getBars).toHaveBeenCalledWith({ symbol: "BTCUSD", timeframe: tf, mode: "pos", start: 0, count: 200 }));
     }
-    fireEvent.click(screen.getByRole("button", { name: "Focus chart" }));
-    expect(screen.getByRole("dialog", { name: "Chart focus mode" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Close chart focus" }));
+    fireEvent.click(screen.getByRole("button", { name: "Fokus grafik" }));
+    expect(screen.getByRole("dialog", { name: "Mode fokus grafik" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Tutup fokus grafik" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
   it("shows unavailable rather than simulated data on gateway failure, and stale broker tick stays stale", async () => {
     setup(fakeClient(true));
-    await waitFor(() => expect(screen.getByTestId("quote-error")).toHaveTextContent("DATA UNAVAILABLE"));
+    await waitFor(() => expect(screen.getByTestId("quote-error")).toHaveTextContent("DATA TIDAK TERSEDIA"));
     expect(screen.getByTestId("bid")).toHaveTextContent("—");
     expect(screen.queryByText("2347.30")).not.toBeInTheDocument();
   });
   it("renders verified terminal connectivity, ping and OBSERVATION_ONLY authority without claiming account identity", async () => {
     const client = fakeClient(); setup(client);
-    await waitFor(() => expect(screen.getByTestId("terminal-status")).toHaveTextContent("MT5 terminal connected · ping 12.3 ms · OBSERVATION_ONLY"));
+    await waitFor(() => expect(screen.getByTestId("terminal-status")).toHaveTextContent("Terminal MT5 terhubung · ping 12.3 ms · OBSERVATION_ONLY"));
     expect(client.getTerminal).toHaveBeenCalled();
-    expect(screen.getByTestId("connection")).toHaveTextContent("CONNECTED");
-    expect(screen.getAllByText(/CONFIGURED TARGET/).length).toBeGreaterThan(0);
+    expect(screen.getByTestId("connection")).toHaveTextContent("TERHUBUNG");
+    expect(screen.getAllByText(/TARGET: EXNESS DEMO/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/login|account #/i)).not.toBeInTheDocument();
   });
   it("health connected but terminal route disconnected is not CONNECTED", async () => {
     const client = fakeClient();
     client.getTerminal.mockImplementation(async () => ok({ connected: false, terminal_ping_us: 0, terminal_ping_ms: 0, retransmission: 0, trade_allowed_observed: false, tradeapi_disabled_observed: false, authority: "OBSERVATION_ONLY" }));
     setup(client);
-    await waitFor(() => expect(screen.getByTestId("terminal-status")).toHaveTextContent("disconnected"));
-    expect(screen.getByTestId("connection")).toHaveTextContent("DATA DEGRADED");
+    await waitFor(() => expect(screen.getByTestId("terminal-status")).toHaveTextContent("terputus"));
+    expect(screen.getByTestId("connection")).toHaveTextContent("DATA TERGANGGU");
   });
   it("preserves precision policy without altering raw market values", () => {
     expect(formatMarketPrice(4140.348, null)).toBe("4140.348");
