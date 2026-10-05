@@ -1,6 +1,6 @@
 // PAPER / SIMULATION trading + journal. Frontend-only, local persistence.
 // SIMULATION ONLY: nothing here talks to a broker, gateway, account or order API. There is no order path.
-import type { TradingSnapshot } from "@/core/technical/tradingState";
+import { buildSidePlan, RADAR_PLAN_POLICY_VERSION, type TradingSnapshot } from "@/core/technical/tradingState";
 import { compactSummary, engineSignalOf, type CompactSummary, type EngineSignal } from "./tradeSummary";
 
 export type PaperSide = "BUY" | "SELL";
@@ -28,7 +28,16 @@ export interface PaperPosition {
   readonly pnl: number | null;
   readonly r_multiple: number | null;
   readonly exit_reason: ExitReason | null;
+  // ---- plan-at-open provenance (optional: older stored positions lack them) ----
+  readonly action_source?: ActionSource;
+  readonly engine_search?: "CARI_BUY" | "CARI_SELL" | "HOLD" | null;
+  readonly engine_actionable_signal?: EngineSignal;
+  readonly plan_source?: PlanSource | null;
+  readonly plan_unavailable_reason?: string | null;
+  readonly policy_versions?: Readonly<Record<string, string>> | null;
 }
+export type ActionSource = "ENGINE_ALIGNED" | "MANUAL_EARLY" | "MANUAL_AGAINST_ENGINE";
+export type PlanSource = "SIGNAL_PLAN" | "RADAR_REBASED_TO_ACTUAL_ENTRY" | "CURRENT_EVIDENCE_REBASED_TO_ACTUAL_ENTRY";
 
 export type JournalEntry =
   | { readonly id: string; readonly type: "SIGNAL"; readonly at: number; readonly symbol: string; readonly from: EngineSignal; readonly to: EngineSignal; readonly context: CompactSummary | null }
@@ -36,18 +45,30 @@ export type JournalEntry =
 
 export interface Quote { readonly bid: number; readonly ask: number }
 
-/** BUY fills at ASK, SELL at BID (paper). SL/TP only from a reference plan on the same side. */
+/** BUY fills at ASK, SELL at BID (paper). SL/TP are frozen at open from the same side plan builder; never mutated afterwards. */
 export function openPaper(args: { symbol: string; side: PaperSide; quote: Quote; now: number; snapshot: TradingSnapshot | null; id: string }): PaperPosition {
   const { symbol, side, quote, now, snapshot, id } = args;
   const entry = side === "BUY" ? quote.ask : quote.bid;
-  const plan = snapshot?.reference_plan.status === "AVAILABLE" && snapshot.reference_plan.side === side ? snapshot.reference_plan : null;
   const engine = engineSignalOf(snapshot);
+  const search = snapshot?.operator?.status ?? null;
+  const searchSide = search === "CARI_BUY" ? "BUY" : search === "CARI_SELL" ? "SELL" : null;
+  const action_source: ActionSource = engine === side ? "ENGINE_ALIGNED" : engine === "HOLD" && searchSide === side ? "MANUAL_EARLY" : "MANUAL_AGAINST_ENGINE";
+  let levels: { sl: number; tp1: number; tp2: number } | null = null, plan_source: PlanSource | null = null, reason: string | null = null;
+  const ref = snapshot?.reference_plan;
+  if (action_source === "ENGINE_ALIGNED" && ref?.status === "AVAILABLE" && ref.side === side) { levels = ref; plan_source = "SIGNAL_PLAN"; }
+  else {
+    const p = buildSidePlan(side, entry, snapshot?.evidence ?? null, snapshot?.operator ?? null);
+    if (p.ok) { levels = p; plan_source = action_source === "MANUAL_EARLY" ? "RADAR_REBASED_TO_ACTUAL_ENTRY" : "CURRENT_EVIDENCE_REBASED_TO_ACTUAL_ENTRY"; }
+    else reason = p.reason;
+  }
   return Object.freeze({
     id, symbol, side, mode: "SIMULATION", opened_at: now, entry, mark: side === "BUY" ? quote.bid : quote.ask,
-    sl: plan?.sl ?? null, tp1: plan?.tp1 ?? null, tp2: plan?.tp2 ?? null,
+    sl: levels?.sl ?? null, tp1: levels?.tp1 ?? null, tp2: levels?.tp2 ?? null,
     engine_signal: engine, manual_against_engine: engine !== side,
     context: snapshot && snapshot.availability !== "UNAVAILABLE" ? compactSummary(snapshot) : null,
     status: "OPEN", closed_at: null, exit_price: null, pnl: null, r_multiple: null, exit_reason: null,
+    action_source, engine_search: search, engine_actionable_signal: engine, plan_source, plan_unavailable_reason: reason,
+    policy_versions: snapshot ? { ...snapshot.versions, radar_plan_policy_version: RADAR_PLAN_POLICY_VERSION } : null,
   });
 }
 
