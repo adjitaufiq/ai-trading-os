@@ -9,7 +9,7 @@ import { EXECUTION_ENABLED, OPERATING_MODE } from "@/core/contracts";
 
 const NA = { status: "INSUFFICIENT_HISTORY" };
 const zone = (low: number, high: number, role: "SUPPORT" | "RESISTANCE") => ({ source_tf: "M15", low, high, center: (low + high) / 2, touches: 2, role, distance: 1, confluence_tfs: [] });
-const evidence = { M15: { atr14: { status: "OK", value: 4 } }, H1: { structure: { swings: [{ kind: "LOW", price: 90 }, { kind: "HIGH", price: 120 }] } } } as never;
+const evidence = { M5: { rsi14: NA }, M15: { rsi14: NA, atr14: { status: "OK", value: 4 } }, H1: { rsi14: NA, structure: { swings: [{ kind: "LOW", price: 90 }, { kind: "HIGH", price: 120 }] } } } as never;
 const op = (status: "CARI_BUY" | "CARI_SELL" | "HOLD", zones: ReturnType<typeof zone>[]) => ({
   status, reason: "TRIGGER_PENDING", ema_confluence: { zone: "NOT_NEAR", timeframe: null }, patterns: { M5: { bullish: [], bearish: [] }, M15: { bullish: [], bearish: [] } }, zones: { M15: zones }, scalp: { local_zones: zones, M15: { ema21: NA, ema50: NA, atr14: NA }, M5: { ema21: NA, ema50: NA, atr14: NA } },
 }) as never;
