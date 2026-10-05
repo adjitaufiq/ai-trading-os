@@ -80,16 +80,17 @@ export function formatMarketPrice(value: number | null, digits: number | null) {
 
 export interface RealMarketTerminalProps {
   client: BrokerGatewayClient;
+  selectedSymbol: TerminalMarket;
+  onSelectedSymbolChange: (symbol: TerminalMarket) => void;
   now?: () => number;
   pollMs?: number;
   /** Canonical runtime readers; their LIVE observations drive the display-only forming candle. */
   liveReaders?: Partial<Record<TerminalMarket, MarketRuntimeReader | null>>;
 }
 
-export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000, liveReaders }: RealMarketTerminalProps) {
+export function RealMarketTerminal({ client, selectedSymbol: selected, onSelectedSymbolChange, now = Date.now, pollMs = 1000, liveReaders }: RealMarketTerminalProps) {
   const [live, setLive] = useState<Record<string, readonly LiveBar[]>>({});
   const liveSeq = useRef<Record<string, number>>({});
-  const [selected, setSelected] = useState<TerminalMarket>("XAUUSD");
   const [timeframe, setTimeframe] = useState<Timeframe>("M5");
   const [states, setStates] = useState(initial);
   const [health, setHealth] = useState<Slot<BridgeHealth>>(blank);
@@ -247,7 +248,7 @@ export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000, live
       </header>
       <main className="mx-auto max-w-screen-2xl space-y-5 px-4 py-5 sm:px-8 sm:py-7">
         <div className="flex gap-2" role="group" aria-label="Markets">
-          {TERMINAL_MARKETS.map((symbol) => <Button key={symbol} type="button" variant={selected === symbol ? "default" : "outline"} onClick={() => setSelected(symbol)} aria-pressed={selected === symbol} className="h-10 flex-1 font-mono text-sm sm:max-w-36" data-testid={`select-${symbol}`}>{symbol}</Button>)}
+          {TERMINAL_MARKETS.map((symbol) => <Button key={symbol} type="button" variant={selected === symbol ? "default" : "outline"} onClick={() => onSelectedSymbolChange(symbol)} aria-pressed={selected === symbol} className="h-10 flex-1 font-mono text-sm sm:max-w-36" data-testid={`select-${symbol}`}>{symbol}</Button>)}
         </div>
         <section className="min-w-0" aria-label="Selected market">
           <div className="flex flex-wrap items-end justify-between gap-2">
@@ -277,7 +278,6 @@ export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000, live
           {candle && <div className="mt-1 text-xs text-muted-foreground" data-testid="candle-time">{new Date(candle.raw_time_s * 1000).toISOString().replace("T", " ").replace(".000Z", " UTC")}{inspected ? " · selected candle" : " · latest candle"}</div>}
         </section>
         <section aria-label="Candle snapshot" className="grid grid-cols-4 gap-2 border-t border-border pt-4" data-testid="ohlc-snapshot">{ohlc.map(({ label, value }) => <div key={label} className="min-w-0"><div className="text-[10px] text-muted-foreground sm:text-xs">{label}</div><div className="mt-1 truncate font-mono text-xs tabular-nums sm:text-lg" title={value} data-testid={`ohlc-${label.toLowerCase()}`}>{value}</div></div>)}</section>
-        <footer className="flex flex-wrap justify-between gap-2 border-t border-border py-3 text-[11px] text-muted-foreground"><span>CONFIGURED TARGET EXNESS DEMO · VERIFIED {connection === "CONNECTED" ? "MT5 TERMINAL CONNECTED" : connection} · account identity not exposed</span><span>{OPERATING_MODE.replace("_", " ")} · EXECUTION {EXECUTION_ENABLED ? "ENABLED" : "ABSENT"}</span></footer>
       </main>
       {focus && <div role="dialog" aria-label="Chart focus mode" aria-modal="true" className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background">
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-3"><div className="min-w-0 truncate font-mono text-sm">{selected} <span className="text-muted-foreground">/ {timeframe}</span></div><Button type="button" size="icon" variant="ghost" onClick={() => setFocus(false)} aria-label="Close chart focus" title="Close chart focus"><X /></Button></div>

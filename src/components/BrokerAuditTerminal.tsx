@@ -203,6 +203,9 @@ export function BrokerAuditTerminal({ client, now = () => Date.now(), pollMs = 1
 
   return (
     <div className="space-y-4 font-mono" data-testid="audit-terminal">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3" aria-label="Engine tools">
+        {["Market Runtime", "Candle Engine", "Technical Engine", "Signal Engine", "Risk/Trade Plan Engine", "Diagnostics"].map((tool) => <div key={tool} className="border border-border bg-card px-3 py-2 text-xs"><span className="text-muted-foreground">ENGINE TOOLS</span><div className="mt-1 font-semibold text-foreground">{tool}</div></div>)}
+      </div>
       {/* SYSTEM STATE BAR */}
       <div className="flex flex-wrap gap-2 text-xs" data-testid="audit-labels">
         {["EXNESS MT5", env?.source_mode ?? (health.result?.ok ? health.result.envelope.source_mode : "SOURCE_MODE ?"), "READ-ONLY", OPERATING_MODE, "EXECUTION ABSENT", "WEBSOCKET DEFERRED"].map((l) => (

@@ -1,5 +1,6 @@
 import { createFileRoute, ClientOnly } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import type { TerminalMarket } from "@/components/RealMarketTerminal";
 import { BrokerGatewayClient } from "@/core/broker/gateway/BrokerGatewayClient";
 import { makeGatewayConfig } from "@/core/broker/gateway/config";
 import { LiveClock } from "@/core/temporal/CanonicalClock";
@@ -26,6 +27,7 @@ export const Route = createFileRoute("/")({
 const SYMBOLS = ["XAUUSD", "BTCUSD"] as const;
 
 function Terminal() {
+  const [selectedSymbol, setSelectedSymbol] = useState<TerminalMarket>("XAUUSD");
   const config = useMemo(() => makeGatewayConfig({ timeoutMs: 15_000 }), []);
   const client = useMemo(() => new BrokerGatewayClient({
     config, wallClock: new LiveClock(), monoClock: { now: () => performance.now() }, wsFactory: browserWebSocketFactory,
@@ -46,8 +48,8 @@ function Terminal() {
   const unmountedReason = SYMBOLS.filter((s) => !mounted[s]?.reader).map((s) => `${s}: ${mounted[s]?.status ?? "PENDING"}`).join(" · ");
   const explain = useServerFn(explainTradingState);
   return <>
-    <RealMarketTerminal client={client} liveReaders={liveReaders} />
-    <TechnicalSlicePanel runtimes={runtimes} unmountedReason={`CANONICAL_RUNTIME_NOT_MOUNTED ${unmountedReason}`} explain={(snapshot) => explain({ data: { snapshot } })} />
+    <RealMarketTerminal client={client} liveReaders={liveReaders} selectedSymbol={selectedSymbol} onSelectedSymbolChange={setSelectedSymbol} />
+    <TechnicalSlicePanel runtimes={runtimes} selectedSymbol={selectedSymbol} unmountedReason={`CANONICAL_RUNTIME_NOT_MOUNTED ${unmountedReason}`} explain={(snapshot) => explain({ data: { snapshot } })} />
   </>;
 }
 

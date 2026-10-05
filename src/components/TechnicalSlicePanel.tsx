@@ -1,117 +1,167 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { Activity, ArrowDownRight, ArrowUpRight, BrainCircuit, Check, Circle, Minus, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LiveClock } from "@/core/temporal/CanonicalClock";
 import { TechnicalSliceService } from "@/core/technical/TechnicalSliceService";
 import type { MarketRuntimeReader } from "@/core/runtime/MarketRuntime";
-import { POLICIES, TIMEFRAMES, type TradingSnapshot } from "@/core/technical/tradingState";
-import { RSI_CONFIG, RESEARCH_REQUIRED_PATTERNS, type Indicator } from "@/core/technical/indicators";
+import type { Indicator } from "@/core/technical/indicators";
+import type { Relation, Structure } from "@/core/technical/indicators";
+import { TIMEFRAMES, type TradingSnapshot, type WhyFact } from "@/core/technical/tradingState";
 import type { AiWhyResult } from "@/lib/ai-why.functions";
 
-const n = (v: number | null | undefined, d = 3) => (v == null || !Number.isFinite(v) ? "—" : Math.abs(v) >= 1000 ? v.toFixed(2) : v.toFixed(d));
-const ind = (i: Indicator | undefined, d = 3) => (!i ? "—" : i.status === "OK" ? n(i.value, d) : "INSUFFICIENT_HISTORY");
-const ts = (ms: number | null | undefined) => (ms == null ? "—" : new Date(ms).toISOString().replace("T", " ").slice(0, 19));
+const n = (value: number | null | undefined, digits = 3) => value == null || !Number.isFinite(value) ? "—" : Math.abs(value) >= 1000 ? value.toFixed(2) : value.toFixed(digits);
+const indicator = (value: Indicator | undefined, digits = 1) => !value || value.status !== "OK" ? "Insufficient" : n(value.value, digits);
+
+export type CockpitSignal = "BUY" | "SELL" | "HOLD";
+export type ConfirmationTone = "BULL" | "BEAR" | "NEUTRAL";
+
+export function cockpitSignal(snapshot: TradingSnapshot | null): CockpitSignal {
+  if (snapshot?.entry.state === "LONG_CANDIDATE") return "BUY";
+  if (snapshot?.entry.state === "SHORT_CANDIDATE") return "SELL";
+  return "HOLD";
+}
+
+export function referenceEntry(snapshot: TradingSnapshot | null): number | null {
+  const signal = cockpitSignal(snapshot);
+  if (signal === "BUY") return snapshot?.quote?.ask ?? null;
+  if (signal === "SELL") return snapshot?.quote?.bid ?? null;
+  return null;
+}
 
 export interface TechnicalSlicePanelProps {
-  /** Canonical MarketRuntime readers per symbol; null reader ⇒ runtime not mounted (shown as UNAVAILABLE, never substituted). */
   runtimes: readonly { readonly symbol: string; readonly reader: MarketRuntimeReader | null }[];
+  selectedSymbol: string;
   unmountedReason?: string;
   tickMs?: number;
   explain?: (snapshot: string) => Promise<AiWhyResult>;
 }
 
-function Cell({ label, value, reason, testId }: { label: string; value: string; reason?: string; testId: string }) {
-  return <div className="rounded border border-border bg-card p-2" data-testid={testId}>
-    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
-    <div className="font-mono text-sm font-semibold text-foreground">{value}</div>
-    {reason ? <div className="break-all font-mono text-[10px] text-muted-foreground">{reason}</div> : null}
-  </div>;
+function trendTone(relation: Relation | undefined): ConfirmationTone {
+  return relation === "EMA5_ABOVE_EMA21" ? "BULL" : relation === "EMA5_BELOW_EMA21" ? "BEAR" : "NEUTRAL";
 }
 
-function Body({ s }: { s: TradingSnapshot }) {
-  const e = s.evidence;
-  return <div className="space-y-3">
-    {e ? <>
-      <section><h4 className="mb-1 text-xs font-semibold text-muted-foreground">BIAS · EMA5/EMA21 (CLOSED)</h4>
-        <div className="grid grid-cols-2 gap-2 font-mono text-xs">{(["H4", "H1"] as const).map((tf) => <div key={tf} className="rounded border border-border p-2">{tf}: {ind(e[tf].ema5)} / {ind(e[tf].ema21)}<br />{e[tf].relation}</div>)}</div></section>
-      <section><h4 className="mb-1 text-xs font-semibold text-muted-foreground">STRUCTURE (causal 2+2) · SNR · RSI/ATR (evidence only)</h4>
-        <div className="overflow-x-auto"><table className="w-full font-mono text-[11px]"><thead className="text-muted-foreground"><tr><th className="text-left">TF</th><th>last closed</th><th>structure</th><th>support (dist / ATR)</th><th>resistance (dist / ATR)</th><th>RSI{RSI_CONFIG.period}</th><th>ATR14</th></tr></thead>
-          <tbody>{TIMEFRAMES.map((tf) => { const x = e[tf]; return <tr key={tf} className="border-t border-border">
-            <td>{tf}</td><td>{ts(x.last_closed_open_time)}</td><td>{x.structure.summary} ({x.structure.latest_high ?? "—"}/{x.structure.latest_low ?? "—"})</td>
-            <td>{n(x.snr?.nearest_support?.price)} ({n(x.snr?.distance_to_support)} / {n(x.snr?.distance_atr_support, 2)})</td>
-            <td>{n(x.snr?.nearest_resistance?.price)} ({n(x.snr?.distance_to_resistance)} / {n(x.snr?.distance_atr_resistance, 2)})</td>
-            <td>{ind(x.rsi14, 1)}</td><td>{ind(x.atr14)}</td></tr>; })}</tbody></table></div></section>
-    </> : null}
-    <section><h4 className="mb-1 text-xs font-semibold text-muted-foreground">TRIGGER · last 3 CLOSED M5</h4>
-      <div className="overflow-x-auto"><table className="w-full font-mono text-[11px]"><thead className="text-muted-foreground"><tr><th className="text-left">open</th><th>O</th><th>H</th><th>L</th><th>C</th><th>body</th><th>range</th><th>up wick</th><th>low wick</th><th>body/range</th></tr></thead>
-        <tbody>{s.last3_m5.map((g) => <tr key={g.bar.open_time} className="border-t border-border"><td>{ts(g.bar.open_time)}</td><td>{n(g.bar.open)}</td><td>{n(g.bar.high)}</td><td>{n(g.bar.low)}</td><td>{n(g.bar.close)}</td><td>{n(g.body)}</td><td>{n(g.range)}</td><td>{n(g.upper_wick)}</td><td>{n(g.lower_wick)}</td><td>{n(g.body_to_range, 2)}</td></tr>)}</tbody></table></div>
-      <div className="mt-1 font-mono text-[11px]" data-testid="engulfing">BullishEngulfing {s.engulfing ? String(s.engulfing.bullish).toUpperCase() : "INSUFFICIENT_HISTORY"} · BearishEngulfing {s.engulfing ? String(s.engulfing.bearish).toUpperCase() : "INSUFFICIENT_HISTORY"} · {RESEARCH_REQUIRED_PATTERNS.join(", ")}: RESEARCH_REQUIRED</div></section>
-    <section><h4 className="mb-1 text-xs font-semibold text-muted-foreground">WHY (deterministic)</h4>
-      <ul className="font-mono text-[11px]">{s.why.map((w, i) => <li key={i}>{w.ok === true ? "✓" : w.ok === false ? "✗" : "·"} {w.text}</li>)}</ul></section>
-  </div>;
+function structureTone(structure: Structure["summary"] | undefined): ConfirmationTone {
+  return structure === "HH_HL" ? "BULL" : structure === "LH_LL" ? "BEAR" : "NEUTRAL";
 }
 
-function Matrix({ s, prefix }: { s: TradingSnapshot; prefix: string }) {
-  return <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
-    <Cell testId={`${prefix}-availability`} label="Availability" value={s.availability} reason={s.availability_reason} />
-    <Cell testId={`${prefix}-bias`} label="Bias" value={s.bias.state} reason={s.bias.reason} />
-    <Cell testId={`${prefix}-setup`} label="Setup" value={s.setup.state} reason={s.setup.reason} />
-    <Cell testId={`${prefix}-signal`} label="Signal" value={s.signal.state} reason={s.signal.reason} />
-    <Cell testId={`${prefix}-entry`} label="Entry analysis" value={s.entry.state} reason={s.entry.reason} />
-    <Cell testId={`${prefix}-execution`} label="Execution" value={s.execution.state} reason={s.execution.reasons.join(" · ")} />
-  </div>;
-}
+const toneClass: Record<ConfirmationTone, string> = {
+  BULL: "border-bull/35 bg-bull/10 text-bull",
+  BEAR: "border-bear/35 bg-bear/10 text-bear",
+  NEUTRAL: "border-border bg-muted/35 text-muted-foreground",
+};
 
-function SymbolSlice({ svc, explain }: { svc: TechnicalSliceService; explain?: TechnicalSlicePanelProps["explain"] }) {
-  useSyncExternalStore(svc.subscribe, svc.getVersion, svc.getVersion);
-  const v = svc.view();
-  const s = v.current;
-  const [ai, setAi] = useState<AiWhyResult | { status: "PENDING" } | null>(null);
-  const runAi = async () => {
-    if (!s || !explain) { setAi({ status: "AI_ANALYST_UNAVAILABLE", reason: "No AI provider configured" }); return; }
-    setAi({ status: "PENDING" });
-    try { setAi(await explain(JSON.stringify({ ...s, last3_m5: s.last3_m5, evidence: s.evidence ? Object.fromEntries(TIMEFRAMES.map((tf) => [tf, { ...s.evidence![tf], structure: { ...s.evidence![tf].structure, swings: s.evidence![tf].structure.swings.slice(-6) } }])) : null }))); }
-    catch (e) { setAi({ status: "AI_ANALYST_UNAVAILABLE", reason: (e as Error).message }); }
-  };
-  return <article className="space-y-3 rounded-lg border border-border bg-background p-3" data-testid={`slice-${v.symbol}`}>
-    <header className="flex flex-wrap items-center justify-between gap-2">
-      <h3 className="font-mono text-base font-bold text-foreground">{v.symbol}</h3>
-      <span className="font-mono text-[10px] text-muted-foreground">{s && s.availability !== "UNAVAILABLE" ? "REAL · EXNESS_MT5" : "UNAVAILABLE"} · time axis {v.time_axis}</span>
-    </header>
-    <div className="grid grid-cols-2 gap-2 font-mono text-xs sm:grid-cols-5">
-      <Cell testId={`${v.symbol}-bid`} label="Bid" value={n(s?.quote?.bid)} />
-      <Cell testId={`${v.symbol}-ask`} label="Ask" value={n(s?.quote?.ask)} />
-      <Cell testId={`${v.symbol}-spread`} label="Spread" value={n(s?.quote?.spread)} reason={`p50 ${n(v.spread.p50)} p95 ${n(v.spread.p95)} · policy ${v.spread.policy}`} />
-      <Cell testId={`${v.symbol}-tick`} label="Last tick (broker time)" value={ts(v.feed.last_tick_event_at)} />
-      <Cell testId={`${v.symbol}-age`} label="Feed age (raw, G2 open)" value={v.feed.last_tick_age_ms == null ? "—" : `${Math.round(v.feed.last_tick_age_ms / 1000)}s`} reason={`freshness ${v.feed.freshness_policy}`} />
+function ConfirmationLight({ label, value, tone, testId }: { label: string; value: string; tone: ConfirmationTone; testId: string }) {
+  return <div className={`min-w-0 border px-3 py-2.5 ${toneClass[tone]}`} data-testid={testId}>
+    <div className="flex items-center gap-2 text-[10px] font-semibold uppercase text-muted-foreground">
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${tone === "BULL" ? "bg-bull" : tone === "BEAR" ? "bg-bear" : "bg-muted-foreground"}`} />
+      <span className="truncate">{label}</span>
     </div>
-    <div className="break-all font-mono text-[10px] text-muted-foreground" data-testid={`${v.symbol}-canonical`}>source {v.data_source}{v.canonical ? ` · ${v.canonical.lifecycle}/${v.canonical.bootstrap_state} · epoch ${v.canonical.active_epoch ?? "—"} · coverage ${v.canonical.history_coverage_status ?? "—"} · routes ${Object.entries(v.canonical.route_counts).map(([k, c]) => `${k}=${c}`).join(" ")} · held ${v.canonical.held_count} · silent_ambiguous_drops ${v.canonical.silent_ambiguous_drops} · stream_protocol_errors ${v.canonical.stream_protocol_errors} · missing ${Object.entries(v.canonical.missing_intervals).map(([k, c]) => `${k}=${c}`).join(" ")}` : ""} · {v.last_error ?? ""}</div>
-    {s ? <Matrix s={s} prefix={v.symbol} /> : <div className="text-xs text-muted-foreground">Waiting for first real observation…</div>}
-    {s && s.availability !== "UNAVAILABLE" ? <Body s={s} /> : null}
-    {v.last_known ? <section className="rounded border border-dashed border-destructive p-2" data-testid={`${v.symbol}-last-known`}>
-      <h4 className="text-xs font-bold text-destructive">LAST KNOWN — STALE · timestamp {ts(v.last_known.as_of)}</h4>
-      <Matrix s={v.last_known} prefix={`${v.symbol}-lk`} />
-    </section> : null}
-    <section><h4 className="mb-1 text-xs font-semibold text-muted-foreground">AI WHY (async · no authority)</h4>
-      <Button size="sm" variant="outline" onClick={runAi} disabled={ai?.status === "PENDING"}>Explain state</Button>
-      <p className="mt-1 whitespace-pre-wrap text-xs text-foreground" data-testid={`${v.symbol}-ai`}>{ai == null ? "" : ai.status === "OK" ? ai.narrative : ai.status === "PENDING" ? "Analysing…" : `AI ANALYST UNAVAILABLE — ${ai.reason}`}</p></section>
-    <details><summary className="cursor-pointer text-xs text-muted-foreground">State transitions ({v.transitions_total}) · latency · policies</summary>
-      <ul className="max-h-48 overflow-auto font-mono text-[10px]">{[...v.transitions].reverse().map((t) => <li key={t.seq}>{ts(t.available_at)} {t.domain} {t.from ?? "∅"} → {t.to} [{t.reason_code}]{t.trigger_bar ? ` bar ${ts(t.trigger_bar)}` : ""}</li>)}</ul>
-      <div className="font-mono text-[10px] text-muted-foreground">gateway RTT p50 {n(v.latency_ms.gateway_roundtrip.p50, 0)} p95 {n(v.latency_ms.gateway_roundtrip.p95, 0)} p99 {n(v.latency_ms.gateway_roundtrip.p99, 0)} ms · evaluate p95 {n(v.latency_ms.evaluate.p95, 2)} ms · last error {v.last_error ?? "—"}</div>
-      <ul className="font-mono text-[10px] text-muted-foreground">{Object.entries(POLICIES).map(([k, p]) => <li key={k}>{k}: {p}</li>)}</ul>
-    </details>
+    <div className="mt-1 truncate text-sm font-semibold" title={value}>{value}</div>
+  </div>;
+}
+
+function factTone(fact: WhyFact) {
+  return fact.ok === true ? "text-bull" : fact.ok === false ? "text-bear" : "text-muted-foreground";
+}
+
+function FactIcon({ value }: { value: boolean | null }) {
+  return value === true ? <Check className="mt-0.5 h-4 w-4 shrink-0" /> : value === false ? <X className="mt-0.5 h-4 w-4 shrink-0" /> : <Minus className="mt-0.5 h-4 w-4 shrink-0" />;
+}
+
+function Cockpit({ service, explain }: { service: TechnicalSliceService; explain?: TechnicalSlicePanelProps["explain"] }) {
+  useSyncExternalStore(service.subscribe, service.getVersion, service.getVersion);
+  const view = service.view();
+  const snapshot = view.current;
+  const evidence = snapshot?.evidence;
+  const signal = cockpitSignal(snapshot);
+  const entry = referenceEntry(snapshot);
+  const unavailable = !snapshot || snapshot.availability === "UNAVAILABLE" || snapshot.entry.state === "NOT_EVALUABLE";
+  const signalReason = unavailable ? "waiting for valid technical evidence" : snapshot?.entry.reason ?? "waiting for valid setup";
+  const signalTone = signal === "BUY" ? "text-bull" : signal === "SELL" ? "text-bear" : "text-foreground";
+  const signalBorder = signal === "BUY" ? "border-bull/45" : signal === "SELL" ? "border-bear/45" : "border-border";
+  const [ai, setAi] = useState<AiWhyResult | { status: "PENDING" } | null>(null);
+
+  const runAi = async () => {
+    if (!snapshot || !explain) { setAi({ status: "AI_ANALYST_UNAVAILABLE", reason: "No AI provider configured" }); return; }
+    setAi({ status: "PENDING" });
+    try {
+      setAi(await explain(JSON.stringify({ ...snapshot, evidence: snapshot.evidence ? Object.fromEntries(TIMEFRAMES.map((tf) => [tf, { ...snapshot.evidence?.[tf], structure: { ...snapshot.evidence?.[tf].structure, swings: snapshot.evidence?.[tf].structure.swings.slice(-6) } }])) : null })));
+    } catch (error) { setAi({ status: "AI_ANALYST_UNAVAILABLE", reason: (error as Error).message }); }
+  };
+
+  const h4Tone = trendTone(evidence?.H4.relation);
+  const h1Tone = trendTone(evidence?.H1.relation);
+  const h1StructureTone = structureTone(evidence?.H1.structure.summary);
+  const triggerTone: ConfirmationTone = snapshot?.engulfing?.bullish ? "BULL" : snapshot?.engulfing?.bearish ? "BEAR" : "NEUTRAL";
+  const triggerText = snapshot?.engulfing?.bullish ? "Bullish confirmed" : snapshot?.engulfing?.bearish ? "Bearish confirmed" : snapshot?.engulfing ? "Not confirmed" : "Insufficient";
+  const snr = evidence?.H1.snr;
+  const location = snr ? `S ${n(snr.nearest_support?.price)} · R ${n(snr.nearest_resistance?.price)}` : "Insufficient";
+
+  return <article className="space-y-4" data-testid={`cockpit-${view.symbol}`}>
+    <div className="grid gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,.75fr)]">
+      <section className={`border bg-card p-4 sm:p-5 ${signalBorder}`} data-testid="main-signal-card">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs font-semibold uppercase text-muted-foreground">Current signal · {view.symbol}</span>
+          <span className="border border-border px-2 py-1 text-[10px] font-semibold text-muted-foreground">MONITOR ONLY</span>
+        </div>
+        <div className="mt-4 flex items-end gap-3">
+          {signal === "BUY" ? <ArrowUpRight className="mb-2 h-9 w-9 text-bull" /> : signal === "SELL" ? <ArrowDownRight className="mb-2 h-9 w-9 text-bear" /> : <Circle className="mb-2 h-8 w-8 text-muted-foreground" />}
+          <div className={`text-5xl font-semibold sm:text-6xl ${signalTone}`} data-testid="cockpit-signal">{signal}</div>
+        </div>
+        <p className="mt-3 max-w-2xl text-sm text-muted-foreground" data-testid="cockpit-signal-reason">{signalReason}</p>
+      </section>
+
+      <section className="border border-border bg-card p-4 sm:p-5" aria-label="Reference trade plan">
+        <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">Reference plan</h3></div>
+        <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3 text-sm">
+          <div><div className="text-xs text-muted-foreground">Reference Entry</div><div className="mt-0.5 font-mono font-semibold" data-testid="reference-entry">{entry == null ? "—" : n(entry)}</div></div>
+          <div><div className="text-xs text-muted-foreground">Status</div><div className="mt-0.5 font-semibold">{signal === "HOLD" ? "WAIT FOR VALID SETUP" : "MONITOR_ONLY"}</div></div>
+          <div><div className="text-xs text-muted-foreground">Stop Loss</div><div className="mt-0.5" data-testid="plan-sl">{signal === "HOLD" ? "—" : "POLICY PENDING"}</div></div>
+          <div><div className="text-xs text-muted-foreground">TP1</div><div className="mt-0.5" data-testid="plan-tp1">{signal === "HOLD" ? "—" : "POLICY PENDING"}</div></div>
+          <div><div className="text-xs text-muted-foreground">TP2</div><div className="mt-0.5" data-testid="plan-tp2">{signal === "HOLD" ? "—" : "POLICY PENDING"}</div></div>
+          <div><div className="text-xs text-muted-foreground">R:R</div><div className="mt-0.5">—</div></div>
+        </div>
+      </section>
+    </div>
+
+    <section aria-label="Technical confirmations">
+      <div className="mb-2 flex items-center gap-2"><Activity className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">Technical confirmations</h3></div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+        <ConfirmationLight label="H4 Trend" value={evidence?.H4.relation.replaceAll("_", " ") ?? "Insufficient"} tone={h4Tone} testId="confirm-h4" />
+        <ConfirmationLight label="H1 Trend" value={evidence?.H1.relation.replaceAll("_", " ") ?? "Insufficient"} tone={h1Tone} testId="confirm-h1" />
+        <ConfirmationLight label="H1 Structure" value={evidence?.H1.structure.summary.replace("_", "/") ?? "Insufficient"} tone={h1StructureTone} testId="confirm-structure" />
+        <ConfirmationLight label="M5 Trigger" value={triggerText} tone={triggerTone} testId="confirm-trigger" />
+        <ConfirmationLight label="RSI14" value={indicator(evidence?.M5.rsi14)} tone="NEUTRAL" testId="confirm-rsi" />
+        <ConfirmationLight label="S/R Location" value={location} tone="NEUTRAL" testId="confirm-snr" />
+        <ConfirmationLight label="ATR / Volatility" value={indicator(evidence?.M5.atr14, 3)} tone="NEUTRAL" testId="confirm-atr" />
+      </div>
+    </section>
+
+    <div className="grid gap-4 lg:grid-cols-2">
+      <section className="border-t border-border pt-4" aria-label="Confirmation reasons">
+        <h3 className="text-xs font-semibold uppercase text-muted-foreground">Why</h3>
+        <ul className="mt-3 space-y-2 text-sm" data-testid="confirmation-list">
+          {(snapshot?.why.slice(0, 6) ?? [{ ok: null, text: "Waiting for valid technical evidence" }]).map((fact, index) => <li key={`${fact.text}-${index}`} className={`flex gap-2 ${factTone(fact)}`}><FactIcon value={fact.ok} /><span className="text-foreground/90">{fact.text}</span></li>)}
+        </ul>
+      </section>
+      <section className="border-t border-border pt-4" aria-label="AI explanation">
+        <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2"><BrainCircuit className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">AI explanation</h3></div><Button size="sm" variant="outline" onClick={runAi} disabled={ai?.status === "PENDING"}>Explain</Button></div>
+        <p className="mt-3 whitespace-pre-wrap text-sm text-muted-foreground" data-testid={`${view.symbol}-ai`}>{ai == null ? "Optional plain-language explanation. Deterministic signal remains authoritative." : ai.status === "OK" ? ai.narrative : ai.status === "PENDING" ? "Analysing…" : `AI explanation unavailable — ${ai.reason}`}</p>
+      </section>
+    </div>
   </article>;
 }
 
-export function TechnicalSlicePanel({ runtimes, unmountedReason, tickMs = 2000, explain }: TechnicalSlicePanelProps) {
-  const services = useMemo(() => runtimes.map((r) => new TechnicalSliceService(r.reader, r.symbol, new LiveClock(), unmountedReason)), [runtimes, unmountedReason]);
+export function TechnicalSlicePanel({ runtimes, selectedSymbol, unmountedReason, tickMs = 2000, explain }: TechnicalSlicePanelProps) {
+  const services = useMemo(() => runtimes.map((runtime) => new TechnicalSliceService(runtime.reader, runtime.symbol, new LiveClock(), unmountedReason)), [runtimes, unmountedReason]);
   useEffect(() => {
-    const ticks = () => { for (const s of services) s.tick(); };
-    ticks();
-    const t = setInterval(ticks, tickMs);
-    return () => clearInterval(t);
+    const tick = () => { for (const service of services) service.tick(); };
+    tick();
+    const timer = setInterval(tick, tickMs);
+    return () => clearInterval(timer);
   }, [services, tickMs]);
-  return <section className="space-y-3 bg-background p-3" aria-label="Technical trading state">
-    <h2 className="font-mono text-sm font-bold text-foreground">TECHNICAL STATE · MONITOR_ONLY · EXECUTION ABSENT</h2>
-    <div className="grid gap-3 xl:grid-cols-2">{services.map((s) => <SymbolSlice key={s.symbol} svc={s} explain={explain} />)}</div>
+  const selected = services.find((service) => service.symbol === selectedSymbol) ?? null;
+  return <section className="bg-background px-4 pb-8 sm:px-8" aria-label="Trading cockpit">
+    <div className="mx-auto max-w-screen-2xl">{selected ? <Cockpit service={selected} explain={explain} /> : <div className="border border-border bg-card p-4 text-sm text-muted-foreground">Waiting for selected market…</div>}</div>
   </section>;
 }
