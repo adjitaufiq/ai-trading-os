@@ -1,5 +1,4 @@
-# Real market terminal V1
-- [ ] Replace `/` development panels with one XAUUSD/BTCUSD market workspace.
-- [ ] Read validated real quotes, specifications, and per-timeframe broker bars without cross-symbol leakage or mock fallback.
-- [ ] Add interactive candlestick chart and mobile focus mode.
-- [ ] Add deterministic safety and market-isolation tests; verify mobile and desktop rendering, regression tests, and types.
+# Stage 3 PRE-2D gap closure
+- [x] Patch B — R4 bootstrap + R6 observation identity (candidate for independent source audit)
+- [ ] Patch C — R5 gap contract, R7 bounded retention, R8 internal vs broker bar (blocked: awaiting user audit of Patch B)
+- [ ] Full PRE-2D regression + independent source audit
