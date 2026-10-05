@@ -110,7 +110,7 @@ export class AlarmController {
       this.ctx ??= this.makeCtx();
       if (this.ctx.state === "suspended") await this.ctx.resume();
       this.enabledPref = true; this.needsReunlock = this.ctx.state !== "running";
-    } catch { this.needsReunlock = true; }
+    } catch { this.enabledPref = true; this.needsReunlock = true; }
     this.emit();
     return this.status();
   }

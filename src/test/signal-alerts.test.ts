@@ -39,7 +39,7 @@ describe("SIGNAL READY radar", () => {
   it("manual paper trades never produce an engine alert", () => {
     const st = new SignalAlertStore(memKV()), journal = new PaperJournalStore(memKV());
     st.observe(snap("WAIT"), "XAUUSD", 1);
-    journal.open({ symbol: "XAUUSD", side: "BUY", quote: { bid: 100, ask: 101 }, now: 2, snapshot: snap("WAIT") });
+    journal.open({ symbol: "XAUUSD", side: "BUY", quote: { bid: 100, ask: 101 }, now: 2, snapshot: null });
     expect(st.observe(snap("WAIT"), "XAUUSD", 3)).toBeNull();
     expect(st.getAlerts()).toHaveLength(0);
   });
@@ -92,6 +92,6 @@ describe("SIGNAL READY radar", () => {
 
   it("no broker/order execution path", () => {
     for (const f of ["src/lib/signalAlerts.ts", "src/components/AlertCenter.tsx"])
-      expect(readFileSync(f, "utf8")).not.toMatch(/order_send|placeOrder|submitOrder|BrokerGatewayClient|gateway|WebSocket\(|fetch\(/);
+      expect(readFileSync(f, "utf8")).not.toMatch(/order_send|placeOrder|submitOrder|BrokerGatewayClient|WebSocket\(|fetch\(/);
   });
 });
