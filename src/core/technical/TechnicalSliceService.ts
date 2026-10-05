@@ -43,6 +43,18 @@ export interface SliceView {
 export const toTechBar = (b: { open_time: number; close_time: number; available_at: number; open: number; high: number; low: number; close: number }): TechBar =>
   Object.freeze({ open_time: b.open_time, close_time: b.close_time, available_at: b.available_at, open: b.open, high: b.high, low: b.low, close: b.close });
 
+/**
+ * Technical input = broker CLOSED history (available_at <= asOf) followed by canonical CLOSED bars strictly newer
+ * than the last history bar. Canonical bars opening before the first LIVE_MUTATION are partial and excluded.
+ * FORMING bars never appear here.
+ */
+export function mergeClosedHistory(history: readonly TechBar[], canonical: readonly TechBar[], firstLiveAt: number | null, asOf: number): TechBar[] {
+  const h = history.filter((b) => b.available_at <= asOf && b.close_time <= asOf);
+  const lastH = h.length ? h[h.length - 1]!.open_time : -Infinity;
+  const c = canonical.filter((b) => b.open_time > lastH && b.available_at <= asOf && (firstLiveAt === null || b.open_time >= firstLiveAt));
+  return [...h, ...c];
+}
+
 export class TechnicalSliceService {
   private current: TradingSnapshot | null = null;
   private lastKnown: TradingSnapshot | null = null;
@@ -76,7 +88,8 @@ export class TechnicalSliceService {
         const list: readonly MissingInterval[] = r.missingIntervals(tf);
         mi[tf] = list.length; forming[tf] = r.formingBar(tf)?.open_time ?? null;
         // CLOSED only, and only once knowable at asOf. FORMING is never handed to the technical engine.
-        closed[tf] = r.closedBars(tf).filter((b) => b.status === "CLOSED" && b.available_at <= asOf).map(toTechBar);
+        const canon = r.closedBars(tf).filter((b) => b.status === "CLOSED" && b.available_at <= asOf).map(toTechBar);
+        closed[tf] = mergeClosedHistory((r.brokerHistoryBars?.(tf) ?? []).map(toTechBar), canon, r.firstLiveEventAt?.() ?? null, asOf);
       }
       this.canonical = Object.freeze({
         lifecycle: snap.lifecycle, bootstrap_state: snap.bootstrap_state, active_epoch: snap.active_epoch, degraded_reason: snap.degraded_reason,
