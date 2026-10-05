@@ -9,13 +9,13 @@ import { EXECUTION_ENABLED, OPERATING_MODE } from "@/core/contracts";
 
 const NA = { status: "INSUFFICIENT_HISTORY" };
 const zone = (low: number, high: number, role: "SUPPORT" | "RESISTANCE") => ({ source_tf: "M15", low, high, center: (low + high) / 2, touches: 2, role, distance: 1, confluence_tfs: [] });
-const evidence = { M5: { rsi14: NA }, M15: { rsi14: NA, atr14: { status: "OK", value: 4 } }, H1: { rsi14: NA, structure: { swings: [{ kind: "LOW", price: 90 }, { kind: "HIGH", price: 120 }] } } } as never;
+const evidence = { M5: { rsi14: NA }, M15: { rsi14: NA, atr14: { status: "OK", value: 4 }, structure: { swings: [{ kind: "LOW", price: 90 }, { kind: "HIGH", price: 120 }] } }, H1: { rsi14: NA, structure: { swings: [] } } } as never;
 const op = (status: "CARI_BUY" | "CARI_SELL" | "HOLD", zones: ReturnType<typeof zone>[]) => ({
   status, reason: "TRIGGER_PENDING", ema_confluence: { zone: "NOT_NEAR", timeframe: null }, patterns: { M5: { bullish: [], bearish: [] }, M15: { bullish: [], bearish: [] } }, zones: { M15: zones }, scalp: { local_zones: zones, M15: { ema21: NA, ema50: NA, atr14: NA, ema_location: "NOT_NEAR", ema_reaction: [] }, M5: { ema21: NA, ema50: NA, atr14: NA, ema_location: "NOT_NEAR", ema_reaction: [] } },
 }) as never;
 const q = (bid: number, ask: number) => ({ bid, ask, spread: ask - bid, tick_time_ms: 1, observed_at: 1 });
 const WAIT = { state: "WAIT" as const, reason: "NO_CLOSED_TRIGGER" };
-const NOREF = { status: "NOT_AVAILABLE" as const, policy_version: "reference-plan-v2-swing-atr-plus-sr-context" as const, reason: "WAIT" };
+const NOREF = { status: "NOT_AVAILABLE" as const, policy_version: "reference-plan-v3-p0.6-local-swing-structural-clamp" as const, reason: "WAIT" };
 
 const snap = (o: never, quote: ReturnType<typeof q>): TradingSnapshot => ({
   symbol: "BTCUSD", as_of: 1, label: "CURRENT", availability: "AVAILABLE", availability_reason: "OBSERVED", quote, evidence, last3_m5: [], engulfing: null,

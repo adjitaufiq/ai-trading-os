@@ -33,7 +33,7 @@ export interface CompactSummary {
   readonly atr_m15: number | null;
   readonly trigger: string | null;
   readonly patterns: { readonly M5: readonly string[]; readonly M15: readonly string[] };
-  readonly plan: { readonly side: string; readonly entry: number; readonly sl: number; readonly tp1: number; readonly tp2: number } | { readonly unavailable: string };
+  readonly plan: { readonly side: string; readonly entry: number; readonly sl: number; readonly tp1: number | null; readonly tp2: number | null; readonly final_rr: number; readonly economics: string; readonly anchor_tf: string; readonly raw_tp2: number; readonly structural_target: number | null } | { readonly unavailable: string };
   readonly why: readonly string[];
   readonly scalp_momentum_combined: string | null;
   readonly momentum_policy_version: string | null;
@@ -49,6 +49,8 @@ export interface CompactSummary {
   readonly projected_tp2: number | null;
   readonly projected_structural_target: number | null;
   readonly radar_plan_policy_version: string | null;
+  readonly radar_economics: string | null;
+  readonly radar_final_rr: number | null;
   readonly signal_lifecycle: { readonly state: string; readonly event: string | null; readonly signal_id: string | null; readonly reason: string | null; readonly origin_entry: number | null; readonly origin_sl: number | null; readonly initial_r: number | null; readonly ttl_remaining: number | null; readonly ttl_policy_version: string } | null;
 }
 type MomentumCompact = { readonly state: string; readonly cross: string | null; readonly s5: number | null; readonly s21: number | null; readonly gap: number | null; readonly gd: number | null };
@@ -61,7 +63,7 @@ const r5 = (x: number | null | undefined) => (x == null || !Number.isFinite(x) ?
 export function compactSummary(s: TradingSnapshot): CompactSummary {
   const op = s.operator ?? null, ev = s.evidence, rp = s.radar_plan ?? null;
   const plan = s.reference_plan.status === "AVAILABLE"
-    ? { side: s.reference_plan.side, entry: s.reference_plan.entry, sl: s.reference_plan.sl, tp1: s.reference_plan.tp1, tp2: s.reference_plan.tp2 }
+    ? { side: s.reference_plan.side, entry: s.reference_plan.entry, sl: s.reference_plan.sl, tp1: s.reference_plan.tp1, tp2: s.reference_plan.tp2, final_rr: Math.round(s.reference_plan.final_rr * 100) / 100, economics: s.reference_plan.economics_status, anchor_tf: s.reference_plan.anchor_timeframe, raw_tp2: s.reference_plan.raw_tp2, structural_target: s.reference_plan.structural_target_buffered }
     : { unavailable: s.reference_plan.reason.slice(0, 120) };
   return {
     symbol: s.symbol, as_of: s.as_of, signal: engineSignalOf(s), entry_state: s.entry.state, entry_reason: s.entry.reason.slice(0, 200),
@@ -77,7 +79,7 @@ export function compactSummary(s: TradingSnapshot): CompactSummary {
     radar_plan_status: rp ? `${rp.mode}:${rp.status}` : null, radar_side: rp?.side ?? null,
     radar_entry_zone_low: r5(rp?.zone?.low), radar_entry_zone_high: r5(rp?.zone?.high), radar_reference_entry: r5(rp?.reference_entry),
     projected_sl: r5(rp?.sl), projected_tp1: r5(rp?.tp1), projected_tp2: r5(rp?.tp2), projected_structural_target: r5(rp?.structural_target),
-    radar_plan_policy_version: rp?.policy_version ?? null,
+    radar_plan_policy_version: rp?.policy_version ?? null, radar_economics: rp?.economics_status ?? null, radar_final_rr: rp?.final_rr == null ? null : Math.round(rp.final_rr * 100) / 100,
     signal_lifecycle: s.signal.lifecycle ? (() => { const o = s.signal.origin ?? s.signal.lifecycle?.last_terminal?.origin ?? null; return {
       state: s.signal.state, event: s.signal.lifecycle.event, signal_id: o?.signal_id ?? null, reason: (s.signal.lifecycle.reason ?? s.signal.lifecycle.last_terminal?.reason ?? null)?.slice(0, 80) ?? null,
       origin_entry: r5(o?.origin_entry), origin_sl: r5(o?.origin_sl), initial_r: r5(o?.initial_r), ttl_remaining: s.signal.ttl_remaining_bars ?? null, ttl_policy_version: SIGNAL_TTL_POLICY_VERSION }; })() : null,

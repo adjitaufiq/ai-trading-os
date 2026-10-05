@@ -19,13 +19,13 @@ export const ALL_SIGNAL_STATES: readonly SignalState[] = ["READY", "WAITING", "E
 
 export const SETUP_POLICY_VERSION = "setup-v2.1-p0.1-scalp-location-macro-metadata";
 export const SIGNAL_POLICY_VERSION = "signal-v3-p0.3-frozen-origin-ttl-invalidation-chasing";
-export const REFERENCE_PLAN_POLICY_VERSION = "reference-plan-v2-swing-atr-plus-sr-context";
+export const REFERENCE_PLAN_POLICY_VERSION = "reference-plan-v3-p0.6-local-swing-structural-clamp";
 export const GUARD_POLICY_VERSION = "guard-v0-monitor-only";
 export const POLICIES = Object.freeze({
   bias: "H4 primary trend (EMA21/EMA50 + confirmed structure): UP → BUY, DOWN → SELL, MIXED → NEUTRAL, insufficient → NOT_EVALUABLE",
   setup: `${OPERATOR_POLICY_VERSION}: ACTIVE when operator status is CARI_BUY/CARI_SELL with local location (+ H1 RSI gate in TREND) satisfied; H1 alignment is metadata only (P0.1); H1 REVERSAL_CANDIDATE → INVALID; otherwise INACTIVE`,
   signal: "Setup ACTIVE + fresh CLOSED M5/M15 trigger (new identity) → READY with frozen origin; READY carried until TTL / early invalidation / chasing (signal-ttl-v0.4-p0.3-v1); consumed triggers never resurrect",
-  reference_plan: "BUY ASK / SELL BID; SL outside latest confirmed H1 swing by 0.25×ATR14(M15); TP1=1R, TP2=2R (unchanged from v1). v2 adds structural context: invalidation = nearest S/R zone behind entry ± 0.25×ATR14(M15); target = near edge of next opposing S/R zone. Read-only analysis, never execution",
+  reference_plan: "BUY ASK / SELL BID; SL = latest confirmed M15 swing (fallback M5) on the protective side ± 0.25×ATR14(M15), no H1 fallback; raw TP1=1R/TP2=2R kept for audit; final TP2 = nearer of raw 2R and nearest M15/H1/H4 opposing zone edge − 0.20×ATR14(M15) buffer; final R:R < 1.0 ⇒ BAD_RR (TP1 null, actionable entry vetoed). Read-only analysis, never execution",
   operator: OPERATOR_RULES,
   signal_validity: "signal-ttl-v0.4-p0.3-v1: TTL 3 CLOSED M5 bars, chasing 1.0R, early invalidation ON (baseline research params)",
   spread: "RESEARCH_REQUIRED (telemetry only, no threshold)",
@@ -82,23 +82,10 @@ export interface StructuralContext {
   readonly rr_structural: number | null;
 }
 
-export type ReferencePlan = {
+export type ReferencePlan = ({
   readonly status: "AVAILABLE";
   readonly policy_version: typeof REFERENCE_PLAN_POLICY_VERSION;
-  readonly side: "BUY" | "SELL";
-  readonly entry: number;
-  readonly anchor_kind: "CONFIRMED_H1_SWING_LOW" | "CONFIRMED_H1_SWING_HIGH";
-  readonly anchor_price: number;
-  readonly atr14_m15: number;
-  readonly atr_buffer: number;
-  readonly risk: number;
-  readonly sl: number;
-  readonly tp1: number;
-  readonly tp2: number;
-  readonly rr_tp1: 1;
-  readonly rr_tp2: 2;
-  readonly structural: StructuralContext;
-} | {
+} & Omit<Extract<SidePlan, { ok: true }>, "ok">) | {
   readonly status: "NOT_AVAILABLE";
   readonly policy_version: typeof REFERENCE_PLAN_POLICY_VERSION;
   readonly reason: string;
@@ -208,7 +195,7 @@ function carryUnavailable(prev: TradingSnapshot["signal"] | null, reason: string
 function frozenPlan(o: SignalOrigin): ReferencePlan {
   if (!o.origin_plan) return unavailablePlan(o.origin_plan_reason ?? "ORIGIN_PLAN_UNAVAILABLE");
   const { ok: _ok, ...rest } = o.origin_plan;
-  return { status: "AVAILABLE", policy_version: REFERENCE_PLAN_POLICY_VERSION, ...rest, rr_tp1: 1, rr_tp2: 2 };
+  return { status: "AVAILABLE", policy_version: REFERENCE_PLAN_POLICY_VERSION, ...rest };
 }
 
 export function deriveSignalLifecycle(
@@ -287,17 +274,42 @@ function unavailablePlan(reason: string): ReferencePlan {
   return { status: "NOT_AVAILABLE", policy_version: REFERENCE_PLAN_POLICY_VERSION, reason };
 }
 
-/** One side+reference-entry plan builder shared by the READY plan, the RADAR projection and paper rebasing. */
+// ---------------- P0.6 SCALP STOP + STRUCTURAL TARGET CLAMP ----------------
+export const SCALP_STOP_POLICY_VERSION = "scalp-stop-v0.4-local-swing-v1";
+export const SCALP_STOP_PARAMS = Object.freeze({ atr_buffer_multiple: 0.25, anchor_priority: Object.freeze(["M15", "M5"] as const), authority: "RESEARCH_REQUIRED_BASELINE" as const });
+export const TARGET_CLAMP_POLICY_VERSION = "target-clamp-v0.4-structural-v1";
+export const TARGET_CLAMP_PARAMS = Object.freeze({ structural_buffer_atr_m15: 0.20, min_rr_for_actionable: 1.0, eligible_target_timeframes: Object.freeze(["M15", "H1", "H4"] as const), authority: "RESEARCH_REQUIRED_BASELINE" as const });
+export type EconomicsStatus = "OK" | "BAD_RR" | "NO_STRUCTURAL_TARGET";
+export const BAD_RR_REASON = "BAD_RR_AFTER_STRUCTURAL_CLAMP";
+
+/** One side+reference-entry plan builder shared by the READY plan, the RADAR projection and paper rebasing.
+ *  tp1/tp2 are FINAL operational levels (tp1 null when final room < min RR; tp2 null when no favorable room). */
 export type SidePlan = {
   readonly ok: true; readonly side: "BUY" | "SELL"; readonly entry: number;
-  readonly anchor_kind: "CONFIRMED_H1_SWING_LOW" | "CONFIRMED_H1_SWING_HIGH"; readonly anchor_price: number;
-  readonly atr14_m15: number; readonly atr_buffer: number; readonly risk: number; readonly sl: number; readonly tp1: number; readonly tp2: number;
+  readonly anchor_timeframe: "M15" | "M5"; readonly anchor_kind: "CONFIRMED_LOCAL_SWING_LOW" | "CONFIRMED_LOCAL_SWING_HIGH"; readonly anchor_price: number;
+  readonly atr14_m15: number; readonly atr_buffer: number; readonly risk: number; readonly sl: number;
+  readonly raw_tp1: number; readonly raw_tp2: number; readonly raw_rr_tp1: 1; readonly raw_rr_tp2: 2;
+  readonly structural_target_zone: SrZone | null; readonly structural_target_raw: number | null; readonly structural_target_buffered: number | null;
+  readonly structural_rr: number | null;
+  readonly tp1: number | null; readonly tp2: number | null; readonly final_rr: number;
+  readonly economics_status: EconomicsStatus; readonly economics_reason: string;
+  readonly stop_policy_version: typeof SCALP_STOP_POLICY_VERSION; readonly target_clamp_policy_version: typeof TARGET_CLAMP_POLICY_VERSION;
   readonly structural: StructuralContext;
 } | { readonly ok: false; readonly reason: string };
 
-export function planInvariantHolds(side: "BUY" | "SELL", sl: number, entry: number, tp1: number, tp2: number): boolean {
-  if (![sl, entry, tp1, tp2].every(Number.isFinite)) return false;
-  return side === "BUY" ? sl < entry && entry < tp1 && tp1 < tp2 : sl > entry && entry > tp1 && tp1 > tp2;
+export function planInvariantHolds(side: "BUY" | "SELL", sl: number, entry: number, tp1: number | null, tp2: number | null): boolean {
+  if (![sl, entry].every(Number.isFinite) || tp2 === null || !Number.isFinite(tp2)) return false;
+  if (tp1 === null) return side === "BUY" ? sl < entry && entry < tp2 : sl > entry && entry > tp2;
+  if (!Number.isFinite(tp1)) return false;
+  return side === "BUY" ? sl < entry && entry < tp1 && tp1 <= tp2 : sl > entry && entry > tp1 && tp1 >= tp2;
+}
+
+/** Nearest opposing zone ahead of entry on M15/H1/H4 (no M5 targets in v1). */
+export function structuralTargetZone(side: "BUY" | "SELL", entry: number, op: OperatorAnalysis | null): SrZone | null {
+  if (!op) return null;
+  const all = TARGET_CLAMP_PARAMS.eligible_target_timeframes.flatMap((tf) => op.zones[tf] ?? []);
+  return all.filter((z) => side === "BUY" ? z.low > entry : z.high < entry)
+    .sort((a, b) => side === "BUY" ? a.low - b.low : b.high - a.high)[0] ?? null;
 }
 
 export function buildSidePlan(
@@ -308,18 +320,43 @@ export function buildSidePlan(
   const atr = evidence.M15.atr14;
   if (atr.status !== "OK" || !Number.isFinite(atr.value) || atr.value <= 0) return { ok: false, reason: "ATR14_M15_UNAVAILABLE" };
   const kind = side === "BUY" ? "LOW" : "HIGH";
-  const anchor = [...evidence.H1.structure.swings].reverse().find((s) => s.kind === kind);
-  if (!anchor || !Number.isFinite(anchor.price)) return { ok: false, reason: `CONFIRMED_H1_SWING_${kind}_UNAVAILABLE` };
-  const atrBuffer = 0.25 * atr.value;
-  const sl = side === "BUY" ? anchor.price - atrBuffer : anchor.price + atrBuffer;
+  // Local scalp stop: latest CONFIRMED M15 swing on the protective side, fallback M5. Never H1.
+  let anchorTf: "M15" | "M5" | null = null, anchorPrice = NaN;
+  for (const tf of SCALP_STOP_PARAMS.anchor_priority) {
+    const a = [...(evidence[tf]?.structure?.swings ?? [])].reverse().find((s) => s.kind === kind && Number.isFinite(s.price) && (side === "BUY" ? s.price < reference : s.price > reference));
+    if (a) { anchorTf = tf; anchorPrice = a.price; break; }
+  }
+  if (!anchorTf) return { ok: false, reason: `LOCAL_SCALP_SWING_${kind}_UNAVAILABLE` };
+  const atrBuffer = SCALP_STOP_PARAMS.atr_buffer_multiple * atr.value;
+  const sl = side === "BUY" ? anchorPrice - atrBuffer : anchorPrice + atrBuffer;
   const risk = side === "BUY" ? reference - sl : sl - reference;
   if (![atrBuffer, sl, risk].every(Number.isFinite) || risk <= 0) return { ok: false, reason: "REFERENCE_PLAN_NON_POSITIVE_RISK" };
-  const tp1 = side === "BUY" ? reference + risk : reference - risk;
-  const tp2 = side === "BUY" ? reference + 2 * risk : reference - 2 * risk;
-  if (!planInvariantHolds(side, sl, reference, tp1, tp2)) return { ok: false, reason: "REFERENCE_PLAN_INVARIANT_FAILED" };
+  const dir = side === "BUY" ? 1 : -1;
+  const raw_tp1 = reference + dir * risk, raw_tp2 = reference + dir * 2 * risk;
+  const zone = structuralTargetZone(side, reference, operator);
+  const sBuf = TARGET_CLAMP_PARAMS.structural_buffer_atr_m15 * atr.value;
+  const tRaw = zone ? (side === "BUY" ? zone.low : zone.high) : null;
+  const tBuf = tRaw === null ? null : tRaw - dir * sBuf;
+  const sReward = tBuf === null ? null : dir * (tBuf - reference);
+  const structural_rr = sReward === null ? null : sReward / risk;
+  let tp1: number | null = raw_tp1, tp2: number | null = raw_tp2, final_rr = 2;
+  let economics_status: EconomicsStatus, economics_reason: string;
+  if (tBuf === null) { economics_status = "NO_STRUCTURAL_TARGET"; economics_reason = "NO_STRUCTURAL_CAP_AVAILABLE"; }
+  else if (sReward! <= 0) { tp1 = null; tp2 = null; final_rr = 0; economics_status = "BAD_RR"; economics_reason = `${BAD_RR_REASON}: buffered S/R target not ahead of entry`; }
+  else {
+    tp2 = dir * (tBuf - raw_tp2) < 0 ? tBuf : raw_tp2; // nearer favorable
+    final_rr = dir * (tp2 - reference) / risk;
+    if (final_rr < TARGET_CLAMP_PARAMS.min_rr_for_actionable) { tp1 = null; economics_status = "BAD_RR"; economics_reason = `${BAD_RR_REASON}: final R:R ${final_rr.toFixed(2)} < ${TARGET_CLAMP_PARAMS.min_rr_for_actionable}`; }
+    else { economics_status = "OK"; economics_reason = tp2 === raw_tp2 ? "RAW_2R_BEFORE_STRUCTURE" : "TP2_CLAMPED_TO_STRUCTURE"; }
+  }
+  if (tp2 !== null && !planInvariantHolds(side, sl, reference, tp1, tp2)) return { ok: false, reason: "REFERENCE_PLAN_INVARIANT_FAILED" };
   return {
-    ok: true, side, entry: reference, anchor_kind: side === "BUY" ? "CONFIRMED_H1_SWING_LOW" : "CONFIRMED_H1_SWING_HIGH", anchor_price: anchor.price,
-    atr14_m15: atr.value, atr_buffer: atrBuffer, risk, sl, tp1, tp2, structural: structuralContext(side, reference, atrBuffer, operator),
+    ok: true, side, entry: reference, anchor_timeframe: anchorTf, anchor_kind: side === "BUY" ? "CONFIRMED_LOCAL_SWING_LOW" : "CONFIRMED_LOCAL_SWING_HIGH", anchor_price: anchorPrice,
+    atr14_m15: atr.value, atr_buffer: atrBuffer, risk, sl, raw_tp1, raw_tp2, raw_rr_tp1: 1, raw_rr_tp2: 2,
+    structural_target_zone: zone, structural_target_raw: tRaw, structural_target_buffered: tBuf, structural_rr,
+    tp1, tp2, final_rr, economics_status, economics_reason,
+    stop_policy_version: SCALP_STOP_POLICY_VERSION, target_clamp_policy_version: TARGET_CLAMP_POLICY_VERSION,
+    structural: structuralContext(side, reference, atrBuffer, operator),
   };
 }
 
@@ -335,7 +372,7 @@ export function deriveReferencePlan(
   const p = buildSidePlan(side, side === "BUY" ? quote.ask : quote.bid, evidence, operator);
   if (!p.ok) return unavailablePlan(p.reason);
   const { ok: _ok, ...rest } = p;
-  return { status: "AVAILABLE", policy_version: REFERENCE_PLAN_POLICY_VERSION, ...rest, rr_tp1: 1, rr_tp2: 2 };
+  return { status: "AVAILABLE", policy_version: REFERENCE_PLAN_POLICY_VERSION, ...rest };
 }
 
 // ---------------- RADAR (projected) plan ----------------
@@ -344,7 +381,7 @@ export const RADAR_PLAN_RULES = Object.freeze({
   activation: "operator.status CARI_BUY/CARI_SELL (even while entry=WAIT); READY entry ⇒ mode SIGNAL mirroring reference_plan",
   zone: "BUY: nearest M15 SUPPORT zone (fallback H1) and/or EMA21/50 band of M15 then M5 widened by ema_near_atr×ATR14(TF) with low ≤ price; overlap of S/R+EMA preferred. SELL mirror with RESISTANCE (high ≥ price)",
   reference: "price inside zone ⇒ ASK (BUY) / BID (SELL), executable; BUY above zone ⇒ zone_high, SELL below zone ⇒ zone_low (PROJECTED, not executable)",
-  levels: "same buildSidePlan as reference plan (H1 swing ± 0.25×ATR14 M15, TP1 1R, TP2 2R); invariant enforced; no structural TP clamp (P0.6)",
+  levels: "same buildSidePlan as reference plan (local M15/M5 swing ± 0.25×ATR14 M15, raw 1R/2R, structural clamp of TP2, BAD_RR when final R:R < min); invariant enforced",
 });
 export interface RadarZone { readonly low: number; readonly high: number; readonly sources: readonly string[]; readonly quality: string }
 export type RadarPlan = {
@@ -358,7 +395,16 @@ export type RadarPlan = {
   readonly executable_now: boolean;
   readonly sl: number | null; readonly tp1: number | null; readonly tp2: number | null;
   readonly structural_target: number | null;
+  readonly structural_target_buffered?: number | null;
+  readonly raw_tp1?: number | null; readonly raw_tp2?: number | null; readonly final_rr?: number | null;
+  readonly economics_status?: EconomicsStatus | null; readonly economics_reason?: string | null;
+  readonly anchor_timeframe?: "M15" | "M5" | null; readonly anchor_kind?: string | null;
 };
+const planExtras = (p: Omit<Extract<SidePlan, { ok: true }>, "ok">) => ({
+  sl: p.sl, tp1: p.tp1, tp2: p.tp2, structural_target: p.structural_target_raw, structural_target_buffered: p.structural_target_buffered,
+  raw_tp1: p.raw_tp1, raw_tp2: p.raw_tp2, final_rr: p.final_rr, economics_status: p.economics_status, economics_reason: p.economics_reason,
+  anchor_timeframe: p.anchor_timeframe, anchor_kind: p.anchor_kind,
+});
 
 function emaBandZone(tf: "M15" | "M5", op: OperatorAnalysis): { low: number; high: number; src: string } | null {
   const t = op.scalp?.[tf]; if (!t) return null;
@@ -394,8 +440,11 @@ export function deriveRadarPlan(
   if (entry.state === "LONG_CANDIDATE" || entry.state === "SHORT_CANDIDATE") {
     const side = entry.state === "LONG_CANDIDATE" ? "BUY" : "SELL";
     if (ref.status !== "AVAILABLE") return { ...blank, mode: "SIGNAL", status: "NOT_AVAILABLE", side, reason: ref.reason };
-    return { ...blank, mode: "SIGNAL", status: "AVAILABLE", side, reason: "SIGNAL_READY", reference_entry: ref.entry, executable_now: true, sl: ref.sl, tp1: ref.tp1, tp2: ref.tp2, structural_target: ref.structural.structural_target };
+    return { ...blank, mode: "SIGNAL", status: "AVAILABLE", side, reason: "SIGNAL_READY", reference_entry: ref.entry, executable_now: true, ...planExtras(ref) };
   }
+  // Technical READY vetoed by economics: show the frozen plan, flagged BAD_RR.
+  if (entry.state === "WAIT" && entry.reason === BAD_RR_REASON && ref.status === "AVAILABLE")
+    return { ...blank, mode: "SIGNAL", status: "AVAILABLE", side: ref.side, reason: BAD_RR_REASON, reference_entry: ref.entry, executable_now: false, ...planExtras(ref) };
   const side = op?.status === "CARI_BUY" ? "BUY" : op?.status === "CARI_SELL" ? "SELL" : null;
   if (!side || !op || !quote) return { ...blank, mode: "NONE", status: "NO_DIRECTION", side: null, reason: op?.reason ?? "NO_SEARCH_DIRECTION" };
   const exec = side === "BUY" ? quote.ask : quote.bid;
@@ -409,7 +458,7 @@ export function deriveRadarPlan(
   else return { ...blank, mode: "RADAR", status: "NOT_AVAILABLE", side, zone, reason: side === "BUY" ? "PRICE_BELOW_BUY_ZONE" : "PRICE_ABOVE_SELL_ZONE" };
   const p = buildSidePlan(side, reference, evidence, op);
   if (!p.ok) return { ...blank, mode: "RADAR", status: "NOT_AVAILABLE", side, zone, reference_entry: reference, executable_now: inside, reason: p.reason };
-  return { ...blank, mode: "RADAR", status: "AVAILABLE", side, zone, reference_entry: reference, executable_now: inside, reason: op.reason, sl: p.sl, tp1: p.tp1, tp2: p.tp2, structural_target: p.structural.structural_target };
+  return { ...blank, mode: "RADAR", status: "AVAILABLE", side, zone, reference_entry: reference, executable_now: inside, reason: p.economics_status === "BAD_RR" ? BAD_RR_REASON : op.reason, ...planExtras(p) };
 }
 
 /** Structural S/R context for a read-only plan. Missing evidence ⇒ null fields, never a substitute level. */
@@ -481,11 +530,14 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
 
   // ENTRY ANALYSIS (label only; READY requires a CLOSED M5 trigger, so forming candles can never produce it)
   const readySide = signal.state === "READY" ? signal.origin?.side ?? side : null;
+  const frozen = signal.state === "READY" && signal.origin ? frozenPlan(signal.origin) : null;
+  const badRr = frozen?.status === "AVAILABLE" && frozen.economics_status === "BAD_RR";
   const entry: TradingSnapshot["entry"] = signal.state === "NOT_EVALUABLE" ? { state: "NOT_EVALUABLE", reason: signal.reason }
+    : badRr ? { state: "WAIT", reason: BAD_RR_REASON }
     : signal.state === "READY" && readySide ? { state: readySide === "BUY" ? "LONG_CANDIDATE" : "SHORT_CANDIDATE", reason: `${bias.reason} + ${setup.reason} + ${signal.reason}` }
     : { state: "WAIT", reason: `${setup.state === "ACTIVE" || signal.state === "EXPIRED" || signal.state === "INVALIDATED" ? signal.reason : setup.reason}` };
   // READY ⇒ frozen origin plan (never recomputed from the current quote).
-  const referencePlan = signal.state === "READY" && signal.origin ? frozenPlan(signal.origin) : deriveReferencePlan(entry, i.quote, evidence, op);
+  const referencePlan = frozen ?? deriveReferencePlan(entry, i.quote, evidence, op);
   const radarPlan = deriveRadarPlan(entry, i.quote, evidence, op, referencePlan);
 
   const why: WhyFact[] = [];
@@ -497,7 +549,7 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
   why.push({ ok: op.ema_confluence.timeframe ? true : op.ema_confluence.zone === "INSUFFICIENT" ? null : false, text: `EMA21/50 confluence ${op.ema_confluence.zone}${op.ema_confluence.timeframe ? ` (${op.ema_confluence.timeframe})` : ""}` });
   why.push({ ok: op.checks.rsi, text: `RSI14 H1 ${v(evidence.H1.rsi14)} (direction gate) · M15 ${v(evidence.M15.rsi14)} · M5 ${v(evidence.M5.rsi14)} (supporting)` });
   why.push({ ok: op.trigger === "BULLISH" || op.trigger === "BEARISH" ? true : op.trigger === "INSUFFICIENT" ? null : false, text: `CLOSED trigger ${op.trigger}: M5 [${[...op.patterns.M5.bullish, ...op.patterns.M5.bearish].join(", ") || "none"}] · M15 [${[...op.patterns.M15.bullish, ...op.patterns.M15.bearish].join(", ") || "none"}]` });
-  why.push({ ok: referencePlan.status === "AVAILABLE", text: referencePlan.status === "AVAILABLE" ? `Reference plan ${referencePlan.side}: confirmed H1 swing ${fmt(referencePlan.anchor_price)} ± 0.25×ATR14(M15) ${fmt(referencePlan.atr14_m15)}; TP1 1R, TP2 2R; S/R target ${referencePlan.structural.structural_target === null ? "none" : fmt(referencePlan.structural.structural_target)}` : `Reference plan unavailable: ${referencePlan.reason}` });
+  why.push({ ok: referencePlan.status === "AVAILABLE", text: referencePlan.status === "AVAILABLE" ? `Reference plan ${referencePlan.side}: confirmed ${referencePlan.anchor_timeframe} swing ${fmt(referencePlan.anchor_price)} ± 0.25×ATR14(M15) ${fmt(referencePlan.atr14_m15)}; raw 1R ${fmt(referencePlan.raw_tp1)} / 2R ${fmt(referencePlan.raw_tp2)}; S/R target ${referencePlan.structural_target_buffered === null ? "none" : fmt(referencePlan.structural_target_buffered)} (buffered); final R:R ${referencePlan.final_rr.toFixed(2)} ${referencePlan.economics_status}` : `Reference plan unavailable: ${referencePlan.reason}` });
   why.push({ ok: entry.state === "LONG_CANDIDATE" || entry.state === "SHORT_CANDIDATE", text: `Entry analysis ${entry.state}: ${entry.reason}` });
   why.push({ ok: false, text: `Execution ${execution.state}: ${execution.reasons.join(", ") || "—"}` });
 

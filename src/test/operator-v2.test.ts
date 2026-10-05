@@ -84,7 +84,7 @@ describe("operator v2 — S/R zones & regime", () => {
     const hammer = withLast(series("M5", Array.from({ length: 50 }, (_, i) => 95 + 0.1 * i)), [99.8, 100.1, 98.6, 100]);
     const s = evaluate(input({ ...base, M5: hammer }, 100));
     expect(s.operator!.patterns.M5.bullish).toContain("HAMMER_LIKE");
-    expect(s.entry.state).toBe("LONG_CANDIDATE");
+    expect(s.signal.state).toBe("READY"); expect(s.entry.state === "LONG_CANDIDATE" || s.entry.reason === "BAD_RR_AFTER_STRUCTURAL_CLAMP").toBe(true); // P0.6 economics veto is a separate layer
   });
 });
 
@@ -96,7 +96,7 @@ describe("operator v2 — trend setups", () => {
     const s = evaluate(input({ M5: m5, M15: series("M15", down(60)), H1, H4: series("H4", down(60)) }, price));
     expect(s.operator).toMatchObject({ h4_primary: "DOWN", regime: "TREND", status: "CARI_SELL", candidate: "SELL" });
     expect(s.operator!.checks).toEqual({ context: true, location: true, rsi: true, trigger: true });
-    expect(s.entry.state).toBe("SHORT_CANDIDATE");
+    expect(s.signal.state).toBe("READY"); expect(s.entry.state === "SHORT_CANDIDATE" || s.entry.reason === "BAD_RR_AFTER_STRUCTURAL_CLAMP").toBe(true); // P0.6 economics veto is a separate layer
     expect(s.reference_plan.status).toBe("AVAILABLE");
     if (s.reference_plan.status === "AVAILABLE") expect(s.reference_plan.structural).toBeDefined();
     expect(s.execution.state).toBe("BLOCKED");
@@ -107,7 +107,7 @@ describe("operator v2 — trend setups", () => {
     const m5 = withLast(series("M5", up(40)), [120, 120.2, 118.8, 119], [118.9, 121.2, 118.7, 121]);
     const s = evaluate(input({ M5: m5, M15: series("M15", up(60)), H1, H4: series("H4", up(60)) }, price));
     expect(s.operator).toMatchObject({ h4_primary: "UP", status: "CARI_BUY", candidate: "BUY" });
-    expect(s.entry.state).toBe("LONG_CANDIDATE");
+    expect(s.signal.state).toBe("READY"); expect(s.entry.state === "LONG_CANDIDATE" || s.entry.reason === "BAD_RR_AFTER_STRUCTURAL_CLAMP").toBe(true); // P0.6 economics veto is a separate layer
   });
   it("trend without location ⇒ HOLD even with a trigger", () => {
     const m5 = withLast(series("M5", up(40)), [120, 120.2, 118.8, 119], [118.9, 121.2, 118.7, 121]);

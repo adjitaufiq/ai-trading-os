@@ -73,13 +73,14 @@ describe("vertical slice — four-state contract", () => {
     expect(EXECUTION_ENABLED).toBe(false);
     expect(s.reference_plan.status).toBe("AVAILABLE");
     if (s.reference_plan.status === "AVAILABLE") {
-      const latestLow = [...s.evidence!.H1.structure.swings].reverse().find((swing) => swing.kind === "LOW")!;
+      const latestLow = [...s.evidence!.M15.structure.swings, ...[]].reverse().find((swing) => swing.kind === "LOW" && swing.price < (s.reference_plan as { entry: number }).entry) ?? [...s.evidence!.M5.structure.swings].reverse().find((swing) => swing.kind === "LOW" && swing.price < (s.reference_plan as { entry: number }).entry)!;
       const atr = (s.evidence!.M15.atr14 as { status: "OK"; value: number }).value;
       const expectedSl = s.quote!.ask - (s.quote!.ask - (latestLow.price - 0.25 * atr));
       expect(s.reference_plan.sl).toBeCloseTo(expectedSl, 10);
-      expect(s.reference_plan.tp1 - s.reference_plan.entry).toBeCloseTo(s.reference_plan.risk, 10);
-      expect(s.reference_plan.tp2 - s.reference_plan.entry).toBeCloseTo(2 * s.reference_plan.risk, 10);
-      expect(s.reference_plan).toMatchObject({ side: "BUY", rr_tp1: 1, rr_tp2: 2, anchor_kind: "CONFIRMED_H1_SWING_LOW" });
+      expect(s.reference_plan.raw_tp1 - s.reference_plan.entry).toBeCloseTo(s.reference_plan.risk, 10);
+      expect(s.reference_plan.raw_tp2 - s.reference_plan.entry).toBeCloseTo(2 * s.reference_plan.risk, 10);
+      expect(s.reference_plan.tp2!).toBeLessThanOrEqual(s.reference_plan.raw_tp2);
+      expect(s.reference_plan).toMatchObject({ side: "BUY", raw_rr_tp1: 1, raw_rr_tp2: 2, anchor_kind: "CONFIRMED_LOCAL_SWING_LOW" });
     }
   });
   it("H1 RSI14 direction gate is exact: BUY >50, SELL <50, 50/insufficient HOLD", () => {
@@ -94,15 +95,17 @@ describe("vertical slice — four-state contract", () => {
   it("reference plan refuses missing swings, invalid ATR, and non-positive risk", () => {
     const s = evaluate(base());
     const evidence = s.evidence!;
-    expect(deriveReferencePlan(s.entry, s.quote, { ...evidence, H1: { ...evidence.H1, structure: { swings: [], latest_high: null, latest_low: null, summary: "INSUFFICIENT_HISTORY" } } })).toMatchObject({ status: "NOT_AVAILABLE", reason: "CONFIRMED_H1_SWING_LOW_UNAVAILABLE" });
-    expect(deriveReferencePlan(s.entry, s.quote, { ...evidence, M15: { ...evidence.M15, atr14: { status: "INSUFFICIENT_HISTORY", required: 15, have: 1 } } })).toMatchObject({ status: "NOT_AVAILABLE", reason: "ATR14_M15_UNAVAILABLE" });
-    const highAnchor = { ...evidence.H1.structure.swings[0]!, kind: "LOW" as const, price: s.quote!.ask + 10 };
-    expect(deriveReferencePlan(s.entry, s.quote, { ...evidence, H1: { ...evidence.H1, structure: { ...evidence.H1.structure, swings: [highAnchor] } } })).toMatchObject({ status: "NOT_AVAILABLE", reason: "REFERENCE_PLAN_NON_POSITIVE_RISK" });
+    expect(deriveReferencePlan({ state: "LONG_CANDIDATE" as const, reason: "TEST" }, s.quote, { ...evidence, M15: { ...evidence.M15, structure: { swings: [], latest_high: null, latest_low: null, summary: "INSUFFICIENT_HISTORY" } }, M5: { ...evidence.M5, structure: { swings: [], latest_high: null, latest_low: null, summary: "INSUFFICIENT_HISTORY" } } })).toMatchObject({ status: "NOT_AVAILABLE", reason: "LOCAL_SCALP_SWING_LOW_UNAVAILABLE" });
+    expect(deriveReferencePlan({ state: "LONG_CANDIDATE" as const, reason: "TEST" }, s.quote, { ...evidence, M15: { ...evidence.M15, atr14: { status: "INSUFFICIENT_HISTORY", required: 15, have: 1 } } })).toMatchObject({ status: "NOT_AVAILABLE", reason: "ATR14_M15_UNAVAILABLE" });
+    // A LOW above entry is not protective ⇒ ignored (never an H1 fallback).
+    const highAnchor = { ...evidence.M15.structure.swings[0]!, kind: "LOW" as const, price: s.quote!.ask + 10 };
+    const noM5 = { ...evidence.M5, structure: { ...evidence.M5.structure, swings: [] } };
+    expect(deriveReferencePlan({ state: "LONG_CANDIDATE" as const, reason: "TEST" }, s.quote, { ...evidence, M5: noM5, M15: { ...evidence.M15, structure: { ...evidence.M15.structure, swings: [highAnchor] } } })).toMatchObject({ status: "NOT_AVAILABLE", reason: "LOCAL_SCALP_SWING_LOW_UNAVAILABLE" });
   });
-  it("SELL plan uses BID, latest confirmed H1 high + 0.25×ATR14(M15), then 1R/2R below entry", () => {
+  it("SELL plan uses BID, latest confirmed local M15 high + 0.25×ATR14(M15), raw 1R/2R below entry", () => {
     const s = evaluate(base());
     const evidence = s.evidence!;
-    const latestHigh = [...evidence.H1.structure.swings].reverse().find((swing) => swing.kind === "HIGH")!;
+    const latestHigh = [...evidence.M15.structure.swings].reverse().find((swing) => swing.kind === "HIGH")!;
     const atr = (evidence.M15.atr14 as { status: "OK"; value: number }).value;
     const quote = { ...s.quote!, bid: latestHigh.price - 5, ask: latestHigh.price - 4.8 };
     const plan = deriveReferencePlan({ state: "SHORT_CANDIDATE", reason: "TEST" }, quote, evidence);
@@ -110,9 +113,9 @@ describe("vertical slice — four-state contract", () => {
     if (plan.status === "AVAILABLE") {
       expect(plan.entry).toBe(quote.bid);
       expect(plan.sl).toBeCloseTo(latestHigh.price + 0.25 * atr, 10);
-      expect(plan.entry - plan.tp1).toBeCloseTo(plan.risk, 10);
-      expect(plan.entry - plan.tp2).toBeCloseTo(2 * plan.risk, 10);
-      expect(plan).toMatchObject({ side: "SELL", rr_tp1: 1, rr_tp2: 2, anchor_kind: "CONFIRMED_H1_SWING_HIGH" });
+      expect(plan.entry - plan.raw_tp1).toBeCloseTo(plan.risk, 10);
+      expect(plan.entry - plan.raw_tp2).toBeCloseTo(2 * plan.risk, 10);
+      expect(plan).toMatchObject({ side: "SELL", raw_rr_tp1: 1, raw_rr_tp2: 2, anchor_kind: "CONFIRMED_LOCAL_SWING_HIGH", anchor_timeframe: "M15" });
     }
   });
   it("forming M5 candle cannot create a CLOSED-only trigger (only CLOSED bars are inputs)", () => {

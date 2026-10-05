@@ -16,7 +16,7 @@ function describe(e: JournalEntry): { title: string; detail: string; tone: strin
   if (e.type === "LIFECYCLE") { const l = e.lifecycle; return { title: `${l.event.replace(/_/g, " ")} · ${l.side}`, detail: `${l.reason ?? l.trigger} · entry ${n(l.origin_entry)} · SL ${n(l.origin_sl)} · R ${n(l.initial_r)}${l.ttl_remaining == null ? "" : ` · sisa ${l.ttl_remaining} bar M5`}`, tone: l.event.includes("CREATED") ? (l.side === "BUY" ? "text-bull" : "text-bear") : "text-muted-foreground" }; }
   const p = e.position;
   const manual = p.manual_against_engine ? ` · MANUAL (ENGINE: ${p.engine_signal})` : "";
-  if (e.type === "TRADE_OPEN") return { title: `PAPER ${p.side} DIBUKA @ ${n(p.entry)}`, detail: `SL ${n(p.sl)} · TP2 ${n(p.tp2)}${manual}`, tone: p.side === "BUY" ? "text-bull" : "text-bear" };
+  if (e.type === "TRADE_OPEN") return { title: `PAPER ${p.side} DIBUKA @ ${n(p.entry)}`, detail: `SL ${n(p.sl)} · TP2 ${n(p.tp2)}${p.final_rr != null ? ` · R:R 1:${p.final_rr.toFixed(2)}` : ""}${p.economic_veto_at_open ? " · VETO EKONOMI (BAD R:R)" : ""}${manual}`, tone: p.side === "BUY" ? "text-bull" : "text-bear" };
   return { title: `PAPER ${p.side} DITUTUP @ ${n(p.exit_price)} (${p.exit_reason})`, detail: `PnL ${n(p.pnl)} · R ${p.r_multiple == null ? "—" : p.r_multiple.toFixed(2)}${manual}`, tone: (p.pnl ?? 0) >= 0 ? "text-bull" : "text-bear" };
 }
 
@@ -53,6 +53,8 @@ export function BacktestView({ result }: { result: BacktestResult }) {
       <Stat label="Kandidat BUY / SELL" value={`${result.buy_candidates} / ${result.sell_candidates}`} />
       <Stat label="HOLD" value={String(result.hold)} />
       <Stat label="Sinyal dibuat / expired / invalid / chasing" value={`${result.signals_created} / ${result.signals_expired} / ${result.signals_invalidated} / ${result.signals_missed_chasing}`} />
+      <Stat label="Veto R:R buruk / tanpa target S/R" value={`${result.bad_rr_veto_count ?? 0} / ${result.no_structural_target_count ?? 0}`} />
+      <Stat label="Rata-rata R menang" value={result.avg_win_r == null ? "—" : result.avg_win_r.toFixed(2)} />
       <Stat label="Trade simulasi" value={String(result.trades.length)} />
       <Stat label="Menang / Kalah" value={`${result.wins} / ${result.losses}`} />
       <Stat label="Ambigu (SL+TP satu bar)" value={String(result.ambiguous)} />

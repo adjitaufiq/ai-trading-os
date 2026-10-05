@@ -14,7 +14,7 @@ import { resolveTrade } from "@/core/technical/backtest";
 const M5 = 300_000;
 const bar = (k: number, o: Partial<TechBar> = {}): TechBar => ({ open_time: k * M5, close_time: (k + 1) * M5, available_at: (k + 1) * M5, open: 100, high: 101, low: 99, close: 100.5, ...o });
 const memKV = (): KV => { const d = new Map<string, string>(); return { getItem: (k) => d.get(k) ?? null, setItem: (k, v) => { d.set(k, v); } }; };
-const evidence = { M5: {}, M15: { atr14: { status: "OK", value: 4 } }, H1: { structure: { swings: [{ kind: "LOW", price: 90 }, { kind: "HIGH", price: 120 }] } } } as never;
+const evidence = { M5: {}, M15: { atr14: { status: "OK", value: 4 }, structure: { swings: [{ kind: "LOW", price: 90 }, { kind: "HIGH", price: 120 }] } }, H1: { structure: { swings: [] } } } as never;
 const pat = (direction = "NONE", at: number | null = null) => ({ direction, bar_available_at: at, bar_open_time: at === null ? null : at - M5, bullish: [], bearish: [] });
 
 type OpArgs = { candidate?: "BUY" | "SELL" | null; trigK?: number; momentum?: string; m5?: ReturnType<typeof pat> };
@@ -92,9 +92,9 @@ describe("P0.3–P0.5 signal safety lifecycle", () => {
   });
 
   it("11. no initial R ⇒ chasing guard unavailable, no fabricated threshold", () => {
-    const noSwing = { ...(evidence as object), H1: { structure: { swings: [] } } } as never;
+    const noSwing = { ...(evidence as object), M15: { atr14: { status: "OK", value: 4 }, structure: { swings: [] } }, M5: { structure: { swings: [] } } } as never;
     const s0 = deriveSignalLifecycle(input(upto(10), 100, 100.2), null, ACTIVE, op({ candidate: "BUY" }), noSwing);
-    expect(s0.origin).toMatchObject({ initial_r: null, origin_sl: null, origin_plan_reason: "CONFIRMED_H1_SWING_LOW_UNAVAILABLE" });
+    expect(s0.origin).toMatchObject({ initial_r: null, origin_sl: null, origin_plan_reason: "LOCAL_SCALP_SWING_LOW_UNAVAILABLE" });
     expect(s0.chasing_guard).toBe("UNAVAILABLE_NO_INITIAL_R");
     expect(deriveSignalLifecycle(input(upto(10), 1000, 1000.2), s0, ACTIVE, op({ candidate: "BUY" }), noSwing).state).toBe("READY");
   });
@@ -137,7 +137,7 @@ describe("P0.3–P0.5 signal safety lifecycle", () => {
     const NA = { status: "INSUFFICIENT_HISTORY" };
     const radarOp = { status: "CARI_BUY", reason: "x", ema_confluence: { zone: "NOT_NEAR", timeframe: null }, patterns: { M5: { bullish: [], bearish: [] }, M15: { bullish: [], bearish: [] } }, zones: { H4: [], H1: [], M15: [zone] }, scalp: { local_zones: [zone], M15: { ema21: NA, ema50: NA, atr14: NA, ema_location: "NOT_NEAR", ema_reaction: [] }, M5: { ema21: NA, ema50: NA, atr14: NA, ema_location: "NOT_NEAR", ema_reaction: [] } } } as never;
     const WAIT = { state: "WAIT" as const, reason: "SIGNAL_TTL_EXPIRED" };
-    const NOREF = { status: "NOT_AVAILABLE" as const, policy_version: "reference-plan-v2-swing-atr-plus-sr-context" as const, reason: "x" };
+    const NOREF = { status: "NOT_AVAILABLE" as const, policy_version: "reference-plan-v3-p0.6-local-swing-structural-clamp" as const, reason: "x" };
     const q = (b: number) => ({ bid: b, ask: b + 0.2, spread: 0.2, tick_time_ms: 1, observed_at: 1 });
     const a = deriveRadarPlan(WAIT, q(98), evidence, radarOp, NOREF), b = deriveRadarPlan(WAIT, q(98.5), evidence, radarOp, NOREF);
     expect(a).toMatchObject({ mode: "RADAR", status: "AVAILABLE" });

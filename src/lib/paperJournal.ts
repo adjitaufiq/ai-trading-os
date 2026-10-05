@@ -1,6 +1,6 @@
 // PAPER / SIMULATION trading + journal. Frontend-only, local persistence.
 // SIMULATION ONLY: nothing here talks to a broker, gateway, account or order API. There is no order path.
-import { buildSidePlan, planInvariantHolds, RADAR_PLAN_POLICY_VERSION, SIGNAL_TTL_POLICY_VERSION, type TradingSnapshot } from "@/core/technical/tradingState";
+import { BAD_RR_REASON, buildSidePlan, planInvariantHolds, RADAR_PLAN_POLICY_VERSION, SCALP_STOP_POLICY_VERSION, SIGNAL_TTL_POLICY_VERSION, TARGET_CLAMP_POLICY_VERSION, type EconomicsStatus, type TradingSnapshot } from "@/core/technical/tradingState";
 import { compactSummary, engineSignalOf, type CompactSummary, type EngineSignal } from "./tradeSummary";
 
 export type PaperSide = "BUY" | "SELL";
@@ -37,6 +37,12 @@ export interface PaperPosition {
   readonly policy_versions?: Readonly<Record<string, string>> | null;
   readonly engine_signal_id?: string | null;
   readonly engine_signal_origin_entry?: number | null;
+  // ---- P0.6 economics at open ----
+  readonly economics_status?: EconomicsStatus | null;
+  readonly final_rr?: number | null;
+  readonly anchor_timeframe?: "M15" | "M5" | null;
+  readonly structural_target?: number | null;
+  readonly economic_veto_at_open?: typeof BAD_RR_REASON | null;
 }
 export type ActionSource = "ENGINE_ALIGNED" | "MANUAL_EARLY" | "MANUAL_AGAINST_ENGINE";
 export type PlanSource = "SIGNAL_PLAN" | "RADAR_REBASED_TO_ACTUAL_ENTRY" | "CURRENT_EVIDENCE_REBASED_TO_ACTUAL_ENTRY";
@@ -79,9 +85,9 @@ export function openPaper(args: { symbol: string; side: PaperSide; quote: Quote;
   const search = snapshot?.operator?.status ?? null;
   const searchSide = search === "CARI_BUY" ? "BUY" : search === "CARI_SELL" ? "SELL" : null;
   const action_source: ActionSource = engine === side ? "ENGINE_ALIGNED" : engine === "HOLD" && searchSide === side ? "MANUAL_EARLY" : "MANUAL_AGAINST_ENGINE";
-  let levels: { sl: number; tp1: number; tp2: number } | null = null, plan_source: PlanSource | null = null, reason: string | null = null;
+  let levels: { sl: number; tp1: number | null; tp2: number | null; economics_status: EconomicsStatus; final_rr: number; anchor_timeframe: "M15" | "M5"; structural_target_buffered: number | null } | null = null, plan_source: PlanSource | null = null, reason: string | null = null;
   const ref = snapshot?.reference_plan;
-  if (action_source === "ENGINE_ALIGNED" && ref?.status === "AVAILABLE" && ref.side === side && planInvariantHolds(side, ref.sl, entry, ref.tp1, ref.tp2)) { levels = ref; plan_source = "SIGNAL_PLAN"; }
+  if (action_source === "ENGINE_ALIGNED" && ref?.status === "AVAILABLE" && ref.side === side && ref.economics_status !== "BAD_RR" && planInvariantHolds(side, ref.sl, entry, ref.tp1, ref.tp2)) { levels = ref; plan_source = "SIGNAL_PLAN"; }
   else {
     const p = buildSidePlan(side, entry, snapshot?.evidence ?? null, snapshot?.operator ?? null);
     if (p.ok) { levels = p; plan_source = action_source === "MANUAL_EARLY" ? "RADAR_REBASED_TO_ACTUAL_ENTRY" : "CURRENT_EVIDENCE_REBASED_TO_ACTUAL_ENTRY"; }
@@ -94,9 +100,11 @@ export function openPaper(args: { symbol: string; side: PaperSide; quote: Quote;
     context: snapshot && snapshot.availability !== "UNAVAILABLE" ? compactSummary(snapshot) : null,
     status: "OPEN", closed_at: null, exit_price: null, pnl: null, r_multiple: null, exit_reason: null,
     action_source, engine_search: search, engine_actionable_signal: engine, plan_source, plan_unavailable_reason: reason,
-    policy_versions: snapshot ? { ...snapshot.versions, radar_plan_policy_version: RADAR_PLAN_POLICY_VERSION, signal_ttl_policy_version: SIGNAL_TTL_POLICY_VERSION } : null,
+    policy_versions: snapshot ? { ...snapshot.versions, radar_plan_policy_version: RADAR_PLAN_POLICY_VERSION, signal_ttl_policy_version: SIGNAL_TTL_POLICY_VERSION, scalp_stop_policy_version: SCALP_STOP_POLICY_VERSION, target_clamp_policy_version: TARGET_CLAMP_POLICY_VERSION } : null,
     engine_signal_id: action_source === "ENGINE_ALIGNED" ? snapshot?.signal.origin?.signal_id ?? null : null,
     engine_signal_origin_entry: action_source === "ENGINE_ALIGNED" ? snapshot?.signal.origin?.origin_entry ?? null : null,
+    economics_status: levels?.economics_status ?? null, final_rr: levels?.final_rr ?? null, anchor_timeframe: levels?.anchor_timeframe ?? null,
+    structural_target: levels?.structural_target_buffered ?? null, economic_veto_at_open: levels?.economics_status === "BAD_RR" ? BAD_RR_REASON : null,
   });
 }
 
