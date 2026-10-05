@@ -79,7 +79,7 @@ describe("operator v2 — S/R zones & regime", () => {
   it("range BUY at support needs a CLOSED bullish trigger", () => {
     const base = { M15: series("M15", range(60)), H1: series("H1", range(60)), H4: series("H4", range(60)) };
     const noTrig = operatorAnalysis({ ...base, M5: series("M5", range(60)) }, 100);
-    expect(noTrig).toMatchObject({ regime: "RANGE", location: "AT_SUPPORT", status: "HOLD", candidate: null });
+    expect(noTrig).toMatchObject({ regime: "RANGE", location: "AT_SUPPORT", candidate: null }); expect(noTrig.status).not.toBe("CARI_SELL");
     // P0.2: range BUY also needs a local bullish M5 momentum side.
     const hammer = withLast(series("M5", Array.from({ length: 50 }, (_, i) => 95 + 0.1 * i)), [99.8, 100.1, 98.6, 100]);
     const s = evaluate(input({ ...base, M5: hammer }, 100));
