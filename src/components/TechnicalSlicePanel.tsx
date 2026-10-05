@@ -51,11 +51,12 @@ function Body({ s }: { s: TradingSnapshot }) {
 }
 
 function Matrix({ s, prefix }: { s: TradingSnapshot; prefix: string }) {
-  return <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+  return <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
     <Cell testId={`${prefix}-availability`} label="Availability" value={s.availability} reason={s.availability_reason} />
     <Cell testId={`${prefix}-bias`} label="Bias" value={s.bias.state} reason={s.bias.reason} />
     <Cell testId={`${prefix}-setup`} label="Setup" value={s.setup.state} reason={s.setup.reason} />
     <Cell testId={`${prefix}-signal`} label="Signal" value={s.signal.state} reason={s.signal.reason} />
+    <Cell testId={`${prefix}-entry`} label="Entry analysis" value={s.entry.state} reason={s.entry.reason} />
     <Cell testId={`${prefix}-execution`} label="Execution" value={s.execution.state} reason={s.execution.reasons.join(" · ")} />
   </div>;
 }

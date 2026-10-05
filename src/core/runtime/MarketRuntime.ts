@@ -79,7 +79,22 @@ export interface MarketRuntimeReader {
   snapshot(): MarketRuntimeSnapshot;
   /** Latest observation that actually reached the LIVE sink (LIVE_MUTATION only). Never BACKFILL/RECONCILE. */
   latestLiveObservation(): BrokerMarketEvent | null;
+  /** Broker-reported CLOSED history bars (BACKFILL provenance; never live candles, never in CandleStore). */
+  brokerHistoryBars?(tf: Timeframe): readonly BrokerHistoryBar[];
+  /** event_at of the first LIVE_MUTATION; canonical bars opening before it may be partial. */
+  firstLiveEventAt?(): number | null;
   now(): number;
+}
+
+/** Broker /v1/bars CLOSED bar. open_time on the measured broker time axis (offset 0 verified at mount, G2). */
+export interface BrokerHistoryBar {
+  readonly provenance: "BROKER_BACKFILL_BAR";
+  readonly timeframe: Timeframe;
+  readonly open_time: number;
+  readonly close_time: number;
+  /** Clock time when this system received the bar (fetch completion). */
+  readonly available_at: number;
+  readonly open: number; readonly high: number; readonly low: number; readonly close: number;
 }
 
 export interface StartRequest { readonly history_from: number; readonly history_to: number }
@@ -97,6 +112,8 @@ export class MarketRuntime {
   private coverageStatus: string | null = null;
   private lastRequest: StartRequest | null = null;
   private lastLive: BrokerMarketEvent | null = null;
+  private firstLiveAt: number | null = null;
+  private readonly history = { M5: [], M15: [], H1: [], H4: [] } as Record<Timeframe, readonly BrokerHistoryBar[]>;
   private streamErrors = 0;
   private lastStreamError: string | null = null;
   private readonly maxHeld = 1000;
@@ -111,7 +128,7 @@ export class MarketRuntime {
       this.stores[tf].attach(this.fanout.aggregators[tf]);
     }
     const count = (r: AuditRecord) => { this.routeCounts[r.route]++; };
-    this.pipeline = new BrokerFeedPipeline(o.spec, o.classifier, o.clock, (e) => { this.fanout.ingest(e); this.lastLive = e; });
+    this.pipeline = new BrokerFeedPipeline(o.spec, o.classifier, o.clock, (e) => { this.fanout.ingest(e); this.lastLive = e; if (this.firstLiveAt === null) this.firstLiveAt = e.event_at; });
     const pipe = this.pipeline;
     this.boot = new BootstrapCoordinator({ process: (env, id) => { const r = pipe.process(env, id); count(r); return r; } }, new ObservationIdentityRegistry());
     this.reader = this.makeReader();
@@ -202,6 +219,24 @@ export class MarketRuntime {
     }
   }
 
+  /**
+   * Seed/refresh broker CLOSED history for the technical read model. BACKFILL provenance: it never enters the
+   * live fanout, CandleStore or frontier. Only bars with close_time <= clock now are kept (forming excluded).
+   * Replacement is whole-window (broker reconciliation), bounded by maxClosedBarsPerTimeframe.
+   */
+  seedBrokerHistory(tf: Timeframe, bars: readonly { open_time: number; open: number; high: number; low: number; close: number }[]): number {
+    const now = this.o.clock.now(), ms = TIMEFRAME_MS[tf];
+    const out: BrokerHistoryBar[] = [];
+    for (const b of bars) {
+      const close_time = b.open_time + ms;
+      if (close_time > now) continue;
+      if (out.length && b.open_time <= out[out.length - 1]!.open_time) throw new Error(`broker history ${tf} not strictly ascending`);
+      out.push(Object.freeze({ provenance: "BROKER_BACKFILL_BAR", timeframe: tf, open_time: b.open_time, close_time, available_at: now, open: b.open, high: b.high, low: b.low, close: b.close }));
+    }
+    this.history[tf] = Object.freeze(out.slice(-this.o.maxClosedBarsPerTimeframe));
+    return this.history[tf].length;
+  }
+
   /** Time-driven closure through the canonical clock only. */
   checkBoundaries(): void {
     this.fanout.checkBoundary();
@@ -245,6 +280,8 @@ export class MarketRuntime {
       formingBar: forming,
       now: () => self.o.clock.now(),
       latestLiveObservation: () => self.lastLive,
+      brokerHistoryBars: (tf) => self.history[tf],
+      firstLiveEventAt: () => self.firstLiveAt,
       missingIntervals(tf) {
         const c = closed(tf);
         if (c.length < 2) return Object.freeze([]);

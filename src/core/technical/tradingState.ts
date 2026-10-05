@@ -10,6 +10,7 @@ export type TechnicalAvailability = "AVAILABLE" | "STALE" | "UNAVAILABLE";
 export type BiasState = "BUY" | "SELL" | "NEUTRAL" | "NOT_EVALUABLE";
 export type SetupState = "ACTIVE" | "INACTIVE" | "INVALID" | "NOT_EVALUABLE";
 export type SignalState = "READY" | "WAITING" | "EXPIRED" | "INVALIDATED" | "NOT_EVALUABLE";
+export type EntryAnalysis = "LONG_CANDIDATE" | "SHORT_CANDIDATE" | "WAIT" | "NOT_EVALUABLE";
 export type ExecutionState = "ALLOWED" | "INHIBITED" | "BLOCKED";
 
 export const ALL_SIGNAL_STATES: readonly SignalState[] = ["READY", "WAITING", "EXPIRED", "INVALIDATED", "NOT_EVALUABLE"];
@@ -81,6 +82,8 @@ export interface TradingSnapshot {
   readonly setup: { readonly state: SetupState; readonly reason: string };
   readonly signal: { readonly state: SignalState; readonly reason: string; readonly triggered_at: number | null; readonly trigger_bar: number | null; readonly trigger_evidence: string | null; readonly validity_policy: "RESEARCH_REQUIRED" };
   readonly execution: { readonly state: ExecutionState; readonly reasons: readonly string[] };
+  /** Analysis label only (MONITOR_ONLY). Never an order, never transmitted. */
+  readonly entry: { readonly state: EntryAnalysis; readonly reason: string };
   readonly why: readonly WhyFact[];
   readonly versions: { readonly technical_engine_version: string; readonly setup_policy_version: string; readonly signal_policy_version: string; readonly guard_policy_version: string };
 }
@@ -112,6 +115,7 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
       setup: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE" },
       signal: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE", triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED" },
       execution: { state: "BLOCKED", reasons: ["MARKET_STATE_UNAVAILABLE", ...capabilityReasons] },
+      entry: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE" },
       why: [{ ok: false, text: "Current market state cannot be established" }], versions,
     };
   }
@@ -162,6 +166,11 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
   if (availability === "STALE") reasons.push("FEED_STALE");
   const execution: TradingSnapshot["execution"] = capabilityReasons.length ? { state: "BLOCKED", reasons } : availability === "STALE" ? { state: "INHIBITED", reasons } : { state: "ALLOWED", reasons };
 
+  // ENTRY ANALYSIS (label only; READY requires a CLOSED M5 trigger, so forming candles can never produce it)
+  const entry: TradingSnapshot["entry"] = signal.state === "NOT_EVALUABLE" ? { state: "NOT_EVALUABLE", reason: signal.reason }
+    : signal.state === "READY" ? { state: bias.state === "BUY" ? "LONG_CANDIDATE" : "SHORT_CANDIDATE", reason: `${bias.reason} + ${setup.reason} + ${signal.reason}` }
+    : { state: "WAIT", reason: `${setup.state === "ACTIVE" ? signal.reason : setup.reason}` };
+
   const why: WhyFact[] = [];
   const rel = (tf: "H4" | "H1") => {
     const e = evidence[tf];
@@ -174,9 +183,12 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
   why.push({ ok: null, text: `H1 nearest support ${sn?.nearest_support ? fmt(sn.nearest_support.price) : "none"} · resistance ${sn?.nearest_resistance ? fmt(sn.nearest_resistance.price) : "none"} (location policy RESEARCH_REQUIRED)` });
   why.push({ ok: eng ? eng.bullish : null, text: `M5 bullish engulfing (CLOSED) = ${eng ? String(eng.bullish).toUpperCase() : "INSUFFICIENT_HISTORY"}` });
   why.push({ ok: eng ? eng.bearish : null, text: `M5 bearish engulfing (CLOSED) = ${eng ? String(eng.bearish).toUpperCase() : "INSUFFICIENT_HISTORY"}` });
+  const v = (x: Indicator, d = 1) => (x.status === "OK" ? x.value.toFixed(d) : "INSUFFICIENT_HISTORY");
+  why.push({ ok: null, text: `RSI14 M5 ${v(evidence.M5.rsi14)} · H1 ${v(evidence.H1.rsi14)} · ATR14 M5 ${evidence.M5.atr14.status === "OK" ? fmt(evidence.M5.atr14.value) : "INSUFFICIENT_HISTORY"} (evidence only, no threshold)` });
+  why.push({ ok: entry.state === "LONG_CANDIDATE" || entry.state === "SHORT_CANDIDATE", text: `Entry analysis ${entry.state}: ${entry.reason}` });
   why.push({ ok: false, text: `Execution ${execution.state}: ${execution.reasons.join(", ") || "—"}` });
 
-  return { symbol: i.symbol, as_of: i.as_of, label: "CURRENT", availability, availability_reason: availability === "STALE" ? "BAR_HISTORY_REFRESH_FAILED" : "OBSERVED", quote: i.quote, evidence, last3_m5: last3, engulfing: eng, bias, setup, signal, execution, why, versions };
+  return { symbol: i.symbol, as_of: i.as_of, label: "CURRENT", availability, availability_reason: availability === "STALE" ? "BAR_HISTORY_REFRESH_FAILED" : "OBSERVED", quote: i.quote, evidence, last3_m5: last3, engulfing: eng, bias, setup, signal, execution, entry, why, versions };
 }
 
 /** A stored previous snapshot can never be labelled CURRENT. */
