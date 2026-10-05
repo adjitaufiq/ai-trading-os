@@ -101,7 +101,8 @@ export type AnomalyClassification =
   | "AMBIGUOUS_COLLISION"
   | "OUT_OF_ORDER"
   | "GAP"
-  | "RECONNECT_BACKFILL";
+  | "RECONNECT_BACKFILL"
+  | "SOURCE_CLOCK_SKEW";
 
 export type AnomalyDisposition = "ACCEPT" | "ACCEPT_WITH_FLAG" | "QUARANTINE" | "RECONCILE" | "REJECT";
 
