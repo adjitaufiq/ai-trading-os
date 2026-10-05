@@ -97,6 +97,22 @@ describe("vertical slice — four-state contract", () => {
     const highAnchor = { ...evidence.H1.structure.swings[0]!, kind: "LOW" as const, price: s.quote!.ask + 10 };
     expect(deriveReferencePlan(s.entry, s.quote, { ...evidence, H1: { ...evidence.H1, structure: { ...evidence.H1.structure, swings: [highAnchor] } } })).toMatchObject({ status: "NOT_AVAILABLE", reason: "REFERENCE_PLAN_NON_POSITIVE_RISK" });
   });
+  it("SELL plan uses BID, latest confirmed H1 high + 0.25×ATR14(M15), then 1R/2R below entry", () => {
+    const s = evaluate(base());
+    const evidence = s.evidence!;
+    const latestHigh = [...evidence.H1.structure.swings].reverse().find((swing) => swing.kind === "HIGH")!;
+    const atr = (evidence.M15.atr14 as { status: "OK"; value: number }).value;
+    const quote = { ...s.quote!, bid: latestHigh.price - 5, ask: latestHigh.price - 4.8 };
+    const plan = deriveReferencePlan({ state: "SHORT_CANDIDATE", reason: "TEST" }, quote, evidence);
+    expect(plan.status).toBe("AVAILABLE");
+    if (plan.status === "AVAILABLE") {
+      expect(plan.entry).toBe(quote.bid);
+      expect(plan.sl).toBeCloseTo(latestHigh.price + 0.25 * atr, 10);
+      expect(plan.entry - plan.tp1).toBeCloseTo(plan.risk, 10);
+      expect(plan.entry - plan.tp2).toBeCloseTo(2 * plan.risk, 10);
+      expect(plan).toMatchObject({ side: "SELL", rr_tp1: 1, rr_tp2: 2, anchor_kind: "CONFIRMED_H1_SWING_HIGH" });
+    }
+  });
   it("forming M5 candle cannot create a CLOSED-only trigger (only CLOSED bars are inputs)", () => {
     const closed = bullEngulfM5().slice(0, -1); // engulfing bar is still FORMING → excluded
     const s = evaluate(base({ closed: { ...base().closed, M5: closed } }));
