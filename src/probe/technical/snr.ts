@@ -204,9 +204,9 @@ export function factualSummary(role: SnrCandidateRole, price: number, xs: readon
 
 const miRef = (symbol: string, tf: Timeframe, open: number) => `MI:${symbol}:${tf}:${open}`;
 /** Missing interval refs strictly between two observed bar open times (no candle is created for them). */
-function refsBetween(symbol: string, tf: Timeframe, afterOpen: number, beforeOpen: number): string[] {
+function refsBetween(symbol: string, tf: Timeframe, afterOpen: number, beforeOpen: number, observed: ReadonlySet<number>): string[] {
   const out: string[] = [];
-  for (let t = afterOpen + TIMEFRAME_MS[tf]; t < beforeOpen; t += TIMEFRAME_MS[tf]) out.push(miRef(symbol, tf, t));
+  for (let t = afterOpen + TIMEFRAME_MS[tf]; t < beforeOpen; t += TIMEFRAME_MS[tf]) if (!observed.has(t)) out.push(miRef(symbol, tf, t));
   return out;
 }
 
@@ -227,11 +227,12 @@ export function timeframeSnrState(reader: MarketRuntimeReader, tf: Timeframe, as
   const bars = prepareSeries(eligible, symbol, tf).bars;
   const swings = causalSwings(bars, tf, SWING_L, SWING_R, asOf).swings;
   const idx = new Map(bars.map((b, i) => [b.open_time, i] as const));
-  const gapRefs = (j: number) => (j > 0 ? refsBetween(symbol, tf, bars[j - 1]!.open_time, bars[j]!.open_time) : []);
+  const observed = new Set(bars.map((b) => b.open_time));
+  const gapRefs = (j: number) => (j > 0 ? refsBetween(symbol, tf, bars[j - 1]!.open_time, bars[j]!.open_time, observed) : []);
   const candidates = swings.map((s): DerivedSnrCandidate => {
     const i = idx.get(s.event_at)!, k = idx.get(s.confirmation_open_time)!;
     const conf = bars[k]!;
-    const originRefs = Object.freeze(refsBetween(symbol, tf, bars[i - SWING_L]!.open_time, conf.open_time));
+    const originRefs = Object.freeze(refsBetween(symbol, tf, bars[i - SWING_L]!.open_time, conf.open_time, observed));
     const role: SnrCandidateRole = s.type === "SWING_HIGH" ? "RESISTANCE_CANDIDATE" : "SUPPORT_CANDIDATE";
     // Structural subsequence: B.open_time >= confirmation bar close_time (excludes pivot and confirmation candles).
     const xs = Object.freeze(bars.map((b, j) => [b, j] as const).filter(([b]) => b.open_time >= conf.close_time).map(([b, j]) => interaction(b, s.price, role, gapRefs(j))));
