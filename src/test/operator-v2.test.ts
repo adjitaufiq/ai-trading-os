@@ -161,3 +161,14 @@ describe("operator v2 — causality & safety", () => {
     expect(src).not.toMatch(/order_send|fetch\(|WebSocket\(|placeOrder|submitOrder/);
   });
 });
+
+import { operatorSummary } from "@/components/TechnicalSlicePanel";
+describe("operator v2 — cockpit trader-language summary", () => {
+  it("maps operator evidence to MODE/H4/H1/AREA/EMA/TRIGGER/STATUS without deriving signals", () => {
+    expect(operatorSummary(null)).toMatchObject({ mode: "TIDAK JELAS", status: "HOLD", trigger: "belum ada" });
+    const H1 = series("H1", down(60));
+    const price = (ema(H1, 21) as { value: number }).value;
+    const s = evaluate(input({ M5: series("M5", down(40)), M15: series("M15", down(60)), H1, H4: series("H4", down(60)) }, price));
+    expect(operatorSummary(s)).toMatchObject({ mode: "TREND", h4: "TURUN", h1: "SEARAH", status: "CARI SELL" });
+  });
+});

@@ -52,6 +52,21 @@ export function referenceEntry(snapshot: TradingSnapshot | null): number | null 
   return null;
 }
 
+/** Trader-language read of the operator-v2 evidence. Pure presentation mapping; never derives a signal. */
+export function operatorSummary(snapshot: TradingSnapshot | null) {
+  const op = snapshot?.operator ?? null;
+  const dash = "—";
+  if (!op) return { mode: "TIDAK JELAS", h4: dash, h1: dash, area: dash, ema: dash, trigger: "belum ada", status: "HOLD" };
+  const mode = op.regime === "TREND" ? "TREND" : op.regime === "RANGE" ? "RANGE" : "TIDAK JELAS";
+  const h4 = op.h4_primary === "UP" ? "NAIK" : op.h4_primary === "DOWN" ? "TURUN" : op.h4_primary === "MIXED" ? "CAMPURAN" : "DATA BELUM CUKUP";
+  const h1 = ({ ALIGNED: "SEARAH", PULLBACK_AGAINST_H4: "PULLBACK", RETURNING_TO_H4: "MULAI KEMBALI", REVERSAL_CANDIDATE: "CAMPURAN", MIXED: "CAMPURAN", NO_PRIMARY_DIRECTION: "CAMPURAN", INSUFFICIENT: "DATA BELUM CUKUP" } as const)[op.h1_context];
+  const area = op.location === "AT_SUPPORT" ? "SUPPORT" : op.location === "AT_RESISTANCE" ? "RESISTANCE" : op.location === "MID" ? (op.regime === "RANGE" ? "TENGAH RANGE" : "TENGAH") : op.location === "AMBIGUOUS" ? "CAMPURAN" : dash;
+  const ema = ({ BAND: "BAND", NEAR_EMA21: "DEKAT EMA21", NEAR_EMA50: "DEKAT EMA50", NOT_NEAR: "TIDAK DEKAT", INSUFFICIENT: "DATA BELUM CUKUP" } as const)[op.ema_confluence.zone];
+  const trigger = op.trigger === "BULLISH" ? "bullish" : op.trigger === "BEARISH" ? "bearish" : op.trigger === "CONFLICT" ? "bertentangan" : "belum ada";
+  const status = op.status === "CARI_BUY" ? "CARI BUY" : op.status === "CARI_SELL" ? "CARI SELL" : "HOLD";
+  return { mode, h4, h1, area, ema, trigger, status };
+}
+
 export interface TechnicalSlicePanelProps {
   runtimes: readonly { readonly symbol: string; readonly reader: MarketRuntimeReader | null }[];
   selectedSymbol: string;
@@ -209,6 +224,16 @@ function Cockpit({ service, explain }: { service: TechnicalSliceService; explain
         <TradeActions signal={signal} entry={entry} plan={plan} reason={signalReason} confirmations={planConfirmations} />
       </section>
     </div>
+
+    <section aria-label="Ringkasan trader" data-testid="operator-summary">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+        {(() => { const o = operatorSummary(snapshot); return ([
+          ["Mode", o.mode, "op-mode"], ["H4", o.h4, "op-h4"], ["H1", o.h1, "op-h1"], ["Area", o.area, "op-area"],
+          ["EMA", o.ema, "op-ema"], ["Trigger", o.trigger, "op-trigger"], ["Status", o.status, "op-status"],
+        ] as const).map(([label, value, id]) => <ConfirmationLight key={id} label={label} value={value}
+          tone={value === "NAIK" || value === "bullish" || value === "CARI BUY" ? "BULL" : value === "TURUN" || value === "bearish" || value === "CARI SELL" ? "BEAR" : "NEUTRAL"} testId={id} />); })()}
+      </div>
+    </section>
 
     <section aria-label="Konfirmasi teknikal">
       <div className="mb-2 flex items-center gap-2"><Activity className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">Konfirmasi teknikal</h3></div>
