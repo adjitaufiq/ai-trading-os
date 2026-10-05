@@ -1,6 +1,6 @@
 // Compact, bounded technical summary of a TradingSnapshot. Used for the journal and the AI WHY payload.
 // Pure read of existing deterministic state; never derives a signal.
-import type { TradingSnapshot } from "@/core/technical/tradingState";
+import { SIGNAL_TTL_POLICY_VERSION, type TradingSnapshot } from "@/core/technical/tradingState";
 import type { Indicator } from "@/core/technical/indicators";
 import type { ScalpTf } from "@/core/technical/operator";
 
@@ -49,6 +49,7 @@ export interface CompactSummary {
   readonly projected_tp2: number | null;
   readonly projected_structural_target: number | null;
   readonly radar_plan_policy_version: string | null;
+  readonly signal_lifecycle: { readonly state: string; readonly event: string | null; readonly signal_id: string | null; readonly reason: string | null; readonly origin_entry: number | null; readonly origin_sl: number | null; readonly initial_r: number | null; readonly ttl_remaining: number | null; readonly ttl_policy_version: string } | null;
 }
 type MomentumCompact = { readonly state: string; readonly cross: string | null; readonly s5: number | null; readonly s21: number | null; readonly gap: number | null; readonly gd: number | null };
 const r3 = (x: number | null) => (x === null ? null : Math.round(x * 1000) / 1000);
@@ -77,6 +78,9 @@ export function compactSummary(s: TradingSnapshot): CompactSummary {
     radar_entry_zone_low: r5(rp?.zone?.low), radar_entry_zone_high: r5(rp?.zone?.high), radar_reference_entry: r5(rp?.reference_entry),
     projected_sl: r5(rp?.sl), projected_tp1: r5(rp?.tp1), projected_tp2: r5(rp?.tp2), projected_structural_target: r5(rp?.structural_target),
     radar_plan_policy_version: rp?.policy_version ?? null,
+    signal_lifecycle: s.signal.lifecycle ? (() => { const o = s.signal.origin ?? s.signal.lifecycle?.last_terminal?.origin ?? null; return {
+      state: s.signal.state, event: s.signal.lifecycle.event, signal_id: o?.signal_id ?? null, reason: (s.signal.lifecycle.reason ?? s.signal.lifecycle.last_terminal?.reason ?? null)?.slice(0, 80) ?? null,
+      origin_entry: r5(o?.origin_entry), origin_sl: r5(o?.origin_sl), initial_r: r5(o?.initial_r), ttl_remaining: s.signal.ttl_remaining_bars ?? null, ttl_policy_version: SIGNAL_TTL_POLICY_VERSION }; })() : null,
   };
 }
 

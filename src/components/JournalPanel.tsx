@@ -13,6 +13,7 @@ const time = (t: number) => new Date(t).toLocaleString("id-ID", { hour12: false 
 
 function describe(e: JournalEntry): { title: string; detail: string; tone: string } {
   if (e.type === "SIGNAL") return { title: `SINYAL ${e.from} → ${e.to}`, detail: e.context ? `${e.context.regime ?? "—"} · H4 ${e.context.h4 ?? "—"} · H1 ${e.context.h1_context ?? "—"} · ${e.context.location ?? "—"}` : "", tone: e.to === "BUY" ? "text-bull" : e.to === "SELL" ? "text-bear" : "text-foreground" };
+  if (e.type === "LIFECYCLE") { const l = e.lifecycle; return { title: `${l.event.replace(/_/g, " ")} · ${l.side}`, detail: `${l.reason ?? l.trigger} · entry ${n(l.origin_entry)} · SL ${n(l.origin_sl)} · R ${n(l.initial_r)}${l.ttl_remaining == null ? "" : ` · sisa ${l.ttl_remaining} bar M5`}`, tone: l.event.includes("CREATED") ? (l.side === "BUY" ? "text-bull" : "text-bear") : "text-muted-foreground" }; }
   const p = e.position;
   const manual = p.manual_against_engine ? ` · MANUAL (ENGINE: ${p.engine_signal})` : "";
   if (e.type === "TRADE_OPEN") return { title: `PAPER ${p.side} DIBUKA @ ${n(p.entry)}`, detail: `SL ${n(p.sl)} · TP2 ${n(p.tp2)}${manual}`, tone: p.side === "BUY" ? "text-bull" : "text-bear" };
@@ -23,7 +24,7 @@ export function JournalList({ store, symbols }: { store: PaperJournalStore; symb
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const [symbol, setSymbol] = useState<string>("ALL");
   const [type, setType] = useState<"ALL" | "SIGNAL" | "TRADE">("ALL");
-  const rows = state.journal.filter((e) => (symbol === "ALL" || e.symbol === symbol) && (type === "ALL" || (type === "SIGNAL" ? e.type === "SIGNAL" : e.type !== "SIGNAL")));
+  const rows = state.journal.filter((e) => (symbol === "ALL" || e.symbol === symbol) && (type === "ALL" || (type === "SIGNAL" ? e.type === "SIGNAL" || e.type === "LIFECYCLE" : e.type === "TRADE_OPEN" || e.type === "TRADE_CLOSE")));
   return <section aria-label="Jurnal" className="border border-border bg-card p-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-2"><NotebookPen className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">Jurnal</h3></div>
@@ -51,6 +52,7 @@ export function BacktestView({ result }: { result: BacktestResult }) {
       <Stat label="Setup dievaluasi" value={String(result.evaluated)} />
       <Stat label="Kandidat BUY / SELL" value={`${result.buy_candidates} / ${result.sell_candidates}`} />
       <Stat label="HOLD" value={String(result.hold)} />
+      <Stat label="Sinyal dibuat / expired / invalid / chasing" value={`${result.signals_created} / ${result.signals_expired} / ${result.signals_invalidated} / ${result.signals_missed_chasing}`} />
       <Stat label="Trade simulasi" value={String(result.trades.length)} />
       <Stat label="Menang / Kalah" value={`${result.wins} / ${result.losses}`} />
       <Stat label="Ambigu (SL+TP satu bar)" value={String(result.ambiguous)} />
