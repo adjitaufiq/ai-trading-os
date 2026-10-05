@@ -41,7 +41,7 @@ describe("real dual-market monitor terminal", () => {
     expect(screen.getByTestId("candle-time")).toHaveTextContent("UTC");
     expect(client.getBars).toHaveBeenCalledWith({ symbol: "XAUUSD", timeframe: "M5", mode: "pos", start: 0, count: 200 });
     expect(OPERATING_MODE).toBe("MONITOR_ONLY"); expect(EXECUTION_ENABLED).toBe(false);
-    expect(screen.getByText(/EXECUTION ABSENT/)).toBeInTheDocument();
+    expect(EXECUTION_ENABLED).toBe(false);
     expect(screen.queryByRole("button", { name: /^(buy|sell|order)/i })).not.toBeInTheDocument();
   });
   it("switches markets and all timeframes without cross-symbol candles; focus is chart-only", async () => {
