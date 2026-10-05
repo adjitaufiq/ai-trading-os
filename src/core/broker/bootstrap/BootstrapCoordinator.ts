@@ -110,7 +110,7 @@ export class BootstrapCoordinator {
   private degradedReason: string | null = null;
   private uncertainties: string[] = [];
   private history: HistoryRequestWatermark | null = null;
-  private historyReceived = 0;
+  private historyReceivedCount = 0;
   private buffer: { o: ObservationOccurrence; arrival: number }[] = [];
   private arrival = 0;
   private occ: OccurrenceAudit[] = [];
@@ -199,7 +199,7 @@ export class BootstrapCoordinator {
   historyReceived(items: readonly ObservationOccurrence[], coverage: BootstrapHistoryCoverage): void {
     this.expect("FETCHING_HISTORY");
     this.history = Object.freeze({ ...this.history!, request_completed: true, coverage: Object.freeze({ ...coverage }) });
-    this.historyReceived = items.length;
+    this.historyReceivedCount = items.length;
     this.go("REPLAYING_HISTORY", `history request completed (${coverage.coverage_status}, ${coverage.returned_count} items)`);
 
     if (items.some((i) => i.delivery !== "BACKFILL")) {
@@ -306,7 +306,7 @@ export class BootstrapCoordinator {
       degraded_reason: this.degradedReason,
       uncertainties: Object.freeze([...this.uncertainties]),
       history: this.history,
-      history_received: this.historyReceived,
+      history_received: this.historyReceivedCount,
       buffered: Object.freeze(this.buffer.map((b) => b.o)),
       occurrences: Object.freeze([...this.occ]),
       separation: Object.freeze({ lwm: this.lwm, hwm, relation, loss_inferred: false as const }),
@@ -328,7 +328,7 @@ export class BootstrapCoordinator {
     this.degradedReason = null;
     this.uncertainties = [];
     this.history = null;
-    this.historyReceived = 0;
+    this.historyReceivedCount = 0;
     this.buffer = [];
     this.occ = [];
     this.transitions = [];
