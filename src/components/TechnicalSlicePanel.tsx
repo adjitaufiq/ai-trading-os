@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { LiveClock } from "@/core/temporal/CanonicalClock";
-import { TechnicalSliceService, type SliceGatewayPort } from "@/core/technical/TechnicalSliceService";
+import { TechnicalSliceService } from "@/core/technical/TechnicalSliceService";
+import type { MarketRuntimeReader } from "@/core/runtime/MarketRuntime";
 import { POLICIES, TIMEFRAMES, type TradingSnapshot } from "@/core/technical/tradingState";
 import { RSI_CONFIG, RESEARCH_REQUIRED_PATTERNS, type Indicator } from "@/core/technical/indicators";
 import type { AiWhyResult } from "@/lib/ai-why.functions";
@@ -11,10 +12,10 @@ const ind = (i: Indicator | undefined, d = 3) => (!i ? "—" : i.status === "OK"
 const ts = (ms: number | null | undefined) => (ms == null ? "—" : new Date(ms).toISOString().replace("T", " ").slice(0, 19));
 
 export interface TechnicalSlicePanelProps {
-  client: SliceGatewayPort;
-  symbols?: readonly string[];
+  /** Canonical MarketRuntime readers per symbol; null reader ⇒ runtime not mounted (shown as UNAVAILABLE, never substituted). */
+  runtimes: readonly { readonly symbol: string; readonly reader: MarketRuntimeReader | null }[];
+  unmountedReason?: string;
   tickMs?: number;
-  barsMs?: number;
   explain?: (snapshot: string) => Promise<AiWhyResult>;
 }
 
@@ -82,6 +83,7 @@ function SymbolSlice({ svc, explain }: { svc: TechnicalSliceService; explain?: T
       <Cell testId={`${v.symbol}-tick`} label="Last tick (broker time)" value={ts(v.feed.last_tick_event_at)} />
       <Cell testId={`${v.symbol}-age`} label="Feed age (raw, G2 open)" value={v.feed.last_tick_age_ms == null ? "—" : `${Math.round(v.feed.last_tick_age_ms / 1000)}s`} reason={`freshness ${v.feed.freshness_policy}`} />
     </div>
+    <div className="break-all font-mono text-[10px] text-muted-foreground" data-testid={`${v.symbol}-canonical`}>source {v.data_source}{v.canonical ? ` · ${v.canonical.lifecycle}/${v.canonical.bootstrap_state} · epoch ${v.canonical.active_epoch ?? "—"} · coverage ${v.canonical.history_coverage_status ?? "—"} · routes ${Object.entries(v.canonical.route_counts).map(([k, c]) => `${k}=${c}`).join(" ")} · held ${v.canonical.held_count} · silent_ambiguous_drops ${v.canonical.silent_ambiguous_drops} · missing ${Object.entries(v.canonical.missing_intervals).map(([k, c]) => `${k}=${c}`).join(" ")}` : ""} · {v.last_error ?? ""}</div>
     {s ? <Matrix s={s} prefix={v.symbol} /> : <div className="text-xs text-muted-foreground">Waiting for first real observation…</div>}
     {s && s.availability !== "UNAVAILABLE" ? <Body s={s} /> : null}
     {v.last_known ? <section className="rounded border border-dashed border-destructive p-2" data-testid={`${v.symbol}-last-known`}>
@@ -99,16 +101,14 @@ function SymbolSlice({ svc, explain }: { svc: TechnicalSliceService; explain?: T
   </article>;
 }
 
-export function TechnicalSlicePanel({ client, symbols = ["XAUUSD", "BTCUSD"], tickMs = 2000, barsMs = 30_000, explain }: TechnicalSlicePanelProps) {
-  const services = useMemo(() => symbols.map((s) => new TechnicalSliceService(client, s, new LiveClock())), [client, symbols]);
+export function TechnicalSlicePanel({ runtimes, unmountedReason, tickMs = 2000, explain }: TechnicalSlicePanelProps) {
+  const services = useMemo(() => runtimes.map((r) => new TechnicalSliceService(r.reader, r.symbol, new LiveClock(), unmountedReason)), [runtimes, unmountedReason]);
   useEffect(() => {
-    let alive = true;
-    const bars = async () => { for (const s of services) { if (!alive) return; await s.refreshBars(); } };
-    const ticks = () => { for (const s of services) void s.tick(); };
-    void bars().then(ticks);
-    const t = setInterval(ticks, tickMs), b = setInterval(() => { void bars(); }, barsMs);
-    return () => { alive = false; clearInterval(t); clearInterval(b); };
-  }, [services, tickMs, barsMs]);
+    const ticks = () => { for (const s of services) s.tick(); };
+    ticks();
+    const t = setInterval(ticks, tickMs);
+    return () => clearInterval(t);
+  }, [services, tickMs]);
   return <section className="space-y-3 bg-background p-3" aria-label="Technical trading state">
     <h2 className="font-mono text-sm font-bold text-foreground">TECHNICAL STATE · MONITOR_ONLY · EXECUTION ABSENT</h2>
     <div className="grid gap-3 xl:grid-cols-2">{services.map((s) => <SymbolSlice key={s.symbol} svc={s} explain={explain} />)}</div>
