@@ -39,14 +39,26 @@ export interface CompactSummary {
   readonly momentum_policy_version: string | null;
   readonly momentum: { readonly M5: MomentumCompact | null; readonly M15: MomentumCompact | null };
   readonly local_ema: { readonly M5: string | null; readonly M15: string | null };
+  readonly radar_plan_status: string | null;
+  readonly radar_side: string | null;
+  readonly radar_entry_zone_low: number | null;
+  readonly radar_entry_zone_high: number | null;
+  readonly radar_reference_entry: number | null;
+  readonly projected_sl: number | null;
+  readonly projected_tp1: number | null;
+  readonly projected_tp2: number | null;
+  readonly projected_structural_target: number | null;
+  readonly radar_plan_policy_version: string | null;
 }
 type MomentumCompact = { readonly state: string; readonly cross: string | null; readonly s5: number | null; readonly s21: number | null; readonly gap: number | null; readonly gd: number | null };
 const r3 = (x: number | null) => (x === null ? null : Math.round(x * 1000) / 1000);
 const mom = (t: ScalpTf | undefined): MomentumCompact | null => t?.momentum ? { state: t.momentum.state, cross: t.momentum.cross, s5: r3(t.momentum.slope5_norm), s21: r3(t.momentum.slope21_norm), gap: r3(t.momentum.gap_norm), gd: r3(t.momentum.gap_delta) } : null;
 const localEma = (t: ScalpTf | undefined) => t ? `${t.ema_location}${t.ema_reaction.length ? ` ${t.ema_reaction.map((x) => `${x.kind}_EMA${x.ema}`).join(",")}` : ""}` : null;
 
+const r5 = (x: number | null | undefined) => (x == null || !Number.isFinite(x) ? null : Math.round(x * 1e5) / 1e5);
+
 export function compactSummary(s: TradingSnapshot): CompactSummary {
-  const op = s.operator ?? null, ev = s.evidence;
+  const op = s.operator ?? null, ev = s.evidence, rp = s.radar_plan ?? null;
   const plan = s.reference_plan.status === "AVAILABLE"
     ? { side: s.reference_plan.side, entry: s.reference_plan.entry, sl: s.reference_plan.sl, tp1: s.reference_plan.tp1, tp2: s.reference_plan.tp2 }
     : { unavailable: s.reference_plan.reason.slice(0, 120) };
@@ -61,6 +73,10 @@ export function compactSummary(s: TradingSnapshot): CompactSummary {
     plan, why: s.why.slice(0, 8).map((f) => f.text.slice(0, 240)),
     scalp_momentum_combined: op?.scalp?.combined_momentum ?? null, momentum_policy_version: op?.scalp?.momentum_policy_version ?? null,
     momentum: { M5: mom(op?.scalp?.M5), M15: mom(op?.scalp?.M15) }, local_ema: { M5: localEma(op?.scalp?.M5), M15: localEma(op?.scalp?.M15) },
+    radar_plan_status: rp ? `${rp.mode}:${rp.status}` : null, radar_side: rp?.side ?? null,
+    radar_entry_zone_low: r5(rp?.zone?.low), radar_entry_zone_high: r5(rp?.zone?.high), radar_reference_entry: r5(rp?.reference_entry),
+    projected_sl: r5(rp?.sl), projected_tp1: r5(rp?.tp1), projected_tp2: r5(rp?.tp2), projected_structural_target: r5(rp?.structural_target),
+    radar_plan_policy_version: rp?.policy_version ?? null,
   };
 }
 
