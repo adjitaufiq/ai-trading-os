@@ -17,3 +17,6 @@
 - [ ] Real Vertical Slice v1 acceptance — code + 354 tests done; BLOCKED: gateway tunnel URL NXDOMAIN (needs new URL); canonical tick MarketRuntime mount blocked by G2 offset + WS deferred.
 - [ ] Canonical unification: TechnicalSliceService now reads MarketRuntimeReader only; BLOCKED mounting real runtime: G2 offset + real /v1/stream WS 404. G2 note: broker raw_time_s observed later than bridge_received_at (do not fix by offset).
 - [x] Live dashboard: XAUUSD/BTCUSD canonical runtimes mounted on the real gateway, LIVE_MUTATION flowing, AVAILABLE. Gateway contract debt (fix on the Windows gateway): live /v1/stream frames say capability "MARKET_DATA.TICK" instead of 3.0B-1 "MARKET_DATA.TICKS"; client accepts it only on LIVE stream frames and counts it (streamCapabilityAliasCount).
+
+## Frontend presentation
+- [ ] Localize all user-facing main dashboard and trading cockpit copy to concise Bahasa Indonesia; keep core states, contracts, and calculations unchanged.
