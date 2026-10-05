@@ -20,4 +20,4 @@
 
 ## Frontend presentation
 - [x] Localize all user-facing main dashboard and trading cockpit copy to concise Bahasa Indonesia; keep core states, contracts, and calculations unchanged.
-- [ ] Deterministic reference plan v1 — H1 RSI gate, confirmed H1 swing ± 0.25× ATR14(M15), TP1 1R, TP2 2R; read-only MONITOR_ONLY.
+- [x] Deterministic reference plan v1 — H1 RSI gate, confirmed H1 swing ± 0.25× ATR14(M15), TP1 1R, TP2 2R; read-only MONITOR_ONLY.

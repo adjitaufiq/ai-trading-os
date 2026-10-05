@@ -16,7 +16,7 @@ export type ExecutionState = "ALLOWED" | "INHIBITED" | "BLOCKED";
 export const ALL_SIGNAL_STATES: readonly SignalState[] = ["READY", "WAITING", "EXPIRED", "INVALIDATED", "NOT_EVALUABLE"];
 
 export const SETUP_POLICY_VERSION = "setup-v0-baseline";
-export const SIGNAL_POLICY_VERSION = "signal-v0-baseline";
+export const SIGNAL_POLICY_VERSION = "signal-v1-h1-rsi-direction-gate";
 export const REFERENCE_PLAN_POLICY_VERSION = "reference-plan-v1-swing-atr-rsi";
 export const GUARD_POLICY_VERSION = "guard-v0-monitor-only";
 export const POLICIES = Object.freeze({
