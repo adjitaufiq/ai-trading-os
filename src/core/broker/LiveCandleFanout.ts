@@ -15,12 +15,12 @@ export const LIVE_FANOUT_TIMEFRAMES = Object.freeze(["M5", "M15", "H1", "H4"] as
 export class LiveCandleFanout {
   readonly aggregators: Readonly<Record<(typeof LIVE_FANOUT_TIMEFRAMES)[number], CandleAggregator>>;
 
-  constructor(symbol: string, clock: CanonicalClock) {
+  constructor(symbol: string, clock: CanonicalClock, maxSkewMs = 0) {
     this.aggregators = Object.freeze({
-      M5: new CandleAggregator(symbol, "M5", clock),
-      M15: new CandleAggregator(symbol, "M15", clock),
-      H1: new CandleAggregator(symbol, "H1", clock),
-      H4: new CandleAggregator(symbol, "H4", clock),
+      M5: new CandleAggregator(symbol, "M5", clock, maxSkewMs),
+      M15: new CandleAggregator(symbol, "M15", clock, maxSkewMs),
+      H1: new CandleAggregator(symbol, "H1", clock, maxSkewMs),
+      H4: new CandleAggregator(symbol, "H4", clock, maxSkewMs),
     });
   }
 

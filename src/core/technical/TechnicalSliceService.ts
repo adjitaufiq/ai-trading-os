@@ -90,6 +90,7 @@ export class TechnicalSliceService {
       marketCurrent = running && fresh;
       barsCurrent = running;
       if (live && fresh) { this.lastSeq = live.seq; this.spread.push(live.ask - live.bid); }
+      if (marketCurrent) this.lastError = null;
       if (marketCurrent && live) quote = { bid: live.bid, ask: live.ask, spread: live.ask - live.bid, tick_time_ms: live.event_at, observed_at: live.ingested_at };
       else this.lastError = !running ? `CANONICAL_${snap.lifecycle}_${snap.bootstrap_state}${snap.degraded_reason ? `: ${snap.degraded_reason}` : ""}` : snap.last_stream_error ? `NO_NEW_LIVE_MUTATION · stream protocol errors ${snap.stream_protocol_errors}: ${snap.last_stream_error}` : "NO_NEW_LIVE_MUTATION";
     }

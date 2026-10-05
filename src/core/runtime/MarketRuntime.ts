@@ -104,7 +104,7 @@ export class MarketRuntime {
 
   constructor(private readonly o: MarketRuntimeOptions) {
     const sym = o.binding.canonical_symbol;
-    this.fanout = new LiveCandleFanout(sym, o.clock);
+    this.fanout = new LiveCandleFanout(sym, o.clock, o.classifier.maxSourceTimeSkewMs ?? 0);
     this.stores = {} as Record<Timeframe, CandleStore>;
     for (const tf of LIVE_FANOUT_TIMEFRAMES) {
       this.stores[tf] = new CandleStore(sym, tf, o.maxClosedBarsPerTimeframe);

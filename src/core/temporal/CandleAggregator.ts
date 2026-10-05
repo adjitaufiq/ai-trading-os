@@ -13,11 +13,19 @@ export class CandleAggregator {
   private readonly closed: Bar[] = [];
   private readonly listeners = new Set<BarListener>();
   private readonly tfMs: number;
+  private deferred: MarketEvent[] = [];
+  private static readonly MAX_DEFERRED = 10_000;
 
   constructor(
     readonly symbol: string,
     readonly timeframe: Timeframe,
     private readonly clock: CanonicalClock,
+    /**
+     * Finite tolerance for source time ahead of observed/ingested time (cross-source skew).
+     * Default 0 = strict. Raw times are never edited; a tick whose bucket starts after the forming bar's
+     * close_time while the canonical clock has not reached close_time is DEFERRED (never closes early).
+     */
+    private readonly maxSkewMs = 0,
   ) {
     this.tfMs = TIMEFRAME_MS[timeframe];
   }
@@ -36,7 +44,7 @@ export class CandleAggregator {
 
   ingest(e: MarketEvent): void {
     if (e.symbol !== this.symbol) return;
-    if (!(e.event_at <= e.observed_at && e.observed_at <= e.ingested_at)) {
+    if (!(e.event_at - e.observed_at <= this.maxSkewMs && e.observed_at - e.ingested_at <= this.maxSkewMs)) {
       throw new Error(`Temporal order violated for seq ${e.seq}`);
     }
     if (e.ingested_at > this.clock.now()) {
@@ -46,6 +54,11 @@ export class CandleAggregator {
 
     if (this.forming && e.event_at < this.forming.open_time) {
       throw new Error(`Late tick seq ${e.seq} for an already-closed bar`);
+    }
+    if (this.maxSkewMs > 0 && (this.deferred.length > 0 || (this.forming && open_time >= this.forming.close_time && this.clock.now() < this.forming.close_time))) {
+      if (this.deferred.length >= CandleAggregator.MAX_DEFERRED) throw new Error(`Deferred skew buffer full at seq ${e.seq}`);
+      this.deferred.push(e);
+      return;
     }
     if (this.forming && open_time >= this.forming.close_time) this.close();
 
@@ -87,7 +100,15 @@ export class CandleAggregator {
   /** Time-driven close: declares the forming bar CLOSED once the clock passes close_time. */
   checkBoundary(): void {
     if (this.forming && this.clock.now() >= this.forming.close_time) this.close();
+    if (this.deferred.length > 0 && (!this.forming || this.clock.now() >= this.forming.close_time || this.deferred.every((d) => d.event_at < this.forming!.close_time))) {
+      const q = this.deferred;
+      this.deferred = [];
+      for (const d of q) this.ingest(d);
+    }
   }
+
+  /** Ticks waiting for the canonical clock to reach the forming bar's close_time (skew policy only). */
+  get deferredCount(): number { return this.deferred.length; }
 
   private close(): void {
     const f = this.forming!;
