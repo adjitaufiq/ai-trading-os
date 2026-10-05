@@ -57,9 +57,13 @@ export class AnomalyClassifier {
     }
 
     const contentKey = `${e.symbol}|${e.event_at}|${e.bid}|${e.ask}`;
-    if (this.seenIds.has(id) || this.seenContent.has(contentKey)) {
-      add("DUPLICATE", "REJECT", this.seenIds.has(id) ? "raw_event_id already seen" : "identical content already seen");
+    if (this.seenIds.has(id)) {
+      add("DUPLICATE", "REJECT", "raw_event_id already seen");
       return out;
+    }
+    // PRE-2D R6: identical content is NOT proof of the same occurrence. Flag, never drop.
+    if (this.seenContent.has(contentKey)) {
+      add("AMBIGUOUS_COLLISION", "ACCEPT_WITH_FLAG", "identical symbol/event_at/bid/ask already seen with a distinct raw_event_id");
     }
 
     const backfill = e.provenance.delivery === "BACKFILL";

@@ -165,10 +165,7 @@ export class BootstrapCoordinator {
       case "DEGRADED": {
         // DEGRADED: still classified and audited; pipeline routing (and its own guards) still apply,
         // but the coordinator never claims synchronization.
-        const a = this.handle(o);
-        if (this._state === "SYNCHRONIZED" && a.pipeline && a.pipeline.route !== "LIVE_MUTATION" && a.pipeline.route !== "REJECTED") {
-          // continuation is still auditable; non-live routes do not move the live frontier
-        }
+        this.handle(o);
         return;
       }
     }
