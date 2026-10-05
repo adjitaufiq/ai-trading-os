@@ -326,11 +326,14 @@ describe("Patch B audit debt D3 (processing order ≠ market causality)", () => 
 });
 
 describe("Patch B audit debt D2 (real-chain integration)", () => {
-  it("D2 remains open: production terminal is not yet wired through BootstrapCoordinator (explicit debt marker)", () => {
+  it("UI migration debt: terminal does not own bootstrap (React must never own canonical transitions)", () => {
     const src = readFileSync("src/components/RealMarketTerminal.tsx", "utf8");
     expect(src.includes("BootstrapCoordinator")).toBe(false);
   });
-  it.todo("D2 target: Gateway → BrokerGatewayClient → history + LIVE → BootstrapCoordinator → Identity → Pipeline → fanout/store (hermetic E2E)");
+  it("D2 runtime: MarketRuntime owns the chain (hermetic application-chain tests in d2-runtime.test.ts); UI consumer migration remains separate debt", () => {
+    const src = readFileSync("src/core/runtime/MarketRuntime.ts", "utf8");
+    for (const c of ["BootstrapCoordinator", "ObservationIdentityRegistry", "BrokerFeedPipeline", "LiveCandleFanout", "CandleStore"]) expect(src).toContain(`new ${c}(`);
+  });
 });
 
 // ---------------- Cross-patch ----------------
