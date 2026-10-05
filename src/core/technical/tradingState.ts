@@ -18,16 +18,16 @@ export type ExecutionState = "ALLOWED" | "INHIBITED" | "BLOCKED";
 export const ALL_SIGNAL_STATES: readonly SignalState[] = ["READY", "WAITING", "EXPIRED", "INVALIDATED", "NOT_EVALUABLE"];
 
 export const SETUP_POLICY_VERSION = "setup-v2.1-p0.1-scalp-location-macro-metadata";
-export const SIGNAL_POLICY_VERSION = "signal-v2-operator-closed-m5-m15-patterns";
+export const SIGNAL_POLICY_VERSION = "signal-v3-p0.3-frozen-origin-ttl-invalidation-chasing";
 export const REFERENCE_PLAN_POLICY_VERSION = "reference-plan-v2-swing-atr-plus-sr-context";
 export const GUARD_POLICY_VERSION = "guard-v0-monitor-only";
 export const POLICIES = Object.freeze({
   bias: "H4 primary trend (EMA21/EMA50 + confirmed structure): UP → BUY, DOWN → SELL, MIXED → NEUTRAL, insufficient → NOT_EVALUABLE",
   setup: `${OPERATOR_POLICY_VERSION}: ACTIVE when operator status is CARI_BUY/CARI_SELL with local location (+ H1 RSI gate in TREND) satisfied; H1 alignment is metadata only (P0.1); H1 REVERSAL_CANDIDATE → INVALID; otherwise INACTIVE`,
-  signal: "Setup ACTIVE + CLOSED M5/M15 pattern trigger in the setup direction with no opposing trigger → READY (latched); otherwise WAITING; setup leaves ACTIVE → INVALIDATED (if INVALID) else WAITING",
+  signal: "Setup ACTIVE + fresh CLOSED M5/M15 trigger (new identity) → READY with frozen origin; READY carried until TTL / early invalidation / chasing (signal-ttl-v0.4-p0.3-v1); consumed triggers never resurrect",
   reference_plan: "BUY ASK / SELL BID; SL outside latest confirmed H1 swing by 0.25×ATR14(M15); TP1=1R, TP2=2R (unchanged from v1). v2 adds structural context: invalidation = nearest S/R zone behind entry ± 0.25×ATR14(M15); target = near edge of next opposing S/R zone. Read-only analysis, never execution",
   operator: OPERATOR_RULES,
-  signal_validity: "RESEARCH_REQUIRED (no TTL; EXPIRED is never produced)",
+  signal_validity: "signal-ttl-v0.4-p0.3-v1: TTL 3 CLOSED M5 bars, chasing 1.0R, early invalidation ON (baseline research params)",
   spread: "RESEARCH_REQUIRED (telemetry only, no threshold)",
   session: "RESEARCH_REQUIRED",
   risk: "UNAVAILABLE (no account data on the read-only bridge)",

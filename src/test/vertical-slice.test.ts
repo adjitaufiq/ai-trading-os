@@ -132,7 +132,7 @@ describe("vertical slice — four-state contract", () => {
   it("transitions preserve reason/time/evidence/versions; trail bounded", () => {
     const t = new TransitionTrail(3); const a = evaluate(base()); t.record(null, a); const out = t.record(a, un);
     const sig = out.find((x) => x.domain === "SIGNAL")!;
-    expect(sig).toMatchObject({ from: "READY", to: "NOT_EVALUABLE", reason_code: "MARKET_STATE_UNAVAILABLE", signal_policy_version: "signal-v2-operator-closed-m5-m15-patterns" });
+    expect(sig).toMatchObject({ from: "READY", to: "NOT_EVALUABLE", reason_code: "MARKET_STATE_UNAVAILABLE", signal_policy_version: "signal-v3-p0.3-frozen-origin-ttl-invalidation-chasing" });
     expect(t.entries.length).toBe(3); expect(t.total).toBe(9);
   });
 });
