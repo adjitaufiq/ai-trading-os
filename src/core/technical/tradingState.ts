@@ -287,17 +287,42 @@ function unavailablePlan(reason: string): ReferencePlan {
   return { status: "NOT_AVAILABLE", policy_version: REFERENCE_PLAN_POLICY_VERSION, reason };
 }
 
-/** One side+reference-entry plan builder shared by the READY plan, the RADAR projection and paper rebasing. */
+// ---------------- P0.6 SCALP STOP + STRUCTURAL TARGET CLAMP ----------------
+export const SCALP_STOP_POLICY_VERSION = "scalp-stop-v0.4-local-swing-v1";
+export const SCALP_STOP_PARAMS = Object.freeze({ atr_buffer_multiple: 0.25, anchor_priority: Object.freeze(["M15", "M5"] as const), authority: "RESEARCH_REQUIRED_BASELINE" as const });
+export const TARGET_CLAMP_POLICY_VERSION = "target-clamp-v0.4-structural-v1";
+export const TARGET_CLAMP_PARAMS = Object.freeze({ structural_buffer_atr_m15: 0.20, min_rr_for_actionable: 1.0, eligible_target_timeframes: Object.freeze(["M15", "H1", "H4"] as const), authority: "RESEARCH_REQUIRED_BASELINE" as const });
+export type EconomicsStatus = "OK" | "BAD_RR" | "NO_STRUCTURAL_TARGET";
+export const BAD_RR_REASON = "BAD_RR_AFTER_STRUCTURAL_CLAMP";
+
+/** One side+reference-entry plan builder shared by the READY plan, the RADAR projection and paper rebasing.
+ *  tp1/tp2 are FINAL operational levels (tp1 null when final room < min RR; tp2 null when no favorable room). */
 export type SidePlan = {
   readonly ok: true; readonly side: "BUY" | "SELL"; readonly entry: number;
-  readonly anchor_kind: "CONFIRMED_H1_SWING_LOW" | "CONFIRMED_H1_SWING_HIGH"; readonly anchor_price: number;
-  readonly atr14_m15: number; readonly atr_buffer: number; readonly risk: number; readonly sl: number; readonly tp1: number; readonly tp2: number;
+  readonly anchor_timeframe: "M15" | "M5"; readonly anchor_kind: "CONFIRMED_LOCAL_SWING_LOW" | "CONFIRMED_LOCAL_SWING_HIGH"; readonly anchor_price: number;
+  readonly atr14_m15: number; readonly atr_buffer: number; readonly risk: number; readonly sl: number;
+  readonly raw_tp1: number; readonly raw_tp2: number; readonly raw_rr_tp1: 1; readonly raw_rr_tp2: 2;
+  readonly structural_target_zone: SrZone | null; readonly structural_target_raw: number | null; readonly structural_target_buffered: number | null;
+  readonly structural_rr: number | null;
+  readonly tp1: number | null; readonly tp2: number | null; readonly final_rr: number;
+  readonly economics_status: EconomicsStatus; readonly economics_reason: string;
+  readonly stop_policy_version: typeof SCALP_STOP_POLICY_VERSION; readonly target_clamp_policy_version: typeof TARGET_CLAMP_POLICY_VERSION;
   readonly structural: StructuralContext;
 } | { readonly ok: false; readonly reason: string };
 
-export function planInvariantHolds(side: "BUY" | "SELL", sl: number, entry: number, tp1: number, tp2: number): boolean {
-  if (![sl, entry, tp1, tp2].every(Number.isFinite)) return false;
-  return side === "BUY" ? sl < entry && entry < tp1 && tp1 < tp2 : sl > entry && entry > tp1 && tp1 > tp2;
+export function planInvariantHolds(side: "BUY" | "SELL", sl: number, entry: number, tp1: number | null, tp2: number | null): boolean {
+  if (![sl, entry].every(Number.isFinite) || tp2 === null || !Number.isFinite(tp2)) return false;
+  if (tp1 === null) return side === "BUY" ? sl < entry && entry < tp2 : sl > entry && entry > tp2;
+  if (!Number.isFinite(tp1)) return false;
+  return side === "BUY" ? sl < entry && entry < tp1 && tp1 <= tp2 : sl > entry && entry > tp1 && tp1 >= tp2;
+}
+
+/** Nearest opposing zone ahead of entry on M15/H1/H4 (no M5 targets in v1). */
+export function structuralTargetZone(side: "BUY" | "SELL", entry: number, op: OperatorAnalysis | null): SrZone | null {
+  if (!op) return null;
+  const all = TARGET_CLAMP_PARAMS.eligible_target_timeframes.flatMap((tf) => op.zones[tf] ?? []);
+  return all.filter((z) => side === "BUY" ? z.low > entry : z.high < entry)
+    .sort((a, b) => side === "BUY" ? a.low - b.low : b.high - a.high)[0] ?? null;
 }
 
 export function buildSidePlan(
@@ -308,18 +333,43 @@ export function buildSidePlan(
   const atr = evidence.M15.atr14;
   if (atr.status !== "OK" || !Number.isFinite(atr.value) || atr.value <= 0) return { ok: false, reason: "ATR14_M15_UNAVAILABLE" };
   const kind = side === "BUY" ? "LOW" : "HIGH";
-  const anchor = [...evidence.H1.structure.swings].reverse().find((s) => s.kind === kind);
-  if (!anchor || !Number.isFinite(anchor.price)) return { ok: false, reason: `CONFIRMED_H1_SWING_${kind}_UNAVAILABLE` };
-  const atrBuffer = 0.25 * atr.value;
-  const sl = side === "BUY" ? anchor.price - atrBuffer : anchor.price + atrBuffer;
+  // Local scalp stop: latest CONFIRMED M15 swing on the protective side, fallback M5. Never H1.
+  let anchorTf: "M15" | "M5" | null = null, anchorPrice = NaN;
+  for (const tf of SCALP_STOP_PARAMS.anchor_priority) {
+    const a = [...(evidence[tf]?.structure.swings ?? [])].reverse().find((s) => s.kind === kind && Number.isFinite(s.price) && (side === "BUY" ? s.price < reference : s.price > reference));
+    if (a) { anchorTf = tf; anchorPrice = a.price; break; }
+  }
+  if (!anchorTf) return { ok: false, reason: `LOCAL_SCALP_SWING_${kind}_UNAVAILABLE` };
+  const atrBuffer = SCALP_STOP_PARAMS.atr_buffer_multiple * atr.value;
+  const sl = side === "BUY" ? anchorPrice - atrBuffer : anchorPrice + atrBuffer;
   const risk = side === "BUY" ? reference - sl : sl - reference;
   if (![atrBuffer, sl, risk].every(Number.isFinite) || risk <= 0) return { ok: false, reason: "REFERENCE_PLAN_NON_POSITIVE_RISK" };
-  const tp1 = side === "BUY" ? reference + risk : reference - risk;
-  const tp2 = side === "BUY" ? reference + 2 * risk : reference - 2 * risk;
-  if (!planInvariantHolds(side, sl, reference, tp1, tp2)) return { ok: false, reason: "REFERENCE_PLAN_INVARIANT_FAILED" };
+  const dir = side === "BUY" ? 1 : -1;
+  const raw_tp1 = reference + dir * risk, raw_tp2 = reference + dir * 2 * risk;
+  const zone = structuralTargetZone(side, reference, operator);
+  const sBuf = TARGET_CLAMP_PARAMS.structural_buffer_atr_m15 * atr.value;
+  const tRaw = zone ? (side === "BUY" ? zone.low : zone.high) : null;
+  const tBuf = tRaw === null ? null : tRaw - dir * sBuf;
+  const sReward = tBuf === null ? null : dir * (tBuf - reference);
+  const structural_rr = sReward === null ? null : sReward / risk;
+  let tp1: number | null = raw_tp1, tp2: number | null = raw_tp2, final_rr = 2;
+  let economics_status: EconomicsStatus, economics_reason: string;
+  if (tBuf === null) { economics_status = "NO_STRUCTURAL_TARGET"; economics_reason = "NO_STRUCTURAL_CAP_AVAILABLE"; }
+  else if (sReward! <= 0) { tp1 = null; tp2 = null; final_rr = 0; economics_status = "BAD_RR"; economics_reason = `${BAD_RR_REASON}: buffered S/R target not ahead of entry`; }
+  else {
+    tp2 = dir * (tBuf - raw_tp2) < 0 ? tBuf : raw_tp2; // nearer favorable
+    final_rr = dir * (tp2 - reference) / risk;
+    if (final_rr < TARGET_CLAMP_PARAMS.min_rr_for_actionable) { tp1 = null; economics_status = "BAD_RR"; economics_reason = `${BAD_RR_REASON}: final R:R ${final_rr.toFixed(2)} < ${TARGET_CLAMP_PARAMS.min_rr_for_actionable}`; }
+    else { economics_status = "OK"; economics_reason = tp2 === raw_tp2 ? "RAW_2R_BEFORE_STRUCTURE" : "TP2_CLAMPED_TO_STRUCTURE"; }
+  }
+  if (tp2 !== null && !planInvariantHolds(side, sl, reference, tp1, tp2)) return { ok: false, reason: "REFERENCE_PLAN_INVARIANT_FAILED" };
   return {
-    ok: true, side, entry: reference, anchor_kind: side === "BUY" ? "CONFIRMED_H1_SWING_LOW" : "CONFIRMED_H1_SWING_HIGH", anchor_price: anchor.price,
-    atr14_m15: atr.value, atr_buffer: atrBuffer, risk, sl, tp1, tp2, structural: structuralContext(side, reference, atrBuffer, operator),
+    ok: true, side, entry: reference, anchor_timeframe: anchorTf, anchor_kind: side === "BUY" ? "CONFIRMED_LOCAL_SWING_LOW" : "CONFIRMED_LOCAL_SWING_HIGH", anchor_price: anchorPrice,
+    atr14_m15: atr.value, atr_buffer: atrBuffer, risk, sl, raw_tp1, raw_tp2, raw_rr_tp1: 1, raw_rr_tp2: 2,
+    structural_target_zone: zone, structural_target_raw: tRaw, structural_target_buffered: tBuf, structural_rr,
+    tp1, tp2, final_rr, economics_status, economics_reason,
+    stop_policy_version: SCALP_STOP_POLICY_VERSION, target_clamp_policy_version: TARGET_CLAMP_POLICY_VERSION,
+    structural: structuralContext(side, reference, atrBuffer, operator),
   };
 }
 
@@ -335,7 +385,7 @@ export function deriveReferencePlan(
   const p = buildSidePlan(side, side === "BUY" ? quote.ask : quote.bid, evidence, operator);
   if (!p.ok) return unavailablePlan(p.reason);
   const { ok: _ok, ...rest } = p;
-  return { status: "AVAILABLE", policy_version: REFERENCE_PLAN_POLICY_VERSION, ...rest, rr_tp1: 1, rr_tp2: 2 };
+  return { status: "AVAILABLE", policy_version: REFERENCE_PLAN_POLICY_VERSION, ...rest };
 }
 
 // ---------------- RADAR (projected) plan ----------------
