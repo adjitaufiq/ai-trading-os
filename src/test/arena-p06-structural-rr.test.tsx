@@ -20,8 +20,9 @@ const ev = (m15: ReturnType<typeof sw>[], m5: ReturnType<typeof sw>[] = [], h1: 
 }) as never;
 const z = (tf: string, low: number, high: number, role: "SUPPORT" | "RESISTANCE") => ({ source_tf: tf, low, high, center: (low + high) / 2, touches: 2, role, distance: 1 });
 const op = (zones: { M5?: unknown[]; M15?: unknown[]; H1?: unknown[]; H4?: unknown[] } = {}, status = "CARI_SELL", local: unknown[] = []) => ({
-  status, reason: "TRIGGER_PENDING", zones: { M5: [], M15: [], H1: [], H4: [], ...zones },
-  scalp: { local_zones: local, M15: { ema21: NA, ema50: NA, atr14: NA }, M5: { ema21: NA, ema50: NA, atr14: NA } },
+  status, reason: "TRIGGER_PENDING", zones: { M5: [], M15: [], H1: [], H4: [], ...zones }, ema_confluence: { zone: "NOT_NEAR", timeframe: null },
+  patterns: { M5: { bullish: [], bearish: [] }, M15: { bullish: [], bearish: [] } },
+  scalp: { local_zones: local, M15: { ema21: NA, ema50: NA, atr14: NA, ema_location: "NOT_NEAR", ema_reaction: [] }, M5: { ema21: NA, ema50: NA, atr14: NA, ema_location: "NOT_NEAR", ema_reaction: [] } },
 }) as never;
 const memKV = (): KV => { const d = new Map<string, string>(); return { getItem: (k) => d.get(k) ?? null, setItem: (k, v) => { d.set(k, v); } }; };
 
