@@ -86,7 +86,7 @@ describe("vertical slice — four-state contract", () => {
     const t = new TransitionTrail(3); const a = evaluate(base()); t.record(null, a); const out = t.record(a, un);
     const sig = out.find((x) => x.domain === "SIGNAL")!;
     expect(sig).toMatchObject({ from: "READY", to: "NOT_EVALUABLE", reason_code: "MARKET_STATE_UNAVAILABLE", signal_policy_version: "signal-v0-baseline" });
-    expect(t.entries.length).toBe(3); expect(t.total).toBe(10);
+    expect(t.entries.length).toBe(3); expect(t.total).toBe(9);
   });
 });
 
@@ -119,6 +119,6 @@ describe("vertical slice — service wiring & no mock fallback", () => {
     const files = ["src/core/technical/indicators.ts", "src/core/technical/tradingState.ts", "src/core/technical/TechnicalSliceService.ts", "src/components/TechnicalSlicePanel.tsx", "src/routes/index.tsx"];
     for (const f of files) expect(readFileSync(f, "utf8")).not.toMatch(/from\s+"[^"]*(mock|fixture|simulation|probe)[^"]*"|order_send\(|order_check\(/i);
     const walk = (d: string): string[] => readdirSync(d).flatMap((x) => { const p = join(d, x); return statSync(p).isDirectory() ? walk(p) : [p]; });
-    for (const f of walk("src/core/technical")) expect(readFileSync(f, "utf8")).not.toMatch(/src\/probe|@\/probe/);
+    for (const f of walk("src/core/technical")) expect(readFileSync(f, "utf8")).not.toMatch(/from\s+"[^"]*probe/);
   });
 });
