@@ -199,6 +199,7 @@ describe("D2 canonical runtime — hermetic application chain", () => {
     s.tr.history = [];
     s.tr.coverage = "EMPTY";
     s.tr.live({ ms: t, bid: 2010 }, 2);
+    console.log("DBG", JSON.stringify(s.r.snapshot().held.slice(-3)));
     expect(s.r.snapshot().bootstrap_state).toBe("DEGRADED");
     expect(s.r.snapshot().held.some((h) => h.reason === "AWAITING_REBOOTSTRAP" && h.connection_epoch === 2)).toBe(true);
     const lm = s.r.snapshot().route_counts.LIVE_MUTATION;
