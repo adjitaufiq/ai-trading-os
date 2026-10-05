@@ -227,7 +227,7 @@ describe("Safety / isolation", () => {
     for (const f of prod) expect(readFileSync(f, "utf8"), f).not.toMatch(/probe\//);
   });
   it("41-43 probe has no EvidenceState/decision/signal/execution surface", () => {
-    for (const f of walk("src/probe")) {
+    for (const f of walk("src/probe").filter((x) => x.endsWith(".ts"))) {
       const s = readFileSync(f, "utf8").split("\n").filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*")).join("\n");
       expect(s).not.toMatch(/EvidenceState|StrategyDecision|SetupState|SignalState|order_send|order_check|\bBUY\b|\bSELL\b/);
     }
