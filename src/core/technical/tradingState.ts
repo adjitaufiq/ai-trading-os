@@ -5,6 +5,8 @@ import {
   ENGULFING_DEFINITION, TECHNICAL_ENGINE_VERSION, atrWilder, ema, emaRelation, engulfing, geometry, nearestLevels, rsiWilder, structureOf,
   type CandleGeometry, type Indicator, type NearestLevels, type Relation, type Structure, type TechBar,
 } from "./indicators";
+import { OPERATOR_POLICY_VERSION, OPERATOR_RULES, operatorAnalysis, rsiDirectionGate, type OperatorAnalysis, type SrZone } from "./operator";
+export { rsiDirectionGate } from "./operator";
 
 export type TechnicalAvailability = "AVAILABLE" | "STALE" | "UNAVAILABLE";
 export type BiasState = "BUY" | "SELL" | "NEUTRAL" | "NOT_EVALUABLE";
@@ -15,15 +17,16 @@ export type ExecutionState = "ALLOWED" | "INHIBITED" | "BLOCKED";
 
 export const ALL_SIGNAL_STATES: readonly SignalState[] = ["READY", "WAITING", "EXPIRED", "INVALIDATED", "NOT_EVALUABLE"];
 
-export const SETUP_POLICY_VERSION = "setup-v0-baseline";
-export const SIGNAL_POLICY_VERSION = "signal-v1-h1-rsi-direction-gate";
-export const REFERENCE_PLAN_POLICY_VERSION = "reference-plan-v1-swing-atr-rsi";
+export const SETUP_POLICY_VERSION = "setup-v2-operator-mtf-sr-ema";
+export const SIGNAL_POLICY_VERSION = "signal-v2-operator-closed-m5-m15-patterns";
+export const REFERENCE_PLAN_POLICY_VERSION = "reference-plan-v2-swing-atr-plus-sr-context";
 export const GUARD_POLICY_VERSION = "guard-v0-monitor-only";
 export const POLICIES = Object.freeze({
-  bias: "H4 & H1 EMA5 vs EMA21 on CLOSED bars: both above → BUY, both below → SELL, else NEUTRAL",
-  setup: "BUY bias + H1 latest HH & HL → ACTIVE; BUY bias + H1 latest LH & LL → INVALID; SELL mirror; otherwise INACTIVE. LOCATION criterion = RESEARCH_REQUIRED (not applied)",
-  signal: "Setup ACTIVE + H1 RSI14 direction gate (>50 BUY, <50 SELL) + latest CLOSED M5 engulfing in bias direction → READY (latched on trigger bar); RSI=50/insufficient/conflicting evidence → WAITING; setup leaves ACTIVE → INVALIDATED (if INVALID) else WAITING",
-  reference_plan: "BUY ASK / SELL BID; SL outside latest confirmed H1 swing by 0.25×ATR14(M15); TP1=1R, TP2=2R. Read-only analysis, never execution",
+  bias: "H4 primary trend (EMA21/EMA50 + confirmed structure): UP → BUY, DOWN → SELL, MIXED → NEUTRAL, insufficient → NOT_EVALUABLE",
+  setup: `${OPERATOR_POLICY_VERSION}: ACTIVE when operator status is CARI_BUY/CARI_SELL with context + location (+ H1 RSI gate in TREND) satisfied; H1 REVERSAL_CANDIDATE → INVALID; otherwise INACTIVE`,
+  signal: "Setup ACTIVE + CLOSED M5/M15 pattern trigger in the setup direction with no opposing trigger → READY (latched); otherwise WAITING; setup leaves ACTIVE → INVALIDATED (if INVALID) else WAITING",
+  reference_plan: "BUY ASK / SELL BID; SL outside latest confirmed H1 swing by 0.25×ATR14(M15); TP1=1R, TP2=2R (unchanged from v1). v2 adds structural context: invalidation = nearest S/R zone behind entry ± 0.25×ATR14(M15); target = near edge of next opposing S/R zone. Read-only analysis, never execution",
+  operator: OPERATOR_RULES,
   signal_validity: "RESEARCH_REQUIRED (no TTL; EXPIRED is never produced)",
   spread: "RESEARCH_REQUIRED (telemetry only, no threshold)",
   session: "RESEARCH_REQUIRED",
@@ -40,6 +43,7 @@ export interface TimeframeEvidence {
   readonly last_closed_available_at: number | null;
   readonly ema5: Indicator;
   readonly ema21: Indicator;
+  readonly ema50: Indicator;
   readonly relation: Relation;
   readonly atr14: Indicator;
   readonly rsi14: Indicator;
@@ -70,6 +74,14 @@ export interface EvaluationInput {
 
 export interface WhyFact { readonly ok: boolean | null; readonly text: string }
 
+export interface StructuralContext {
+  readonly invalidation_zone: SrZone | null;
+  readonly structural_sl: number | null;
+  readonly target_zone: SrZone | null;
+  readonly structural_target: number | null;
+  readonly rr_structural: number | null;
+}
+
 export type ReferencePlan = {
   readonly status: "AVAILABLE";
   readonly policy_version: typeof REFERENCE_PLAN_POLICY_VERSION;
@@ -85,6 +97,7 @@ export type ReferencePlan = {
   readonly tp2: number;
   readonly rr_tp1: 1;
   readonly rr_tp2: 2;
+  readonly structural: StructuralContext;
 } | {
   readonly status: "NOT_AVAILABLE";
   readonly policy_version: typeof REFERENCE_PLAN_POLICY_VERSION;
@@ -109,6 +122,8 @@ export interface TradingSnapshot {
   readonly entry: { readonly state: EntryAnalysis; readonly reason: string };
   /** Deterministic read-only levels. Never an order and never execution authority. */
   readonly reference_plan: ReferencePlan;
+  /** Operator-style read model (trend/context/zones/EMA/patterns/regime). Evidence only. */
+  readonly operator?: OperatorAnalysis | null;
   readonly why: readonly WhyFact[];
   readonly versions: { readonly technical_engine_version: string; readonly setup_policy_version: string; readonly signal_policy_version: string; readonly reference_plan_policy_version: string; readonly guard_policy_version: string };
 }
@@ -118,7 +133,7 @@ function evidenceFor(tf: Timeframe, bars: readonly TechBar[], price: number | nu
   const structure = structureOf(bars);
   return {
     timeframe: tf, closed_count: bars.length, last_closed_open_time: last?.open_time ?? null, last_closed_available_at: last?.available_at ?? null,
-    ema5: e5, ema21: e21, relation: emaRelation(e5, e21), atr14: atr, rsi14: rsiWilder(bars), structure,
+    ema5: e5, ema21: e21, ema50: ema(bars, 50), relation: emaRelation(e5, e21), atr14: atr, rsi14: rsiWilder(bars), structure,
     snr: price === null ? null : nearestLevels(structure.swings, price, atr),
   };
 }
@@ -129,17 +144,11 @@ function unavailablePlan(reason: string): ReferencePlan {
   return { status: "NOT_AVAILABLE", policy_version: REFERENCE_PLAN_POLICY_VERSION, reason };
 }
 
-export function rsiDirectionGate(side: "BUY" | "SELL", rsi: Indicator): { readonly pass: boolean; readonly reason: string } {
-  if (rsi.status !== "OK") return { pass: false, reason: "H1_RSI14_INSUFFICIENT_HISTORY" };
-  if (rsi.value === 50) return { pass: false, reason: "H1_RSI14_NEUTRAL_50" };
-  const pass = side === "BUY" ? rsi.value > 50 : rsi.value < 50;
-  return { pass, reason: pass ? `H1_RSI14_SUPPORTS_${side}` : `H1_RSI14_CONFLICTS_${side}` };
-}
-
 export function deriveReferencePlan(
   entry: TradingSnapshot["entry"],
   quote: MarketObservation | null,
   evidence: Readonly<Record<Timeframe, TimeframeEvidence>> | null,
+  operator: OperatorAnalysis | null = null,
 ): ReferencePlan {
   const side = entry.state === "LONG_CANDIDATE" ? "BUY" : entry.state === "SHORT_CANDIDATE" ? "SELL" : null;
   if (!side) return unavailablePlan(entry.reason);
@@ -161,7 +170,24 @@ export function deriveReferencePlan(
     tp1: side === "BUY" ? reference + risk : reference - risk,
     tp2: side === "BUY" ? reference + 2 * risk : reference - 2 * risk,
     rr_tp1: 1, rr_tp2: 2,
+    structural: structuralContext(side, reference, atrBuffer, operator),
   };
+}
+
+/** Structural S/R context for a read-only plan. Missing evidence ⇒ null fields, never a substitute level. */
+export function structuralContext(side: "BUY" | "SELL", entry: number, atrBuffer: number, op: OperatorAnalysis | null): StructuralContext {
+  const none: StructuralContext = { invalidation_zone: null, structural_sl: null, target_zone: null, structural_target: null, rr_structural: null };
+  if (!op) return none;
+  const all = [...(op.zones.H4 ?? []), ...(op.zones.H1 ?? []), ...(op.zones.M15 ?? [])];
+  const behind = all.filter((z) => side === "BUY" ? z.low < entry : z.high > entry)
+    .sort((a, b) => side === "BUY" ? b.low - a.low : a.high - b.high)[0] ?? null;
+  const ahead = all.filter((z) => side === "BUY" ? z.low > entry : z.high < entry)
+    .sort((a, b) => side === "BUY" ? a.low - b.low : b.high - a.high)[0] ?? null;
+  const sl = behind ? (side === "BUY" ? behind.low - atrBuffer : behind.high + atrBuffer) : null;
+  const tgt = ahead ? (side === "BUY" ? ahead.low : ahead.high) : null;
+  const risk = sl === null ? null : side === "BUY" ? entry - sl : sl - entry;
+  const reward = tgt === null ? null : side === "BUY" ? tgt - entry : entry - tgt;
+  return { invalidation_zone: behind, structural_sl: sl, target_zone: ahead, structural_target: tgt, rr_structural: risk && risk > 0 && reward !== null ? reward / risk : null };
 }
 
 /** Pure evaluation. `prevSignal` provides latching of a READY signal on its trigger bar. */
@@ -192,42 +218,32 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
   const last3 = m5.slice(-3).map(geometry);
   const eng = m5.length >= 2 ? { ...engulfing(m5[m5.length - 2]!, m5[m5.length - 1]!), definition: ENGULFING_DEFINITION, bar_open_time: m5[m5.length - 1]!.open_time } : null;
 
-  // TREND
-  const h4 = evidence.H4.relation, h1 = evidence.H1.relation;
-  let bias: TradingSnapshot["bias"];
-  if (h4 === "INSUFFICIENT_HISTORY" || h1 === "INSUFFICIENT_HISTORY") bias = { state: "NOT_EVALUABLE", reason: "INSUFFICIENT_HISTORY" };
-  else if (h4 === "EMA5_ABOVE_EMA21" && h1 === "EMA5_ABOVE_EMA21") bias = { state: "BUY", reason: "H4_H1_EMA5_ABOVE_EMA21" };
-  else if (h4 === "EMA5_BELOW_EMA21" && h1 === "EMA5_BELOW_EMA21") bias = { state: "SELL", reason: "H4_H1_EMA5_BELOW_EMA21" };
-  else bias = { state: "NEUTRAL", reason: "H4_H1_EMA_NOT_ALIGNED" };
-
-  // STRUCTURE (LOCATION = RESEARCH_REQUIRED, not applied)
+  // OPERATOR v2 (H4 primary · H1 context · S/R zones · EMA21/50 · RSI · CLOSED M5/M15 patterns)
+  const op = operatorAnalysis(i.closed, price);
+  const h4 = op.h4_primary;
+  const bias: TradingSnapshot["bias"] = h4 === "INSUFFICIENT" ? { state: "NOT_EVALUABLE", reason: "INSUFFICIENT_HISTORY" }
+    : h4 === "UP" ? { state: "BUY", reason: "H4_UP_EMA21_ABOVE_EMA50_HH_HL" }
+    : h4 === "DOWN" ? { state: "SELL", reason: "H4_DOWN_EMA21_BELOW_EMA50_LH_LL" }
+    : { state: "NEUTRAL", reason: `H4_MIXED_REGIME_${op.regime}` };
   const s = evidence.H1.structure.summary;
+  const side = op.status === "CARI_BUY" ? "BUY" : op.status === "CARI_SELL" ? "SELL" : null;
   let setup: TradingSnapshot["setup"];
-  if (bias.state === "NOT_EVALUABLE") setup = { state: "NOT_EVALUABLE", reason: "BIAS_NOT_EVALUABLE" };
-  else if (bias.state === "NEUTRAL") setup = { state: "INACTIVE", reason: "BIAS_NEUTRAL" };
-  else if (s === "INSUFFICIENT_HISTORY") setup = { state: "NOT_EVALUABLE", reason: "H1_STRUCTURE_INSUFFICIENT_HISTORY" };
-  else if ((bias.state === "BUY" && s === "HH_HL") || (bias.state === "SELL" && s === "LH_LL")) setup = { state: "ACTIVE", reason: `BIAS_${bias.state}_H1_${s}` };
-  else if ((bias.state === "BUY" && s === "LH_LL") || (bias.state === "SELL" && s === "HH_HL")) setup = { state: "INVALID", reason: `BIAS_${bias.state}_CONTRADICTED_BY_H1_${s}` };
-  else setup = { state: "INACTIVE", reason: `H1_STRUCTURE_${s}` };
+  if (op.regime === "INSUFFICIENT" || op.h1_context === "INSUFFICIENT") setup = { state: "NOT_EVALUABLE", reason: op.reason === "H4_TREND_INSUFFICIENT_HISTORY" ? "INSUFFICIENT_HISTORY" : "H1_CONTEXT_INSUFFICIENT_HISTORY" };
+  else if (op.h1_context === "REVERSAL_CANDIDATE") setup = { state: "INVALID", reason: "H1_REVERSAL_CANDIDATE_AGAINST_H4" };
+  else if (op.setup_ready && side) setup = { state: "ACTIVE", reason: `${op.regime}_${side}_CONTEXT_LOCATION${op.regime === "TREND" ? "_RSI" : ""}` };
+  else setup = { state: "INACTIVE", reason: op.reason };
 
-  // TRIGGER
   let signal: TradingSnapshot["signal"];
   const base = { triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED" as const };
   if (setup.state === "NOT_EVALUABLE") signal = { state: "NOT_EVALUABLE", reason: setup.reason, ...base };
   else if (setup.state !== "ACTIVE") signal = prevSignal?.state === "READY"
     ? { state: setup.state === "INVALID" ? "INVALIDATED" : "WAITING", reason: `SETUP_${setup.state}`, ...base }
     : { state: "WAITING", reason: "SETUP_NOT_ACTIVE", ...base };
-  else {
-    const h1Rsi = evidence.H1.rsi14;
-    const rsiGate = rsiDirectionGate(bias.state as "BUY" | "SELL", h1Rsi);
-    const hit = eng && ((bias.state === "BUY" && eng.bullish) || (bias.state === "SELL" && eng.bearish));
-    if (!rsiGate.pass) signal = { state: "WAITING", reason: rsiGate.reason, ...base };
-    else if (hit) {
-      const last = m5[m5.length - 1]!;
-      signal = { state: "READY", reason: `M5_CLOSED_${bias.state === "BUY" ? "BULLISH" : "BEARISH"}_ENGULFING`, triggered_at: last.available_at, trigger_bar: last.open_time, trigger_evidence: ENGULFING_DEFINITION, validity_policy: "RESEARCH_REQUIRED" };
-    } else if (prevSignal?.state === "READY") signal = prevSignal; // latched; validity policy RESEARCH_REQUIRED (no TTL)
-    else signal = { state: "WAITING", reason: "NO_CLOSED_M5_TRIGGER", ...base };
-  }
+  else if (op.candidate && op.trigger_bar) {
+    const tb = op.trigger_bar;
+    signal = { state: "READY", reason: `${tb.timeframe}_CLOSED_${op.candidate === "BUY" ? "BULLISH" : "BEARISH"}_${tb.patterns.join("+")}`, triggered_at: tb.available_at, trigger_bar: tb.open_time, trigger_evidence: `${tb.timeframe}:${tb.patterns.join("+")}`, validity_policy: "RESEARCH_REQUIRED" };
+  } else if (prevSignal?.state === "READY") signal = prevSignal; // latched; validity policy RESEARCH_REQUIRED (no TTL)
+  else signal = { state: "WAITING", reason: op.reason, ...base };
 
   // GUARD (no invented thresholds). In MONITOR_ONLY the capability is structurally absent → BLOCKED.
   const reasons = [...capabilityReasons];
@@ -236,30 +252,24 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
 
   // ENTRY ANALYSIS (label only; READY requires a CLOSED M5 trigger, so forming candles can never produce it)
   const entry: TradingSnapshot["entry"] = signal.state === "NOT_EVALUABLE" ? { state: "NOT_EVALUABLE", reason: signal.reason }
-    : signal.state === "READY" ? { state: bias.state === "BUY" ? "LONG_CANDIDATE" : "SHORT_CANDIDATE", reason: `${bias.reason} + ${setup.reason} + ${signal.reason}` }
+    : signal.state === "READY" ? { state: side === "BUY" ? "LONG_CANDIDATE" : "SHORT_CANDIDATE", reason: `${bias.reason} + ${setup.reason} + ${signal.reason}` }
     : { state: "WAIT", reason: `${setup.state === "ACTIVE" ? signal.reason : setup.reason}` };
-  const referencePlan = deriveReferencePlan(entry, i.quote, evidence);
+  const referencePlan = deriveReferencePlan(entry, i.quote, evidence, op);
 
   const why: WhyFact[] = [];
-  const rel = (tf: "H4" | "H1") => {
-    const e = evidence[tf];
-    return e.relation === "INSUFFICIENT_HISTORY" ? { ok: null, text: `${tf} EMA5/EMA21: INSUFFICIENT_HISTORY` }
-      : { ok: bias.state === "SELL" ? e.relation === "EMA5_BELOW_EMA21" : e.relation === "EMA5_ABOVE_EMA21", text: `${tf} ${e.relation.replaceAll("_", " ")} (${fmt((e.ema5 as { value: number }).value)} vs ${fmt((e.ema21 as { value: number }).value)})` };
-  };
-  why.push(rel("H4"), rel("H1"));
-  why.push({ ok: s === "HH_HL" || s === "LH_LL" ? true : s === "INSUFFICIENT_HISTORY" ? null : false, text: `H1 causal structure ${s} (latest high ${evidence.H1.structure.latest_high ?? "—"}, latest low ${evidence.H1.structure.latest_low ?? "—"})` });
-  const sn = evidence.H1.snr;
-  why.push({ ok: null, text: `H1 nearest support ${sn?.nearest_support ? fmt(sn.nearest_support.price) : "none"} · resistance ${sn?.nearest_resistance ? fmt(sn.nearest_resistance.price) : "none"} (location policy RESEARCH_REQUIRED)` });
-  why.push({ ok: eng ? eng.bullish : null, text: `M5 bullish engulfing (CLOSED) = ${eng ? String(eng.bullish).toUpperCase() : "INSUFFICIENT_HISTORY"}` });
-  why.push({ ok: eng ? eng.bearish : null, text: `M5 bearish engulfing (CLOSED) = ${eng ? String(eng.bearish).toUpperCase() : "INSUFFICIENT_HISTORY"}` });
+  const dirOk = (t: string) => (t === "INSUFFICIENT" ? null : t === "UP" || t === "DOWN");
   const v = (x: Indicator, d = 1) => (x.status === "OK" ? x.value.toFixed(d) : "INSUFFICIENT_HISTORY");
-  const h1Rsi = evidence.H1.rsi14;
-  why.push({ ok: h1Rsi.status !== "OK" ? null : bias.state === "BUY" ? h1Rsi.value > 50 : bias.state === "SELL" ? h1Rsi.value < 50 : null, text: `RSI14 H1 ${v(h1Rsi)} (${bias.state === "BUY" ? "> 50 BUY gate" : bias.state === "SELL" ? "< 50 SELL gate" : "direction gate pending"}) · RSI14 M5 ${v(evidence.M5.rsi14)} (additional confirmation)` });
-  why.push({ ok: referencePlan.status === "AVAILABLE", text: referencePlan.status === "AVAILABLE" ? `Reference plan ${referencePlan.side}: confirmed H1 swing ${fmt(referencePlan.anchor_price)} ± 0.25×ATR14(M15) ${fmt(referencePlan.atr14_m15)}; TP1 1R, TP2 2R` : `Reference plan unavailable: ${referencePlan.reason}` });
+  why.push({ ok: dirOk(h4), text: `H4 trend ${h4} (EMA21 ${v(op.per_tf.H4.ema21, 2)} / EMA50 ${v(op.per_tf.H4.ema50, 2)}, structure ${evidence.H4.structure.summary}) · regime ${op.regime}` });
+  why.push({ ok: op.h1_context === "ALIGNED" || op.h1_context === "RETURNING_TO_H4" ? true : op.h1_context === "INSUFFICIENT" || op.h1_context === "NO_PRIMARY_DIRECTION" ? null : false, text: `H1 context ${op.h1_context} (H1 trend ${op.per_tf.H1.trend}, structure ${s})` });
+  why.push({ ok: op.location === "AT_SUPPORT" || op.location === "AT_RESISTANCE" ? true : op.location === "UNKNOWN" ? null : false, text: `Location ${op.location}: support zone ${op.nearest_support ? `${fmt(op.nearest_support.low)}–${fmt(op.nearest_support.high)} ×${op.nearest_support.touches} ${op.nearest_support.source_tf}` : "none"} · resistance zone ${op.nearest_resistance ? `${fmt(op.nearest_resistance.low)}–${fmt(op.nearest_resistance.high)} ×${op.nearest_resistance.touches} ${op.nearest_resistance.source_tf}` : "none"}` });
+  why.push({ ok: op.ema_confluence.timeframe ? true : op.ema_confluence.zone === "INSUFFICIENT" ? null : false, text: `EMA21/50 confluence ${op.ema_confluence.zone}${op.ema_confluence.timeframe ? ` (${op.ema_confluence.timeframe})` : ""}` });
+  why.push({ ok: op.checks.rsi, text: `RSI14 H1 ${v(evidence.H1.rsi14)} (direction gate) · M15 ${v(evidence.M15.rsi14)} · M5 ${v(evidence.M5.rsi14)} (supporting)` });
+  why.push({ ok: op.trigger === "BULLISH" || op.trigger === "BEARISH" ? true : op.trigger === "INSUFFICIENT" ? null : false, text: `CLOSED trigger ${op.trigger}: M5 [${[...op.patterns.M5.bullish, ...op.patterns.M5.bearish].join(", ") || "none"}] · M15 [${[...op.patterns.M15.bullish, ...op.patterns.M15.bearish].join(", ") || "none"}]` });
+  why.push({ ok: referencePlan.status === "AVAILABLE", text: referencePlan.status === "AVAILABLE" ? `Reference plan ${referencePlan.side}: confirmed H1 swing ${fmt(referencePlan.anchor_price)} ± 0.25×ATR14(M15) ${fmt(referencePlan.atr14_m15)}; TP1 1R, TP2 2R; S/R target ${referencePlan.structural.structural_target === null ? "none" : fmt(referencePlan.structural.structural_target)}` : `Reference plan unavailable: ${referencePlan.reason}` });
   why.push({ ok: entry.state === "LONG_CANDIDATE" || entry.state === "SHORT_CANDIDATE", text: `Entry analysis ${entry.state}: ${entry.reason}` });
   why.push({ ok: false, text: `Execution ${execution.state}: ${execution.reasons.join(", ") || "—"}` });
 
-  return { symbol: i.symbol, as_of: i.as_of, label: "CURRENT", availability, availability_reason: availability === "STALE" ? "BAR_HISTORY_REFRESH_FAILED" : "OBSERVED", quote: i.quote, evidence, last3_m5: last3, engulfing: eng, bias, setup, signal, execution, entry, reference_plan: referencePlan, why, versions };
+  return { symbol: i.symbol, as_of: i.as_of, label: "CURRENT", availability, availability_reason: availability === "STALE" ? "BAR_HISTORY_REFRESH_FAILED" : "OBSERVED", quote: i.quote, evidence, last3_m5: last3, engulfing: eng, bias, setup, signal, execution, entry, reference_plan: referencePlan, operator: op, why, versions };
 }
 
 /** A stored previous snapshot can never be labelled CURRENT. */
