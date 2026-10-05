@@ -122,3 +122,81 @@ describe("no execution surface in live wiring", () => {
     expect(EXECUTION_ENABLED).toBe(false);
   });
 });
+
+import { CandleAggregator } from "@/core/temporal/CandleAggregator";
+import { ReplayClock } from "@/core/temporal/CanonicalClock";
+import { BrokerGatewayClient, STREAM_CAPABILITY_ALIAS, type WebSocketLike } from "@/core/broker/gateway/BrokerGatewayClient";
+
+describe("candle aggregator bounded skew (live bug: SINK_FAULT 'Temporal order violated')", () => {
+  const tick = (seq: number, event_at: number, observed_at: number, ingested_at: number) => ({ seq, symbol: "XAUUSD", source: "EXNESS_MT5", bid: 100 + seq, ask: 100.2 + seq, event_at, observed_at, ingested_at }) as never;
+  it("accepts source time ~3s ahead within the limit; strict default still throws", () => {
+    const clock = new ReplayClock(1_000_000);
+    const a = new CandleAggregator("XAUUSD", "M5", clock, 10_000);
+    a.ingest(tick(1, 1_003_000, 1_000_000, 1_000_000));
+    expect(a.current?.effective_at).toBe(1_003_000);
+    const strict = new CandleAggregator("XAUUSD", "M5", clock);
+    expect(() => strict.ingest(tick(1, 1_003_000, 1_000_000, 1_000_000))).toThrow(/Temporal order/);
+  });
+  it("tick for the next bucket arriving before the clock reaches close_time is deferred, never closes early", () => {
+    const M5 = 300_000, open = 3_000_000; // bucket [3.0M, 3.3M)
+    const clock = new ReplayClock(open + 10_000);
+    const a = new CandleAggregator("XAUUSD", "M5", clock, 10_000);
+    a.ingest(tick(1, open + 10_000, open + 10_000, open + 10_000));
+    clock.advanceTo(open + M5 - 2_000);
+    a.ingest(tick(2, open + M5 + 500, open + M5 - 2_000, open + M5 - 2_000)); // source 2.5s ahead, next bucket
+    expect(a.closedBars).toHaveLength(0);
+    expect(a.deferredCount).toBe(1);
+    clock.advanceTo(open + M5);
+    a.checkBoundary();
+    expect(a.closedBars[0]!.closed_at).toBeGreaterThanOrEqual(a.closedBars[0]!.close_time);
+    expect(a.current?.open_time).toBe(open + M5);
+    expect(a.deferredCount).toBe(0);
+  });
+});
+
+describe("live stream capability dialect (live bug: every frame CLIENT_PROTOCOL_ERROR)", () => {
+  const frame = (capability: string, delivery = "LIVE") => JSON.stringify({
+    schema_version: "3.0B-1", bridge_instance_id: "gw", connection_epoch: 1, request_id: "r", sequence: 5, delivery, source: "EXNESS_MT5", source_mode: "REAL", capability,
+    timing: { source_event_at: 1_000_3000, bridge_received_at: 1_000_0000, bridge_sent_at: 1_000_0000, client_sent_at: null, client_received_at: null },
+    latency: { source_arrival_delay_observed_ms: -3000, bridge_processing_ms: 0, bridge_to_client_apparent_delay_ms: null, transport_rtt_ms: null },
+    ok: true, data: { broker_symbol: "XAUUSD", raw_time_s: 10003, raw_time_msc: 1_000_3000, time_precision: "ms", bid: 1, ask: 1.1, last: 0, volume: 0, flags: 6 }, error: null,
+  });
+  const rig = () => {
+    let ws!: WebSocketLike & { sent: string[] };
+    const c = new BrokerGatewayClient({ config: makeGatewayConfig({ httpBaseUrl: "https://a.example" }), wallClock: { now: () => 1_000_0100 } as never, monoClock: { now: () => 1 },
+      wsFactory: (u) => { expect(u).toBe("wss://a.example/v1/stream"); ws = { sent: [], send(d) { this.sent.push(d); }, close() {}, onopen: null, onmessage: null, onclose: null, onerror: null }; return ws; } });
+    const ticks: unknown[] = [], errs: string[] = [];
+    c.subscribeMarketData({ stream: "ticks", symbols: ["XAUUSD"] }, { onTick: (t) => ticks.push(t), onError: (e) => errs.push(e.message) });
+    ws.onopen!({});
+    return { c, ws, ticks, errs };
+  };
+  it("subscribes with the typed 3.0B-1 payload on wss://<tunnel>/v1/stream", () => {
+    expect(rig().ws.sent).toEqual(['{"action":"subscribe","stream":"ticks","symbols":["XAUUSD"]}']);
+  });
+  it("LIVE 'MARKET_DATA.TICK' frames are accepted, counted, and keep negative source_arrival_delay raw", () => {
+    const x = rig();
+    x.ws.onmessage!({ data: frame(STREAM_CAPABILITY_ALIAS) });
+    expect(x.errs).toEqual([]);
+    expect(x.ticks).toHaveLength(1);
+    expect((x.ticks[0] as { bridge_latency: { source_arrival_delay_observed_ms: number } }).bridge_latency.source_arrival_delay_observed_ms).toBe(-3000);
+    expect(x.c.streamCapabilityAliasCount).toBe(1);
+  });
+  it("alias is never accepted for non-LIVE frames or unknown capabilities", () => {
+    const x = rig();
+    x.ws.onmessage!({ data: frame(STREAM_CAPABILITY_ALIAS, "BACKFILL") });
+    x.ws.onmessage!({ data: frame("TRADE.ORDER_SEND") });
+    expect(x.ticks).toHaveLength(0);
+    expect(x.errs).toHaveLength(2);
+  });
+});
+
+describe("React StrictMode mount/unmount", () => {
+  it("stop before spec resolves never creates a runtime or socket", async () => {
+    const create = vi.fn();
+    const client = fakeClient();
+    const stop = mountCanonicalRuntime({ client: client as never, config: makeGatewayConfig({ httpBaseUrl: "https://a.example" }), wsFactory: vi.fn(), symbol: "XAUUSD", onChange: () => {}, create: create as never });
+    stop();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(create).not.toHaveBeenCalled();
+  });
+});
