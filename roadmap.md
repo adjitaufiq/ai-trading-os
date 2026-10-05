@@ -23,3 +23,5 @@
 - [x] Deterministic reference plan v1 — H1 RSI gate, confirmed H1 swing ± 0.25× ATR14(M15), TP1 1R, TP2 2R; read-only MONITOR_ONLY.
 
 - [x] Operator-v2 engine polish (H4 primary/H1 context, S/R zones, EMA21/50 confluence, M15/M5 RSI support, candle patterns v1, regime, trader summary)
+
+- [x] Paper/simulation trades, journal (signal transitions + paper trades), quick backtest, compact AI payload

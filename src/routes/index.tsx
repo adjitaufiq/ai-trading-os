@@ -6,6 +6,8 @@ import { makeGatewayConfig } from "@/core/broker/gateway/config";
 import { LiveClock } from "@/core/temporal/CanonicalClock";
 import { useServerFn } from "@tanstack/react-start";
 import { TechnicalSlicePanel } from "@/components/TechnicalSlicePanel";
+import { JournalPanel } from "@/components/JournalPanel";
+import { Button } from "@/components/ui/button";
 import { explainTradingState } from "@/lib/ai-why.functions";
 import { browserWebSocketFactory } from "@/lib/browserWebSocket";
 import { mountCanonicalRuntime, type MountedRuntime } from "@/lib/canonicalRuntimes";
@@ -47,9 +49,16 @@ function Terminal() {
   const liveReaders = useMemo(() => ({ XAUUSD: xau, BTCUSD: btc }), [xau, btc]);
   const unmountedReason = SYMBOLS.filter((s) => !mounted[s]?.reader).map((s) => `${s}: ${mounted[s]?.status ?? "PENDING"}`).join(" · ");
   const explain = useServerFn(explainTradingState);
+  const [tab, setTab] = useState<"COCKPIT" | "JOURNAL">("COCKPIT");
   return <>
     <RealMarketTerminal client={client} liveReaders={liveReaders} selectedSymbol={selectedSymbol} onSelectedSymbolChange={setSelectedSymbol} />
-    <TechnicalSlicePanel runtimes={runtimes} selectedSymbol={selectedSymbol} unmountedReason={`CANONICAL_RUNTIME_NOT_MOUNTED ${unmountedReason}`} explain={(snapshot) => explain({ data: { snapshot } })} />
+    <div className="mx-auto flex max-w-screen-2xl gap-1 px-4 pb-3 sm:px-8" role="tablist">
+      <Button size="sm" role="tab" aria-selected={tab === "COCKPIT"} variant={tab === "COCKPIT" ? "secondary" : "ghost"} onClick={() => setTab("COCKPIT")}>Kokpit</Button>
+      <Button size="sm" role="tab" aria-selected={tab === "JOURNAL"} variant={tab === "JOURNAL" ? "secondary" : "ghost"} onClick={() => setTab("JOURNAL")}>Jurnal &amp; Backtest</Button>
+    </div>
+    {/* Cockpit stays mounted (hidden) so paper marks and signal journaling keep running. */}
+    <div hidden={tab !== "COCKPIT"}><TechnicalSlicePanel runtimes={runtimes} selectedSymbol={selectedSymbol} unmountedReason={`CANONICAL_RUNTIME_NOT_MOUNTED ${unmountedReason}`} explain={(snapshot) => explain({ data: { snapshot } })} /></div>
+    {tab === "JOURNAL" ? <JournalPanel runtimes={runtimes} selectedSymbol={selectedSymbol} /> : null}
   </>;
 }
 
