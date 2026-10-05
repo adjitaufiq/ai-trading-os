@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowLeft, Expand, Settings2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarketCandles } from "@/components/MarketCandles";
-import { EXECUTION_ENABLED, OPERATING_MODE, TIMEFRAME_MS, type Timeframe } from "@/core/contracts";
+import { TIMEFRAME_MS, type Timeframe } from "@/core/contracts";
 import type { MarketRuntimeReader } from "@/core/runtime/MarketRuntime";
 import type { BrokerGatewayClient } from "@/core/broker/gateway/BrokerGatewayClient";
 import type { BridgeBar, BridgeHealth, BridgeSymbolInfo, BridgeTick, GatewayResult, TerminalInfoObservation, WireHistoryResult } from "@/core/broker/gateway/types";
@@ -239,7 +239,7 @@ export function RealMarketTerminal({ client, selectedSymbol: selected, onSelecte
   const ohlc = (["OPEN", "HIGH", "LOW", "CLOSE"] as const).map((label) => ({ label, value: candle ? price(candle[label.toLowerCase() as "open" | "high" | "low" | "close"]) : "—" }));
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-background text-foreground">
+    <div className="overflow-x-clip bg-background text-foreground">
       <header className="border-b border-border px-4 py-3 sm:px-8">
         <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-4">
           <div className="min-w-0"><div className="truncate text-sm font-semibold uppercase tracking-widest sm:text-base">PERSONAL AI TRADING OS</div><div className="mt-0.5 text-[11px] text-muted-foreground">CONFIGURED TARGET: EXNESS DEMO <span className="text-border">/</span> READ-ONLY</div></div>
