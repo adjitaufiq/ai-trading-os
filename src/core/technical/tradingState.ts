@@ -129,6 +129,13 @@ function unavailablePlan(reason: string): ReferencePlan {
   return { status: "NOT_AVAILABLE", policy_version: REFERENCE_PLAN_POLICY_VERSION, reason };
 }
 
+export function rsiDirectionGate(side: "BUY" | "SELL", rsi: Indicator): { readonly pass: boolean; readonly reason: string } {
+  if (rsi.status !== "OK") return { pass: false, reason: "H1_RSI14_INSUFFICIENT_HISTORY" };
+  if (rsi.value === 50) return { pass: false, reason: "H1_RSI14_NEUTRAL_50" };
+  const pass = side === "BUY" ? rsi.value > 50 : rsi.value < 50;
+  return { pass, reason: pass ? `H1_RSI14_SUPPORTS_${side}` : `H1_RSI14_CONFLICTS_${side}` };
+}
+
 export function deriveReferencePlan(
   entry: TradingSnapshot["entry"],
   quote: MarketObservation | null,
@@ -212,10 +219,9 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
     : { state: "WAITING", reason: "SETUP_NOT_ACTIVE", ...base };
   else {
     const h1Rsi = evidence.H1.rsi14;
-    const rsiPass = h1Rsi.status === "OK" && ((bias.state === "BUY" && h1Rsi.value > 50) || (bias.state === "SELL" && h1Rsi.value < 50));
-    const rsiBlockedReason = h1Rsi.status !== "OK" ? "H1_RSI14_INSUFFICIENT_HISTORY" : h1Rsi.value === 50 ? "H1_RSI14_NEUTRAL_50" : `H1_RSI14_CONFLICTS_${bias.state}`;
+    const rsiGate = rsiDirectionGate(bias.state as "BUY" | "SELL", h1Rsi);
     const hit = eng && ((bias.state === "BUY" && eng.bullish) || (bias.state === "SELL" && eng.bearish));
-    if (!rsiPass) signal = { state: "WAITING", reason: rsiBlockedReason, ...base };
+    if (!rsiGate.pass) signal = { state: "WAITING", reason: rsiGate.reason, ...base };
     else if (hit) {
       const last = m5[m5.length - 1]!;
       signal = { state: "READY", reason: `M5_CLOSED_${bias.state === "BUY" ? "BULLISH" : "BEARISH"}_ENGULFING`, triggered_at: last.available_at, trigger_bar: last.open_time, trigger_evidence: ENGULFING_DEFINITION, validity_policy: "RESEARCH_REQUIRED" };

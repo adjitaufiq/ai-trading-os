@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { ReplayClock } from "@/core/temporal/CanonicalClock";
 import { EXECUTION_ENABLED } from "@/core/contracts";
 import { atrWilder, ema, engulfing, geometry, rsiWilder, structureOf, type TechBar } from "@/core/technical/indicators";
-import { ALL_SIGNAL_STATES, TransitionTrail, asLastKnown, evaluate, type EvaluationInput } from "@/core/technical/tradingState";
+import { ALL_SIGNAL_STATES, TransitionTrail, asLastKnown, deriveReferencePlan, evaluate, rsiDirectionGate, type EvaluationInput } from "@/core/technical/tradingState";
 import { TechnicalSliceService, toTechBar } from "@/core/technical/TechnicalSliceService";
 import type { Bar, Timeframe } from "@/core/contracts";
 import type { MarketRuntimeReader, MarketRuntimeSnapshot } from "@/core/runtime/MarketRuntime";
@@ -69,6 +69,33 @@ describe("vertical slice — four-state contract", () => {
     expect(s.execution.state).toBe("BLOCKED");
     expect(s.execution.reasons).toContain("CAPABILITY_UNAUTHORIZED");
     expect(EXECUTION_ENABLED).toBe(false);
+    expect(s.reference_plan.status).toBe("AVAILABLE");
+    if (s.reference_plan.status === "AVAILABLE") {
+      const latestLow = [...s.evidence!.H1.structure.swings].reverse().find((swing) => swing.kind === "LOW")!;
+      const atr = (s.evidence!.M15.atr14 as { status: "OK"; value: number }).value;
+      const expectedSl = s.quote!.ask - (s.quote!.ask - (latestLow.price - 0.25 * atr));
+      expect(s.reference_plan.sl).toBeCloseTo(expectedSl, 10);
+      expect(s.reference_plan.tp1 - s.reference_plan.entry).toBeCloseTo(s.reference_plan.risk, 10);
+      expect(s.reference_plan.tp2 - s.reference_plan.entry).toBeCloseTo(2 * s.reference_plan.risk, 10);
+      expect(s.reference_plan).toMatchObject({ side: "BUY", rr_tp1: 1, rr_tp2: 2, anchor_kind: "CONFIRMED_H1_SWING_LOW" });
+    }
+  });
+  it("H1 RSI14 direction gate is exact: BUY >50, SELL <50, 50/insufficient HOLD", () => {
+    const valued = (value: number) => ({ status: "OK" as const, value, as_of_bar: 1 });
+    expect(rsiDirectionGate("BUY", valued(50.01)).pass).toBe(true);
+    expect(rsiDirectionGate("BUY", valued(50))).toEqual({ pass: false, reason: "H1_RSI14_NEUTRAL_50" });
+    expect(rsiDirectionGate("BUY", valued(49.99)).reason).toBe("H1_RSI14_CONFLICTS_BUY");
+    expect(rsiDirectionGate("SELL", valued(49.99)).pass).toBe(true);
+    expect(rsiDirectionGate("SELL", valued(50.01)).reason).toBe("H1_RSI14_CONFLICTS_SELL");
+    expect(rsiDirectionGate("SELL", { status: "INSUFFICIENT_HISTORY", required: 15, have: 14 }).pass).toBe(false);
+  });
+  it("reference plan refuses missing swings, invalid ATR, and non-positive risk", () => {
+    const s = evaluate(base());
+    const evidence = s.evidence!;
+    expect(deriveReferencePlan(s.entry, s.quote, { ...evidence, H1: { ...evidence.H1, structure: { swings: [], latest_high: null, latest_low: null, summary: "INSUFFICIENT_HISTORY" } } })).toMatchObject({ status: "NOT_AVAILABLE", reason: "CONFIRMED_H1_SWING_LOW_UNAVAILABLE" });
+    expect(deriveReferencePlan(s.entry, s.quote, { ...evidence, M15: { ...evidence.M15, atr14: { status: "INSUFFICIENT_HISTORY", required: 15, have: 1 } } })).toMatchObject({ status: "NOT_AVAILABLE", reason: "ATR14_M15_UNAVAILABLE" });
+    const highAnchor = { ...evidence.H1.structure.swings[0]!, kind: "LOW" as const, price: s.quote!.ask + 10 };
+    expect(deriveReferencePlan(s.entry, s.quote, { ...evidence, H1: { ...evidence.H1, structure: { ...evidence.H1.structure, swings: [highAnchor] } } })).toMatchObject({ status: "NOT_AVAILABLE", reason: "REFERENCE_PLAN_NON_POSITIVE_RISK" });
   });
   it("forming M5 candle cannot create a CLOSED-only trigger (only CLOSED bars are inputs)", () => {
     const closed = bullEngulfM5().slice(0, -1); // engulfing bar is still FORMING → excluded
