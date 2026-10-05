@@ -54,7 +54,7 @@ function Terminal() {
 }
 
 function Index() {
-  return <ClientOnly fallback={<div className="min-h-screen bg-background p-5 text-muted-foreground">Loading market terminal…</div>}>
-    <Suspense fallback={<div className="min-h-screen bg-background p-5 text-muted-foreground">Loading market terminal…</div>}><Terminal /></Suspense>
+  return <ClientOnly fallback={<div className="min-h-screen bg-background p-5 text-muted-foreground">Memuat terminal pasar…</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-background p-5 text-muted-foreground">Memuat terminal pasar…</div>}><Terminal /></Suspense>
   </ClientOnly>;
 }

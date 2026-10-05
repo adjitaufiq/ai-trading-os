@@ -19,4 +19,4 @@
 - [x] Live dashboard: XAUUSD/BTCUSD canonical runtimes mounted on the real gateway, LIVE_MUTATION flowing, AVAILABLE. Gateway contract debt (fix on the Windows gateway): live /v1/stream frames say capability "MARKET_DATA.TICK" instead of 3.0B-1 "MARKET_DATA.TICKS"; client accepts it only on LIVE stream frames and counts it (streamCapabilityAliasCount).
 
 ## Frontend presentation
-- [ ] Localize all user-facing main dashboard and trading cockpit copy to concise Bahasa Indonesia; keep core states, contracts, and calculations unchanged.
+- [x] Localize all user-facing main dashboard and trading cockpit copy to concise Bahasa Indonesia; keep core states, contracts, and calculations unchanged.

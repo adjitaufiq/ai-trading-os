@@ -12,6 +12,25 @@ import type { AiWhyResult } from "@/lib/ai-why.functions";
 
 const n = (value: number | null | undefined, digits = 3) => value == null || !Number.isFinite(value) ? "—" : Math.abs(value) >= 1000 ? value.toFixed(2) : value.toFixed(digits);
 const indicator = (value: Indicator | undefined, digits = 1) => !value || value.status !== "OK" ? "DATA BELUM CUKUP" : n(value.value, digits);
+const technicalCopy = (text: string) => text
+  .replaceAll("INSUFFICIENT_HISTORY", "DATA BELUM CUKUP")
+  .replaceAll("NOT_EVALUABLE", "BELUM DAPAT DINILAI")
+  .replaceAll("MARKET_STATE_UNAVAILABLE", "KONDISI PASAR TIDAK TERSEDIA")
+  .replaceAll("EMA5_ABOVE_EMA21", "EMA5 DI ATAS EMA21")
+  .replaceAll("EMA5_BELOW_EMA21", "EMA5 DI BAWAH EMA21")
+  .replaceAll("EMA_NOT_ALIGNED", "EMA BELUM SELARAS")
+  .replaceAll("SETUP_NOT_ACTIVE", "SETUP BELUM AKTIF")
+  .replaceAll("NO_CLOSED_M5_TRIGGER", "BELUM ADA PEMICU M5 CLOSED")
+  .replaceAll("Entry analysis", "Analisis entry")
+  .replaceAll("Execution", "Eksekusi")
+  .replaceAll("Current market state cannot be established", "Kondisi pasar saat ini belum dapat dipastikan")
+  .replaceAll("causal structure", "struktur kausal")
+  .replaceAll("nearest support", "support terdekat")
+  .replaceAll("resistance", "resistance")
+  .replaceAll("location policy", "aturan lokasi")
+  .replaceAll("bullish engulfing", "bullish engulfing")
+  .replaceAll("bearish engulfing", "bearish engulfing")
+  .replaceAll("evidence only", "hanya sebagai bukti");
 
 export type CockpitSignal = "BUY" | "SELL" | "HOLD";
 export type ConfirmationTone = "BULL" | "BEAR" | "NEUTRAL";
@@ -132,7 +151,7 @@ function Cockpit({ service, explain }: { service: TechnicalSliceService; explain
   const signal = cockpitSignal(snapshot);
   const entry = referenceEntry(snapshot);
   const unavailable = !snapshot || snapshot.availability === "UNAVAILABLE" || snapshot.entry.state === "NOT_EVALUABLE";
-  const signalReason = unavailable ? "menunggu bukti teknikal yang valid" : snapshot?.entry.reason ?? "tunggu setup valid";
+  const signalReason = unavailable ? "menunggu bukti teknikal yang valid" : technicalCopy(snapshot?.entry.reason ?? "tunggu setup valid");
   const signalTone = signal === "BUY" ? "text-bull" : signal === "SELL" ? "text-bear" : "text-foreground";
   const signalBorder = signal === "BUY" ? "border-bull/45" : signal === "SELL" ? "border-bear/45" : "border-border";
   const [ai, setAi] = useState<AiWhyResult | { status: "PENDING" } | null>(null);
@@ -152,7 +171,7 @@ function Cockpit({ service, explain }: { service: TechnicalSliceService; explain
   const triggerText = snapshot?.engulfing?.bullish ? "BULLISH TERKONFIRMASI" : snapshot?.engulfing?.bearish ? "BEARISH TERKONFIRMASI" : snapshot?.engulfing ? "BELUM TERKONFIRMASI" : "DATA BELUM CUKUP";
   const snr = evidence?.H1.snr;
   const location = snr ? `S ${n(snr.nearest_support?.price)} · R ${n(snr.nearest_resistance?.price)}` : "DATA BELUM CUKUP";
-  const planConfirmations = snapshot?.why.slice(0, 5).map((fact) => fact.text) ?? ["Menunggu bukti teknikal yang valid"];
+  const planConfirmations = snapshot?.why.slice(0, 5).map((fact) => technicalCopy(fact.text)) ?? ["Menunggu bukti teknikal yang valid"];
 
   return <article className="space-y-4" data-testid={`cockpit-${view.symbol}`}>
     <div className="grid gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,.75fr)]">
@@ -185,13 +204,13 @@ function Cockpit({ service, explain }: { service: TechnicalSliceService; explain
     <section aria-label="Konfirmasi teknikal">
       <div className="mb-2 flex items-center gap-2"><Activity className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">Konfirmasi teknikal</h3></div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-        <ConfirmationLight label="H4 Trend" value={evidence?.H4.relation.replaceAll("_", " ") ?? "Insufficient"} tone={h4Tone} testId="confirm-h4" />
-        <ConfirmationLight label="H1 Trend" value={evidence?.H1.relation.replaceAll("_", " ") ?? "Insufficient"} tone={h1Tone} testId="confirm-h1" />
+        <ConfirmationLight label="Tren H4" value={technicalCopy(evidence?.H4.relation ?? "DATA BELUM CUKUP")} tone={h4Tone} testId="confirm-h4" />
+        <ConfirmationLight label="Tren H1" value={technicalCopy(evidence?.H1.relation ?? "DATA BELUM CUKUP")} tone={h1Tone} testId="confirm-h1" />
         <ConfirmationLight label="Struktur H1" value={evidence?.H1.structure.summary.replace("_", "/") ?? "DATA BELUM CUKUP"} tone={h1StructureTone} testId="confirm-structure" />
         <ConfirmationLight label="Pemicu M5" value={triggerText} tone={triggerTone} testId="confirm-trigger" />
         <ConfirmationLight label="RSI14" value={indicator(evidence?.M5.rsi14)} tone="NEUTRAL" testId="confirm-rsi" />
-        <ConfirmationLight label="S/R Location" value={location} tone="NEUTRAL" testId="confirm-snr" />
-        <ConfirmationLight label="ATR / Volatility" value={indicator(evidence?.M5.atr14, 3)} tone="NEUTRAL" testId="confirm-atr" />
+        <ConfirmationLight label="Lokasi S/R" value={location} tone="NEUTRAL" testId="confirm-snr" />
+        <ConfirmationLight label="ATR / Volatilitas" value={indicator(evidence?.M5.atr14, 3)} tone="NEUTRAL" testId="confirm-atr" />
       </div>
     </section>
 
@@ -199,7 +218,7 @@ function Cockpit({ service, explain }: { service: TechnicalSliceService; explain
       <section className="border-t border-border pt-4" aria-label="Alasan konfirmasi">
         <h3 className="text-xs font-semibold uppercase text-muted-foreground">Alasan</h3>
         <ul className="mt-3 space-y-2 text-sm" data-testid="confirmation-list">
-          {(snapshot?.why.slice(0, 6) ?? [{ ok: null, text: "Menunggu bukti teknikal yang valid" }]).map((fact, index) => <li key={`${fact.text}-${index}`} className={`flex gap-2 ${factTone(fact)}`}><FactIcon value={fact.ok} /><span className="text-foreground/90">{fact.text}</span></li>)}
+          {(snapshot?.why.slice(0, 6) ?? [{ ok: null, text: "Menunggu bukti teknikal yang valid" }]).map((fact, index) => <li key={`${fact.text}-${index}`} className={`flex gap-2 ${factTone(fact)}`}><FactIcon value={fact.ok} /><span className="text-foreground/90">{technicalCopy(fact.text)}</span></li>)}
         </ul>
       </section>
       <section className="border-t border-border pt-4" aria-label="Penjelasan AI">

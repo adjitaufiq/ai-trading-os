@@ -37,7 +37,7 @@ describe("real dual-market monitor terminal", () => {
     expect(screen.getByTestId("ask")).toHaveTextContent("4140.530");
     expect(screen.getByTestId("spread")).toHaveTextContent("0.182");
     expect(screen.getByTestId("ohlc-open")).toHaveTextContent("4138.554");
-    expect(screen.getByTestId("freshness")).toHaveTextContent("FRESH");
+    expect(screen.getByTestId("freshness")).toHaveTextContent("TERKINI");
     expect(screen.getByTestId("candle-time")).toHaveTextContent("UTC");
     expect(client.getBars).toHaveBeenCalledWith({ symbol: "XAUUSD", timeframe: "M5", mode: "pos", start: 0, count: 200 });
     expect(OPERATING_MODE).toBe("MONITOR_ONLY"); expect(EXECUTION_ENABLED).toBe(false);

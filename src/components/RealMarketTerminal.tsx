@@ -25,6 +25,7 @@ export function quoteFreshness(ageMs: number | null, failed: boolean, hasQuote: 
   if (ageMs == null || ageMs < -FRESH_SKEW_TOLERANCE_MS) return "UNKNOWN";
   return "FRESH";
 }
+const freshnessLabel = (value: ReturnType<typeof quoteFreshness>) => ({ "DATA UNAVAILABLE": "DATA TIDAK TERSEDIA", "DATA STALE": "DATA KADALUWARSA", UNKNOWN: "TIDAK DIKETAHUI", FRESH: "TERKINI" })[value];
 
 /** Display-only live overlay bar built from canonical LIVE ticks (bid). Not broker evidence; never ingested. */
 export type LiveBar = { readonly raw_time_s: number; readonly open: number; readonly high: number; readonly low: number; readonly close: number; readonly ticks: number };
@@ -236,7 +237,7 @@ export function RealMarketTerminal({ client, selectedSymbol: selected, onSelecte
   const connection = health.value?.terminal_connected && !health.failed && termOk ? "TERHUBUNG" : health.value?.terminal_connected || terminal.value?.connected ? "DATA TERGANGGU" : health.value || terminal.value ? "TERPUTUS" : healthBusy ? "MENGHUBUNGKAN" : "DATA TIDAK TERSEDIA";
   const terminalLine = terminal.value ? `Terminal MT5 ${terminal.value.connected ? "terhubung" : "terputus"} · ping ${terminal.value.terminal_ping_ms.toFixed(1)} ms · ${terminal.value.authority}${terminal.failed ? " · VALIDASI TERAKHIR" : ""}` : terminal.failed ? `Status terminal MT5 tidak tersedia · ${terminal.error ?? ""}` : "Menunggu status terminal MT5";
   const price = (n: number | null) => formatMarketPrice(n, digits);
-  const ohlc = (["OPEN", "HIGH", "LOW", "CLOSE"] as const).map((label) => ({ label, value: candle ? price(candle[label.toLowerCase() as "open" | "high" | "low" | "close"]) : "—" }));
+  const ohlc = ([{ label: "OPEN", key: "open" }, { label: "HIGH", key: "high" }, { label: "LOW", key: "low" }, { label: "CLOSE", key: "close" }] as const).map(({ label, key }) => ({ label, key, value: candle ? price(candle[key]) : "—" }));
 
   return (
     <div className="overflow-x-clip bg-background text-foreground">
@@ -247,7 +248,7 @@ export function RealMarketTerminal({ client, selectedSymbol: selected, onSelecte
         </div>
       </header>
       <main className="mx-auto max-w-screen-2xl space-y-5 px-4 py-5 sm:px-8 sm:py-7">
-        <div className="flex gap-2" role="group" aria-label="Markets">
+        <div className="flex gap-2" role="group" aria-label="Pasar">
           {TERMINAL_MARKETS.map((symbol) => <Button key={symbol} type="button" variant={selected === symbol ? "default" : "outline"} onClick={() => onSelectedSymbolChange(symbol)} aria-pressed={selected === symbol} className="h-10 flex-1 font-mono text-sm sm:max-w-36" data-testid={`select-${symbol}`}>{symbol}</Button>)}
         </div>
         <section className="min-w-0" aria-label="Pasar terpilih">
@@ -260,7 +261,7 @@ export function RealMarketTerminal({ client, selectedSymbol: selected, onSelecte
           </div>
           <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-xs sm:flex sm:gap-6">
             <span className="min-w-0 truncate text-muted-foreground">GATEWAY · <strong className={connection === "TERHUBUNG" ? "text-bull" : "text-warn"} data-testid="connection">{connection}</strong></span>
-            <span className={freshness === "FRESH" ? "text-bull" : "text-warn"} data-testid="freshness">{freshness}</span>
+            <span className={freshness === "FRESH" ? "text-bull" : "text-warn"} data-testid="freshness">{freshnessLabel(freshness)}</span>
           </div>
           <div className="mt-1 truncate text-[11px] text-muted-foreground" data-testid="terminal-status" title="Identitas akun/login tidak ditampilkan oleh gateway baca-saja">{terminalLine}</div>
           {state.quote.failed && quote && <div className="mt-2 text-xs text-warn" data-testid="last-validated">DATA VALID TERAKHIR · harga terbaru tidak tersedia</div>}
@@ -277,7 +278,7 @@ export function RealMarketTerminal({ client, selectedSymbol: selected, onSelecte
           <div className="mt-2 flex min-h-6 items-center justify-between gap-2 text-xs text-muted-foreground"><span>{selected} · {timeframe} · CANDLE BROKER{merged.liveFrom != null ? " + CANDLE AKTIF (dari tick, hanya tampilan)" : ""}</span><span className="text-right">{bars?.failed && chartBars.length ? "DATA VALID TERAKHIR" : bars?.failed ? "DATA TIDAK TERSEDIA" : "DATA ASLI"}</span></div>
           {candle && <div className="mt-1 text-xs text-muted-foreground" data-testid="candle-time">{new Date(candle.raw_time_s * 1000).toISOString().replace("T", " ").replace(".000Z", " UTC")}{inspected ? " · candle terpilih" : " · candle terbaru"}</div>}
         </section>
-        <section aria-label="Candle snapshot" className="grid grid-cols-4 gap-2 border-t border-border pt-4" data-testid="ohlc-snapshot">{ohlc.map(({ label, value }) => <div key={label} className="min-w-0"><div className="text-[10px] text-muted-foreground sm:text-xs">{label}</div><div className="mt-1 truncate font-mono text-xs tabular-nums sm:text-lg" title={value} data-testid={`ohlc-${label.toLowerCase()}`}>{value}</div></div>)}</section>
+        <section aria-label="Ringkasan candle" className="grid grid-cols-4 gap-2 border-t border-border pt-4" data-testid="ohlc-snapshot">{ohlc.map(({ label, key, value }) => <div key={label} className="min-w-0"><div className="text-[10px] text-muted-foreground sm:text-xs">{label}</div><div className="mt-1 truncate font-mono text-xs tabular-nums sm:text-lg" title={value} data-testid={`ohlc-${key}`}>{value}</div></div>)}</section>
       </main>
       {focus && <div role="dialog" aria-label="Mode fokus grafik" aria-modal="true" className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background">
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-3"><div className="min-w-0 truncate font-mono text-sm">{selected} <span className="text-muted-foreground">/ {timeframe}</span></div><Button type="button" size="icon" variant="ghost" onClick={() => setFocus(false)} aria-label="Tutup fokus grafik" title="Tutup fokus grafik"><X /></Button></div>

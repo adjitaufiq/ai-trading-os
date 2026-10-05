@@ -50,7 +50,7 @@ describe("clean trading cockpit", () => {
     render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);
     expect(screen.getByTestId("action-buy")).toBeDisabled();
     expect(screen.getByTestId("action-sell")).toBeDisabled();
-    expect(screen.getByTestId("action-disabled-reason")).toHaveTextContent(/waiting|test/i);
+    expect(screen.getByTestId("action-disabled-reason")).toHaveTextContent(/menunggu|test/i);
   });
   it("enables only BUY and opens a read-only plan without execution", () => {
     const brokerOrder = vi.fn();
