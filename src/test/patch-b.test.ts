@@ -29,7 +29,7 @@ function occ(id: string, ms: number, bid: number, o: O = {}): ObservationOccurre
 }
 const hist = (id: string, ms: number, bid: number, item: number, o: O = {}) => occ(id, ms, bid, { delivery: "BACKFILL", seq: 1, item, ...o });
 const cov = (n: number, newestMs: number | null, status: BootstrapHistoryCoverage["coverage_status"] = "COMPLETE"): BootstrapHistoryCoverage =>
-  ({ requested_from: BROKER_T0 - 600_000, requested_to: BROKER_T0 + 600_000, returned_count: n, oldest_returned_at: null, newest_returned_at: newestMs === null ? null : BROKER_T0 + newestMs, coverage_status: status });
+  ({ requested_from: BROKER_T0 - 600_000, requested_to: BROKER_T0 + 600_000, returned_count: n, oldest_returned_at: null, newest_returned_at: newestMs === null ? null : BROKER_T0 + OFFSET + newestMs, coverage_status: status });
 
 function rig(wrap?: (p: FeedPipelinePort) => FeedPipelinePort) {
   const clock = new ReplayClock(BROKER_T0 - 3_600_000);
@@ -157,7 +157,7 @@ describe("R4 bootstrap lifecycle", () => {
     expect(r.live).toHaveLength(0);
     expect(r.mutations).toHaveLength(0);
     expect(r.boot.snapshot().occurrences.every((a) => a.pipeline!.route === "BACKFILL_HISTORY")).toBe(true);
-    expect(r.boot.snapshot().handoff).toEqual({ live_frontier_at_handoff: null, history_newest_returned_at: BROKER_T0 + H(2) });
+    expect(r.boot.snapshot().handoff).toEqual({ live_frontier_at_handoff: null, history_newest_returned_at: BROKER_T0 + OFFSET + H(2) });
   });
 
   it("18: RECONCILE route cannot mutate live", () => {
