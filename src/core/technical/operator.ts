@@ -11,7 +11,7 @@ import {
   type Indicator, type LabelledSwing, type Structure, type TechBar,
 } from "./indicators";
 
-export const OPERATOR_POLICY_VERSION = "operator-v2.1-p0.1-macro-scalp-split";
+export const OPERATOR_POLICY_VERSION = "operator-v2.2-p0.2-scalp-momentum";
 export const PATTERN_DEFINITION_VERSION = "candle-patterns-v1";
 export const ZONE_DEFINITION_VERSION = "sr-zone-swing-cluster-atr-v1";
 
@@ -48,9 +48,10 @@ export const OPERATOR_RULES = Object.freeze({
   ema_zone: "BAND = price inside [EMA21, EMA50]; else NEAR_EMA21 / NEAR_EMA50 within 0.25×ATR14(TF); else NOT_NEAR",
   location: "AT_SUPPORT / AT_RESISTANCE = within 0.5×ATR14(M15) of a support / resistance zone edge (inside counts); both ⇒ AMBIGUOUS; neither ⇒ MID",
   regime: "TREND = H4 UP/DOWN; RANGE = H4 not directional AND H1 has a support zone and a resistance zone each with ≥2 touches; otherwise CHOPPY",
-  trend_setup: "P0.1 macro/scalp split. Macro d = H4. Scalp side = d, except price AT the opposite S/R wall (support in DOWN / resistance in UP) ⇒ local counter side. Location = S/R zone on the side's entry edge OR (macro side only) EMA21/50 confluence (H1 or M15); H1 RSI14 gate passes for the side; CLOSED M5/M15 trigger in side with no opposing trigger. H1 alignment is METADATA (checks.context, legacy), never a gate; H1 REVERSAL_CANDIDATE/INSUFFICIENT still ⇒ HOLD",
-  alignment: "WITH_MACRO = side matches H4 direction; COUNTER_MACRO = opposes clear H4; NEUTRAL_MACRO = H4 MIXED; NOT_APPLICABLE = no side or H4 INSUFFICIENT. Classification only, no veto in P0.1",
-  range_setup: "AT_SUPPORT + bullish CLOSED trigger ⇒ BUY; AT_RESISTANCE + bearish ⇒ SELL; MID/AMBIGUOUS ⇒ HOLD. RSI gate not applied in range (RESEARCH_REQUIRED)",
+  trend_setup: "P0.2: scalp side = combined M5/M15 EMA5/21 momentum (STRONG_BUY/BUY ⇒ BUY, STRONG_SELL/SELL ⇒ SELL, CONFLICT/HOLD ⇒ HOLD). H4/H1 never pick a side. TREND regime: location = S/R zone on the side's entry edge OR M5/M15 EMA21/50 local confluence; retained H1 RSI14 gate (until P0.8); CLOSED M5/M15 trigger in side. Legacy vetoes: H4 INSUFFICIENT, CHOPPY, H1 REVERSAL_CANDIDATE/INSUFFICIENT ⇒ HOLD",
+  scalp_momentum: "Per M5/M15 (CLOSED): slope = (EMA_now − EMA_3barsAgo)/ATR14_now; gap = |EMA5−EMA21|/ATR14_now; gap_delta = gap − gap_3barsAgo. Sign comparisons only. M5 drives, M15 confirms/conflicts",
+  alignment: "WITH_MACRO = side matches H4 direction; COUNTER_MACRO = opposes clear H4; NEUTRAL_MACRO = H4 MIXED; NOT_APPLICABLE = no side or H4 INSUFFICIENT. Derived after the local side exists; classification only",
+  range_setup: "Momentum side required; BUY needs AT_SUPPORT + bullish CLOSED trigger, SELL AT_RESISTANCE + bearish; MID/AMBIGUOUS ⇒ HOLD. RSI gate not applied in range (RESEARCH_REQUIRED)",
   rsi_support: "M15/M5 RSI14 > 50 bullish, < 50 bearish — supporting evidence only; overbought/oversold thresholds RESEARCH_REQUIRED (not used)",
   patterns: "See candle-patterns-v1: engulfing (strict body), hammer-like, shooting-star-like, rejection wick, morning/evening-star-like on the last 3 CLOSED bars",
 });
@@ -270,7 +271,7 @@ export interface OperatorTf {
 }
 
 /** ARENA v0.4 P0.1 — H4/H1 = macro context, M15/M5 = scalp decision domain. */
-export const ARCHITECTURE_VERSION = "arena-architecture-v0.4-p0.1-macro-scalp-split";
+export const ARCHITECTURE_VERSION = "arena-architecture-v0.4-p0.2-scalp-momentum-decision";
 export type MacroDirection = "BULLISH" | "BEARISH" | "NEUTRAL_OR_MIXED" | "INSUFFICIENT";
 export type MacroAlignment = "WITH_MACRO" | "COUNTER_MACRO" | "NEUTRAL_MACRO" | "NOT_APPLICABLE";
 export interface MacroContext {
@@ -285,6 +286,9 @@ export interface MacroContext {
 export interface ScalpTf {
   readonly ema5: Indicator; readonly ema21: Indicator; readonly ema50: Indicator;
   readonly atr14: Indicator; readonly rsi14: Indicator; readonly trend: TrendState; readonly structure: StructureEvents;
+  readonly momentum: MomentumTf;
+  readonly ema_location: EmaZone;
+  readonly ema_reaction: readonly EmaReaction[];
 }
 /** Structured read model only (no slope/gap rules in P0.1). */
 export interface ScalpContext {
@@ -297,6 +301,9 @@ export interface ScalpContext {
   readonly ema_confluence: { readonly timeframe: Timeframe | null; readonly zone: EmaZone };
   readonly patterns: { readonly M5: PatternRead; readonly M15: PatternRead };
   readonly trigger: TriggerDirection;
+  readonly momentum_policy_version: typeof SCALP_MOMENTUM_POLICY_VERSION;
+  readonly combined_momentum: CombinedMomentum;
+  readonly momentum_side: "BUY" | "SELL" | null;
 }
 
 export interface OperatorAnalysis {
