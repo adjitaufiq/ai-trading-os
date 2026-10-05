@@ -23,6 +23,7 @@ export function friendlyAiError(reason: string): string {
 const n = (value: number | null | undefined, digits = 3) => value == null || !Number.isFinite(value) ? "—" : Math.abs(value) >= 1000 ? value.toFixed(2) : value.toFixed(digits);
 const indicator = (value: Indicator | undefined, digits = 1) => !value || value.status !== "OK" ? "DATA BELUM CUKUP" : n(value.value, digits);
 const technicalCopy = (text: string) => text
+  .replaceAll("BAD_RR_AFTER_STRUCTURAL_CLAMP", "BAD R:R — S/R TERLALU DEKAT")
   .replaceAll("INSUFFICIENT_HISTORY", "DATA BELUM CUKUP")
   .replaceAll("NOT_EVALUABLE", "BELUM DAPAT DINILAI")
   .replaceAll("MARKET_STATE_UNAVAILABLE", "KONDISI PASAR TIDAK TERSEDIA")
@@ -145,7 +146,9 @@ function ActionButton({ side, highlighted, onClick }: { side: "BUY" | "SELL"; hi
   >{side === "BUY" ? <ArrowUpRight /> : <ArrowDownRight />}{side}</Button>;
 }
 
-type DisplayPlan = { readonly side?: "BUY" | "SELL"; readonly sl: number; readonly tp1: number; readonly tp2: number; readonly rr: string } | null;
+type DisplayPlan = { readonly side?: "BUY" | "SELL"; readonly sl: number; readonly tp1: number | null; readonly tp2: number | null; readonly rr: string; readonly econ?: string } | null;
+const rrText = (p: { final_rr: number; economics_status: string }) => `Final 1:${p.final_rr.toFixed(2)} · ${econLabel(p.economics_status)}`;
+const econLabel = (e: string | null | undefined) => e === "OK" ? "RR OK" : e === "BAD_RR" ? "BAD R:R" : e === "NO_STRUCTURAL_TARGET" ? "TANPA TARGET STRUKTURAL" : "—";
 export interface TicketQuote { readonly bid: number; readonly ask: number }
 
 function PaperTicket({ symbol, side, signal, quote, plan, confirmations, mode, onConfirm, onClose }: { symbol: string; side: "BUY" | "SELL"; signal: CockpitSignal; quote: TicketQuote | null; plan: DisplayPlan; confirmations: readonly string[]; mode: CockpitMode; onConfirm?: ((side: "BUY" | "SELL") => void) | undefined; onClose: () => void }) {
@@ -170,6 +173,7 @@ function PaperTicket({ symbol, side, signal, quote, plan, confirmations, mode, o
         <div><dt className="text-xs text-muted-foreground">TP2</dt><dd className="mt-0.5 font-mono">{sidePlan ? n(sidePlan.tp2) : "—"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">R:R</dt><dd className="mt-0.5">{sidePlan?.rr ?? "—"}</dd></div>
       </dl>
+      {sidePlan?.econ === "BAD_RR" ? <div className="mt-3 border border-border px-3 py-2 text-xs font-semibold" data-testid="ticket-bad-rr">BAD R:R — S/R terlalu dekat. Hanya untuk riset (economic veto).</div> : null}
       <div className="mt-5 border-t border-border pt-4">
         <div className="text-xs font-semibold uppercase text-muted-foreground">Konfirmasi sinyal</div>
         <ul className="mt-2 space-y-1.5 text-sm">{confirmations.map((item) => <li key={item} className="flex gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" /><span>{item}</span></li>)}</ul>
@@ -206,13 +210,15 @@ export function RadarPlanView({ radar, signal, entry }: { radar: RadarPlan | nul
   const sideTone = side === "BUY" ? "text-bull" : side === "SELL" ? "text-bear" : "text-muted-foreground";
   const ok = radar?.status === "AVAILABLE";
   const val = (x: number | null | undefined) => (ok ? n(x) : "—");
-  const status = ready ? (ok ? "SIAP — MENUNGGU EKSEKUSI" : "SIGNAL READY · LEVEL TIDAK TERSEDIA")
+  const badRr = ok && radar?.economics_status === "BAD_RR";
+  const status = badRr ? "HOLD · BAD R:R — S/R TERLALU DEKAT" : ready ? (ok ? "SIAP — MENUNGGU EKSEKUSI" : "SIGNAL READY · LEVEL TIDAK TERSEDIA")
     : mode === "RADAR" ? (radar?.status === "WAITING_FOR_AREA" ? "MENUNGGU AREA" : "MENUNGGU TRIGGER") : "BELUM ADA ARAH";
   const refEntry = ready ? (radar?.reference_entry ?? entry) : radar?.reference_entry ?? null;
   return <div data-testid="radar-plan" data-mode={mode}>
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">Rencana acuan</h3></div>
       {mode !== "NONE" ? <span data-testid="radar-badge" className={`border px-1.5 py-0.5 text-[10px] font-semibold ${ready ? (side === "BUY" ? "border-bull text-bull" : "border-bear text-bear") : "border-dashed border-border text-foreground"}`}>{ready ? "SIGNAL PLAN" : "RADAR DINAMIS"}</span> : null}
+      {ok && radar?.economics_status ? <span data-testid="econ-badge" className={`border px-1.5 py-0.5 text-[10px] font-semibold ${badRr ? "border-bear text-bear" : "border-border text-foreground"}`}>{econLabel(radar.economics_status)}</span> : null}
     </div>
     <div className="mt-3 flex items-baseline justify-between gap-2">
       <span className={`text-2xl font-semibold ${sideTone}`} data-testid="radar-side">{side ?? "—"}</span>
@@ -222,14 +228,15 @@ export function RadarPlanView({ radar, signal, entry }: { radar: RadarPlan | nul
     <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-3 text-sm">
       <div className="col-span-2"><div className="text-xs text-muted-foreground">Area entry</div><div className="mt-0.5 font-mono" data-testid="radar-zone">{radar?.zone ? `${n(radar.zone.low)} – ${n(radar.zone.high)}` : "—"}</div>{radar?.zone ? <div className="mt-0.5 text-[11px] text-muted-foreground" data-testid="radar-sources">{radar.zone.sources.join(" + ")} · {radar.zone.quality}</div> : null}</div>
       <div><div className="text-xs text-muted-foreground">Acuan Entry{mode === "RADAR" && radar?.reference_entry != null ? (radar.executable_now ? " (harga kini)" : " (proyeksi)") : ""}</div><div className="mt-0.5 font-mono font-semibold" data-testid="reference-entry">{refEntry == null ? "—" : n(refEntry)}</div></div>
-      <div><div className="text-xs text-muted-foreground">{mode === "RADAR" ? "SL proyeksi" : "Stop Loss"}</div><div className="mt-0.5 font-mono" data-testid="plan-sl">{val(radar?.sl)}</div></div>
+      <div><div className="text-xs text-muted-foreground">{mode === "RADAR" ? "SL proyeksi" : "Stop Loss"}</div><div className="mt-0.5 font-mono" data-testid="plan-sl">{val(radar?.sl)}</div>{ok && radar?.anchor_timeframe ? <div className="mt-0.5 text-[11px] text-muted-foreground" data-testid="sl-source">{radar.anchor_timeframe} swing {radar.side === "BUY" ? "low −" : "high +"} 0.25 ATR</div> : null}</div>
       <div><div className="text-xs text-muted-foreground">{mode === "RADAR" ? "TP1 proyeksi" : "TP1"}</div><div className="mt-0.5 font-mono" data-testid="plan-tp1">{val(radar?.tp1)}</div></div>
       <div><div className="text-xs text-muted-foreground">{mode === "RADAR" ? "TP2 proyeksi" : "TP2"}</div><div className="mt-0.5 font-mono" data-testid="plan-tp2">{val(radar?.tp2)}</div></div>
-      <div><div className="text-xs text-muted-foreground">R:R</div><div className="mt-0.5" data-testid="plan-rr">{ok ? "TP1 1:1 · TP2 1:2" : "—"}</div></div>
-      <div><div className="text-xs text-muted-foreground">Target S/R berikutnya</div><div className="mt-0.5 font-mono" data-testid="radar-target">{ok && radar?.structural_target != null ? n(radar.structural_target) : "—"}</div></div>
+      <div><div className="text-xs text-muted-foreground">R:R</div><div className="mt-0.5" data-testid="plan-rr">{ok && radar?.final_rr != null ? `Final 1:${radar.final_rr.toFixed(2)}` : "—"}</div></div>
+      <div><div className="text-xs text-muted-foreground">Target S/R (buffer)</div><div className="mt-0.5 font-mono" data-testid="radar-target">{ok && radar?.structural_target_buffered != null ? n(radar.structural_target_buffered) : "—"}</div></div>
+      {ok && radar?.raw_tp1 != null ? <div className="col-span-2 text-[11px] text-muted-foreground" data-testid="raw-targets">RAW teoretis (bukan target aksi): 1R {n(radar.raw_tp1)} · 2R {n(radar.raw_tp2)}</div> : null}
     </div>
     <p className="mt-3 text-[11px] text-muted-foreground" data-testid="radar-note">{
-      ready ? (ok ? "Gunakan angka signal ini sebagai acuan; paper trade akan membekukan plan saat entry." : radarReason(radar?.reason ?? ""))
+      badRr ? "Ruang ke S/R berikutnya kurang dari 1R — tunggu setup baru." : ready ? (ok ? "Gunakan angka signal ini sebagai acuan; paper trade akan membekukan plan saat entry." : radarReason(radar?.reason ?? ""))
       : mode === "RADAR" ? (ok ? "Proyeksi dapat berubah sampai signal READY." : radarReason(radar?.reason ?? ""))
       : signal === "HOLD" ? "Engine belum mencari BUY/SELL; tidak ada target yang ditampilkan." : ""
     }</p>
@@ -277,13 +284,13 @@ function Cockpit({ service, explain, store }: { service: TechnicalSliceService; 
   const evidence = snapshot?.evidence;
   const signal = cockpitSignal(snapshot);
   const entry = referenceEntry(snapshot);
-  const plan: DisplayPlan = snapshot?.reference_plan.status === "AVAILABLE" ? { side: snapshot.reference_plan.side, sl: snapshot.reference_plan.sl, tp1: snapshot.reference_plan.tp1, tp2: snapshot.reference_plan.tp2, rr: "TP1 1:1 · TP2 1:2" } : null;
+  const plan: DisplayPlan = snapshot?.reference_plan.status === "AVAILABLE" ? { side: snapshot.reference_plan.side, sl: snapshot.reference_plan.sl, tp1: snapshot.reference_plan.tp1, tp2: snapshot.reference_plan.tp2, rr: rrText(snapshot.reference_plan), econ: snapshot.reference_plan.economics_status } : null;
   // Ticket preview: same plan builder rebased to the actual click price (what paper open will freeze).
   const ticketPlan = (side: "BUY" | "SELL"): DisplayPlan => {
     if (signal === side && plan) return plan;
     if (!quote || !snapshot) return null;
     const p = buildSidePlan(side, side === "BUY" ? quote.ask : quote.bid, snapshot.evidence, snapshot.operator ?? null);
-    return p.ok ? { side, sl: p.sl, tp1: p.tp1, tp2: p.tp2, rr: "TP1 1:1 · TP2 1:2" } : null;
+    return p.ok ? { side, sl: p.sl, tp1: p.tp1, tp2: p.tp2, rr: rrText(p), econ: p.economics_status } : null;
   };
   const unavailable = !snapshot || snapshot.availability === "UNAVAILABLE" || snapshot.entry.state === "NOT_EVALUABLE";
   const signalReason = unavailable ? "menunggu bukti teknikal yang valid" : technicalCopy(snapshot?.entry.reason ?? "tunggu setup valid");
