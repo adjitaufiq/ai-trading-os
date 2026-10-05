@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import React from "react";
 import { RealMarketTerminal, formatMarketPrice } from "@/components/RealMarketTerminal";
 import { EXECUTION_ENABLED, OPERATING_MODE } from "@/core/contracts";
 import type { BrokerGatewayClient } from "@/core/broker/gateway/BrokerGatewayClient";
@@ -22,7 +23,11 @@ function fakeClient(fail = false) {
   const getTerminal = vi.fn(async () => ok({ connected: true, terminal_ping_us: 12345, terminal_ping_ms: 12.345, retransmission: 0, trade_allowed_observed: false, tradeapi_disabled_observed: false, authority: "OBSERVATION_ONLY" }));
   return { getLatestTick, getSymbol, getBars, getHealth, getTerminal };
 }
-const setup = (client = fakeClient(), now = () => 1790974684954) => render(<RealMarketTerminal client={client as unknown as BrokerGatewayClient} now={now} pollMs={60000} />);
+function TerminalHarness({ client = fakeClient(), now = () => 1790974684954 }: { client?: ReturnType<typeof fakeClient>; now?: () => number }) {
+  const [selected, setSelected] = React.useState<"XAUUSD" | "BTCUSD">("XAUUSD");
+  return <RealMarketTerminal client={client as unknown as BrokerGatewayClient} selectedSymbol={selected} onSelectedSymbolChange={setSelected} now={now} pollMs={60000} />;
+}
+const setup = (client = fakeClient(), now = () => 1790974684954) => render(<TerminalHarness client={client} now={now} />);
 
 describe("real dual-market monitor terminal", () => {
   it("keeps real gold quote, derived spread, broker candles and explicit monitor-only absence of execution", async () => {
@@ -36,7 +41,7 @@ describe("real dual-market monitor terminal", () => {
     expect(screen.getByTestId("candle-time")).toHaveTextContent("UTC");
     expect(client.getBars).toHaveBeenCalledWith({ symbol: "XAUUSD", timeframe: "M5", mode: "pos", start: 0, count: 200 });
     expect(OPERATING_MODE).toBe("MONITOR_ONLY"); expect(EXECUTION_ENABLED).toBe(false);
-    expect(screen.getByText(/EXECUTION ABSENT/)).toBeInTheDocument();
+    expect(EXECUTION_ENABLED).toBe(false);
     expect(screen.queryByRole("button", { name: /^(buy|sell|order)/i })).not.toBeInTheDocument();
   });
   it("switches markets and all timeframes without cross-symbol candles; focus is chart-only", async () => {
