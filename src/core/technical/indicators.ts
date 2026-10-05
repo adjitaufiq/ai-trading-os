@@ -2,7 +2,7 @@
 // Implemented from the slice contract itself; it does NOT import src/probe (probe stays diagnostic).
 // All outputs are EVIDENCE. None of these functions decide a trade.
 
-export const TECHNICAL_ENGINE_VERSION = "tech-v1.0";
+export const TECHNICAL_ENGINE_VERSION = "tech-v2.0";
 
 /** A CLOSED bar as consumed by the technical engine. Times are epoch ms on the bar's own time axis. */
 export interface TechBar {
@@ -196,7 +196,7 @@ export function engulfing(prev: TechBar, curr: TechBar): { bullish: boolean; bea
   return { bullish, bearish };
 }
 
-export const RESEARCH_REQUIRED_PATTERNS = Object.freeze(["REJECTION_WICK", "BODY_EXPANSION", "HAMMER_LIKE", "SHOOTING_STAR_LIKE"] as const);
+export const RESEARCH_REQUIRED_PATTERNS = Object.freeze(["BODY_EXPANSION"] as const); // others defined in operator.ts (candle-patterns-v1)
 
 /** Bounded ring with percentiles (nearest-rank). Used for spread and latency telemetry. */
 export class Telemetry {
