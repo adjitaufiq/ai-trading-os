@@ -110,7 +110,7 @@ describe("ARENA v0.4 P0.2 — scalp momentum", () => {
     expect(screen.getByText(o.m5)).toBeTruthy();
   });
   it("11-12: alerts do not duplicate; no execution path", () => {
-    const store = new SignalAlertStore();
+    const store = new SignalAlertStore(null);
     expect(typeof store.getAlerts).toBe("function");
     expect(OPERATING_MODE).toBe("MONITOR_ONLY");
     expect(EXECUTION_ENABLED).toBe(false);
