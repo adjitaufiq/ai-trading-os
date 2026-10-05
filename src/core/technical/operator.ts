@@ -268,8 +268,43 @@ export interface OperatorTf {
   readonly events: StructureEvents;
 }
 
+/** ARENA v0.4 P0.1 — H4/H1 = macro context, M15/M5 = scalp decision domain. */
+export const ARCHITECTURE_VERSION = "arena-architecture-v0.4-p0.1-macro-scalp-split";
+export type MacroDirection = "BULLISH" | "BEARISH" | "NEUTRAL_OR_MIXED" | "INSUFFICIENT";
+export type MacroAlignment = "WITH_MACRO" | "COUNTER_MACRO" | "NEUTRAL_MACRO" | "NOT_APPLICABLE";
+export interface MacroContext {
+  readonly h4_primary: TrendState;
+  readonly h1_context: H1Context;
+  readonly h4_structure: StructureEvents;
+  readonly h1_structure: StructureEvents;
+  /** Major walls from the existing zone engine. Safety/location evidence; no veto thresholds in P0.1. */
+  readonly major_zones: { readonly H4: readonly SrZone[]; readonly H1: readonly SrZone[] };
+  readonly macro_direction: MacroDirection;
+}
+export interface ScalpTf {
+  readonly ema5: Indicator; readonly ema21: Indicator; readonly ema50: Indicator;
+  readonly atr14: Indicator; readonly rsi14: Indicator; readonly trend: TrendState; readonly structure: StructureEvents;
+}
+/** Structured read model only (no slope/gap rules in P0.1). */
+export interface ScalpContext {
+  readonly M15: ScalpTf;
+  readonly M5: ScalpTf;
+  readonly local_zones: readonly SrZone[];
+  readonly location: Location;
+  readonly nearest_support: SrZone | null;
+  readonly nearest_resistance: SrZone | null;
+  readonly ema_confluence: { readonly timeframe: Timeframe | null; readonly zone: EmaZone };
+  readonly patterns: { readonly M5: PatternRead; readonly M15: PatternRead };
+  readonly trigger: TriggerDirection;
+}
+
 export interface OperatorAnalysis {
   readonly policy_version: typeof OPERATOR_POLICY_VERSION;
+  readonly architecture_version: typeof ARCHITECTURE_VERSION;
+  readonly macro: MacroContext;
+  readonly scalp: ScalpContext;
+  readonly alignment: MacroAlignment;
+  // ---- LEGACY/COMPAT fields below (pre-P0.1 flat read model; still used by UI/tests) ----
   readonly price: number;
   readonly per_tf: Readonly<Record<Timeframe, OperatorTf>>;
   readonly h4_primary: TrendState;
@@ -340,19 +375,23 @@ export function operatorAnalysis(closed: Readonly<Record<Timeframe, readonly Tec
   if (regime === "INSUFFICIENT") reason = "H4_TREND_INSUFFICIENT_HISTORY";
   else if (regime === "CHOPPY") reason = "REGIME_CHOPPY_NO_CLEAR_BOUNDS";
   else if (regime === "TREND") {
-    const side = h4 === "UP" ? "BUY" : "SELL";
     const d = h4 as "UP" | "DOWN";
+    const macroSide = d === "UP" ? "BUY" : "SELL";
+    // P0.1: scalp side is chosen from LOCAL location evidence. Default = macro side; the opposite S/R wall
+    // (support in a DOWN macro / resistance in an UP macro) yields a local COUNTER_MACRO scalp side.
+    const counterWall = macroSide === "BUY" ? location === "AT_RESISTANCE" : location === "AT_SUPPORT";
+    const side: "BUY" | "SELL" = counterWall ? (macroSide === "BUY" ? "SELL" : "BUY") : macroSide;
+    // Legacy H1 alignment flag — macro METADATA only since P0.1 (no longer a gate).
     const context = ctx === "ALIGNED" || ctx === "RETURNING_TO_H4" || (ctx === "PULLBACK_AGAINST_H4" && per.M15.fast === d);
     const zoneOk = side === "BUY" ? location === "AT_SUPPORT" : location === "AT_RESISTANCE";
-    const loc = zoneOk || emaTf !== null;
+    const loc = zoneOk || (!counterWall && emaTf !== null);
     const rsi = rsiDirectionGate(side, per.H1.rsi14);
     const trig = trigger === (side === "BUY" ? "BULLISH" : "BEARISH");
     checks = { context, location: loc, rsi: rsi.pass, trigger: trig };
     if (ctx === "REVERSAL_CANDIDATE" || ctx === "INSUFFICIENT") reason = `H1_${ctx}`;
     else {
       status = side === "BUY" ? "CARI_BUY" : "CARI_SELL";
-      if (!context) reason = `H1_${ctx}_NOT_RETURNING`;
-      else if (!loc) reason = "NOT_AT_SR_OR_EMA_CONFLUENCE";
+      if (!loc) reason = "NOT_AT_SR_OR_EMA_CONFLUENCE";
       else if (!rsi.pass) reason = rsi.reason;
       else if (!trig) reason = `NO_CLOSED_${side === "BUY" ? "BULLISH" : "BEARISH"}_TRIGGER`;
       else { candidateSide = side; reason = `TREND_${side}_H4_${h4}_H1_${ctx}_${zoneOk ? "SR_ZONE" : `EMA_${emaConf.zone}`}_RSI_TRIGGER`; }
@@ -369,15 +408,39 @@ export function operatorAnalysis(closed: Readonly<Record<Timeframe, readonly Tec
       else reason = `NO_CLOSED_${side === "BUY" ? "BULLISH" : "BEARISH"}_TRIGGER`;
     }
   }
-  const setupReady = status !== "HOLD" && checks.context && checks.location && checks.rsi !== false;
+  // P0.1: H1 alignment (checks.context) is no longer part of setup readiness.
+  const setupReady = status !== "HOLD" && checks.location && checks.rsi !== false;
   let triggerBar: OperatorAnalysis["trigger_bar"] = null;
   if (candidateSide) {
     const want = candidateSide === "BUY" ? "BULLISH" : "BEARISH";
     const src = [patterns.M5, patterns.M15].find((p) => p.direction === want)!;
     triggerBar = { timeframe: src.timeframe, open_time: src.bar_open_time!, available_at: src.bar_available_at!, patterns: want === "BULLISH" ? src.bullish : src.bearish };
   }
+  const macro: MacroContext = {
+    h4_primary: h4, h1_context: ctx, h4_structure: per.H4.events, h1_structure: per.H1.events,
+    major_zones: { H4: zones.H4 ?? [], H1: zones.H1 ?? [] }, macro_direction: macroDirectionOf(h4),
+  };
+  const scalp: ScalpContext = {
+    M15: scalpTf(per.M15), M5: scalpTf(per.M5), local_zones: zones.M15 ?? [], location, nearest_support: ns, nearest_resistance: nr,
+    ema_confluence: emaConf, patterns, trigger,
+  };
+  const searchSide = candidateSide ?? (status === "CARI_BUY" ? "BUY" : status === "CARI_SELL" ? "SELL" : null);
   return {
-    policy_version: OPERATOR_POLICY_VERSION, price, per_tf: per, h4_primary: h4, h1_context: ctx, zones, nearest_support: ns, nearest_resistance: nr,
+    policy_version: OPERATOR_POLICY_VERSION, architecture_version: ARCHITECTURE_VERSION, macro, scalp, alignment: macroAlignment(searchSide, macro.macro_direction),
+    price, per_tf: per, h4_primary: h4, h1_context: ctx, zones, nearest_support: ns, nearest_resistance: nr,
     location, ema_confluence: emaConf, patterns, trigger, regime, status, candidate: candidateSide, checks, setup_ready: setupReady, reason, trigger_bar: triggerBar,
   };
+}
+
+const scalpTf = (t: OperatorTf): ScalpTf => ({ ema5: t.ema5, ema21: t.ema21, ema50: t.ema50, atr14: t.atr14, rsi14: t.rsi14, trend: t.trend, structure: t.events });
+
+export function macroDirectionOf(h4: TrendState): MacroDirection {
+  return h4 === "UP" ? "BULLISH" : h4 === "DOWN" ? "BEARISH" : h4 === "MIXED" ? "NEUTRAL_OR_MIXED" : "INSUFFICIENT";
+}
+
+/** Candidate/search side vs macro direction. Classification only — never a gate in P0.1. */
+export function macroAlignment(side: "BUY" | "SELL" | null, macro: MacroDirection): MacroAlignment {
+  if (!side || macro === "INSUFFICIENT") return "NOT_APPLICABLE";
+  if (macro === "NEUTRAL_OR_MIXED") return "NEUTRAL_MACRO";
+  return (side === "BUY") === (macro === "BULLISH") ? "WITH_MACRO" : "COUNTER_MACRO";
 }
