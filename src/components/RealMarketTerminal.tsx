@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowLeft, Expand, Settings2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarketCandles } from "@/components/MarketCandles";
-import { EXECUTION_ENABLED, OPERATING_MODE, type Timeframe } from "@/core/contracts";
+import { EXECUTION_ENABLED, OPERATING_MODE, TIMEFRAME_MS, type Timeframe } from "@/core/contracts";
 import type { MarketRuntimeReader } from "@/core/runtime/MarketRuntime";
 import type { BrokerGatewayClient } from "@/core/broker/gateway/BrokerGatewayClient";
 import type { BridgeBar, BridgeHealth, BridgeSymbolInfo, BridgeTick, GatewayResult, TerminalInfoObservation, WireHistoryResult } from "@/core/broker/gateway/types";
@@ -16,7 +16,7 @@ const STALE_AFTER_MS = 60_000; // UI observation policy, not a broker market-hou
 const BAR_COUNT = 200;
 /** Same finite source-clock skew tolerance as the canonical runtime (RUNTIME_POLICY.max_source_time_skew_ms). */
 export const FRESH_SKEW_TOLERANCE_MS = 10_000;
-const TF_S: Record<Timeframe, number> = { M1: 60, M5: 300, M15: 900, H1: 3600, H4: 14400, D1: 86400 } as Record<Timeframe, number>;
+const TF_S = (tf: Timeframe) => TIMEFRAME_MS[tf] / 1000;
 
 /** FRESH when −skew ≤ age ≤ stale; beyond the skew tolerance in the future the age is UNKNOWN (never clamped). */
 export function quoteFreshness(ageMs: number | null, failed: boolean, hasQuote: boolean): "DATA UNAVAILABLE" | "DATA STALE" | "UNKNOWN" | "FRESH" {
@@ -31,7 +31,7 @@ export type LiveBar = { readonly raw_time_s: number; readonly open: number; read
 
 /** Apply one LIVE tick to the per-timeframe overlay: update the forming bucket or open a new one at the boundary. */
 export function applyLiveTick(live: readonly LiveBar[], tf: Timeframe, eventAtMs: number, bid: number): readonly LiveBar[] {
-  const t = Math.floor(eventAtMs / 1000 / TF_S[tf]) * TF_S[tf];
+  const t = Math.floor(eventAtMs / 1000 / TF_S(tf)) * TF_S(tf);
   const last = live.at(-1);
   if (last && t < last.raw_time_s) return live; // late tick for an already-closed bucket: ignore
   if (last && t === last.raw_time_s) return [...live.slice(0, -1), { ...last, high: Math.max(last.high, bid), low: Math.min(last.low, bid), close: bid, ticks: last.ticks + 1 }];
