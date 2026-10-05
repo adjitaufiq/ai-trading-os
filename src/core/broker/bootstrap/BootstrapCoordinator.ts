@@ -93,7 +93,17 @@ export interface BootstrapSnapshot {
   readonly handoff: HandoffWatermark | null;
   readonly reconciliation: ReconciliationFrontier;
   readonly transitions: readonly { from: BootstrapState; to: BootstrapState; reason: string }[];
+  /** D3: explicit label — drain/replay order is deterministic processing order, not market causality. */
+  readonly processing_order: typeof PROCESSING_ORDER_SEMANTICS;
 }
+
+export const PROCESSING_ORDER_SEMANTICS = Object.freeze({
+  kind: "DETERMINISTIC_PROCESSING_ORDER",
+  live_drain_key: "source_event_ms, connection_epoch, sequence, arrival",
+  history_replay_key: "source_event_ms, sequence, item_index, input_index",
+  market_causal_order_proven: false,
+  transport_sequence_is_market_chronology: false,
+} as const);
 
 export interface DedupMetrics {
   readonly by_class: Readonly<Record<DedupClass, number>>;
@@ -120,11 +130,17 @@ export class BootstrapCoordinator {
   private recon: ReconciliationFrontier = { candidates: 0, last_source_event_ms: null };
   private lwm: number | null = null;
   private readonly archive: BootstrapSnapshot[] = [];
-  private readonly allAudits: OccurrenceAudit[] = [];
+  private archiveEvicted = 0;
+  /** R7: cumulative counter replaces the former unbounded all-audits array. */
+  private ambiguousAudited = 0;
+  /** True while THIS coordinator holds an identity-store pin (prevents leaks and double unpin). */
+  private holdsPin = false;
 
   constructor(
     private readonly pipeline: FeedPipelinePort,
     private readonly identity: ObservationIdentityRegistry = new ObservationIdentityRegistry(),
+    /** R7: bounded archive of finished-run snapshots; evictions are counted. */
+    private readonly maxArchivedRuns = 16,
   ) {}
 
   get state(): BootstrapState { return this._state; }
@@ -136,12 +152,13 @@ export class BootstrapCoordinator {
   start(epoch: number): void {
     if (this._state !== "UNINITIALIZED") {
       if (this._state !== "SYNCHRONIZED" && this._state !== "DEGRADED") throw new Error(`cannot restart during ${this._state}`);
-      this.archive.push(this.snapshot());
+      this.pushArchive(this.snapshot());
       this.resetRun();
     }
     this.run++;
     this.activeEpoch = epoch;
     this.identity.identityStore.pin();
+    this.holdsPin = true;
     this.go("BUFFERING_LIVE", `bootstrap run ${this.run} for epoch ${epoch}`);
   }
 
@@ -221,6 +238,12 @@ export class BootstrapCoordinator {
     this.drain();
   }
 
+  /**
+   * PATCH B AUDIT DEBT D3 — the sort key (source_event_ms, connection_epoch, sequence, arrival) is a
+   * DETERMINISTIC PROCESSING ORDER only. It is NOT proof of market causal ordering: transport
+   * `sequence` is not market chronology, and for same-ms occurrences no earlier/later market claim
+   * is made. Every occurrence keeps its own identity classification and audit record.
+   */
   private drain(): void {
     this.go("DRAINING_BUFFER", `draining ${this.buffer.length} buffered LIVE observations`);
     const ordered = [...this.buffer].sort(
@@ -245,7 +268,7 @@ export class BootstrapCoordinator {
       live_frontier_at_handoff: this.liveFrontier,
       history_newest_returned_at: this.history?.coverage?.newest_returned_at ?? null,
     });
-    this.identity.identityStore.unpin();
+    this.releasePin();
     this.go("SYNCHRONIZED", "history replayed, overlap classified, buffer drained, no unresolved uncertainty");
   }
 
@@ -281,17 +304,14 @@ export class BootstrapCoordinator {
     }
     const a = Object.freeze<OccurrenceAudit>({ phase: this._state, occurrence: o, identity, action, pipeline });
     this.occ.push(a);
-    this.allAudits.push(a);
+    if (identity.dedup_class === "AMBIGUOUS_COLLISION") this.ambiguousAudited++;
     return a;
   }
 
   get metrics(): DedupMetrics {
-    const by: Record<DedupClass, number> = {
-      EXACT_TRANSPORT_DUPLICATE: 0, PROBABLE_SOURCE_DUPLICATE: 0, AMBIGUOUS_COLLISION: 0, DISTINCT_OBSERVATION: 0, STALE_EPOCH_OCCURRENCE: 0,
-    };
-    for (const e of this.identity.audit) by[e.classification.dedup_class]++;
+    const by: Record<DedupClass, number> = { ...this.identity.classCounts };
     const ambiguous_total = by.AMBIGUOUS_COLLISION;
-    const ambiguous_audited = this.allAudits.filter((a) => a.identity.dedup_class === "AMBIGUOUS_COLLISION").length;
+    const ambiguous_audited = this.ambiguousAudited;
     return Object.freeze({ by_class: Object.freeze(by), ambiguous_total, ambiguous_audited, silent_ambiguous_drops: ambiguous_total - ambiguous_audited });
   }
 
@@ -314,6 +334,7 @@ export class BootstrapCoordinator {
       handoff: this.handoff,
       reconciliation: this.recon,
       transitions: Object.freeze([...this.transitions]),
+      processing_order: PROCESSING_ORDER_SEMANTICS,
     });
   }
 
@@ -321,7 +342,9 @@ export class BootstrapCoordinator {
     this.degradedReason = reason;
     this.go("DEGRADED", reason);
     // Fail-fast keeps an invalidated audit snapshot; buffered evidence is NOT discarded.
-    this.archive.push(this.snapshot());
+    // DEGRADED is a terminal, auditable state: the snapshot is archived first, then the pin is released (no leak).
+    this.pushArchive(this.snapshot());
+    this.releasePin();
   }
 
   private resetRun(): void {
@@ -334,8 +357,23 @@ export class BootstrapCoordinator {
     this.transitions = [];
     this.handoff = null;
     this.lwm = null;
-    if (this.identity.identityStore.pinned) this.identity.identityStore.unpin();
+    this.releasePin();
   }
+
+  private releasePin(): void {
+    if (!this.holdsPin) return;
+    this.holdsPin = false;
+    this.identity.identityStore.unpin();
+    this.identity.trimAudit();
+  }
+
+  private pushArchive(s: BootstrapSnapshot): void {
+    this.archive.push(s);
+    while (this.archive.length > this.maxArchivedRuns) { this.archive.shift(); this.archiveEvicted++; }
+  }
+
+  get archiveEvictedCount(): number { return this.archiveEvicted; }
+  get holdsIdentityPin(): boolean { return this.holdsPin; }
 
   private expect(s: BootstrapState): void {
     if (this._state !== s) throw new Error(`bootstrap expected ${s}, was ${this._state}`);
