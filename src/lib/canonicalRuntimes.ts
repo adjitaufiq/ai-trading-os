@@ -21,6 +21,9 @@ export const RUNTIME_POLICY = Object.freeze({
   max_closed_bars_per_timeframe: 500,
   boundary_check_ms: 1_000,
   retry_ms: 30_000,
+  /** Broker /v1/bars CLOSED history per timeframe for technical warmup (BACKFILL provenance only). */
+  broker_history_bars: 300,
+  broker_history_refresh_ms: 60_000,
 });
 
 export const RUNTIME_CLASSIFIER: ClassifierConfig = Object.freeze({
@@ -76,7 +79,7 @@ export interface MountedRuntime { readonly symbol: string; readonly reader: Mark
 
 /** Starts one runtime; returns a stop() handle. Never substitutes data on failure. */
 export function mountCanonicalRuntime(o: {
-  client: Pick<BrokerGatewayClient, "getSymbol" | "getLatestTick">;
+  client: Pick<BrokerGatewayClient, "getSymbol" | "getLatestTick"> & Partial<Pick<BrokerGatewayClient, "getBars">>;
   config: GatewayConfig;
   wsFactory: WebSocketFactory;
   symbol: string;
@@ -88,6 +91,7 @@ export function mountCanonicalRuntime(o: {
   let rt: MarketRuntime | null = null;
   let boundary: ReturnType<typeof setInterval> | null = null;
   let retry: ReturnType<typeof setTimeout> | null = null;
+  let historyTimer: ReturnType<typeof setInterval> | null = null;
   const now = o.now ?? (() => Date.now());
   const create = o.create ?? createApplicationMarketRuntime;
   const attempt = async () => {
@@ -104,6 +108,21 @@ export function mountCanonicalRuntime(o: {
     o.onChange({ symbol: o.symbol, reader: rt.reader, status: `MOUNTED offset 0 (measured diff ${r.offset.observed_diff_ms}ms)` });
     boundary = setInterval(() => rt?.checkBoundaries(), RUNTIME_POLICY.boundary_check_ms);
     const to = now();
+    const seed = async () => {
+      if (stopped || !rt || !o.client.getBars) return;
+      for (const tf of ["M5", "M15", "H1", "H4"] as const) {
+        try {
+          const r = await o.client.getBars({ symbol: o.symbol, timeframe: tf, mode: "pos", start: 0, count: RUNTIME_POLICY.broker_history_bars });
+          if (!r.ok || !accepted(r.envelope)) continue; // no substitute: technical stays INSUFFICIENT_HISTORY for this tf
+          const items = r.data.items;
+          if (!items.every((b) => b.broker_symbol === o.symbol && b.timeframe === tf)) continue;
+          // offset 0 measured above (G2); raw_time_s is bar-precision broker time.
+          rt.seedBrokerHistory(tf, items.map((b) => ({ open_time: b.raw_time_s * 1000, open: b.open, high: b.high, low: b.low, close: b.close })));
+        } catch { /* surfaced downstream as INSUFFICIENT_HISTORY */ }
+      }
+    };
+    void seed();
+    historyTimer = setInterval(() => void seed(), RUNTIME_POLICY.broker_history_refresh_ms);
     try { await rt.start({ history_from: to - RUNTIME_POLICY.history_window_ms, history_to: to }); }
     catch (e) { o.onChange({ symbol: o.symbol, reader: rt.reader, status: `START_FAILED: ${(e as Error).message}` }); }
   };
@@ -112,6 +131,7 @@ export function mountCanonicalRuntime(o: {
     stopped = true;
     if (retry) clearTimeout(retry);
     if (boundary) clearInterval(boundary);
+    if (historyTimer) clearInterval(historyTimer);
     rt?.stop();
   };
 }
