@@ -28,3 +28,4 @@
 - Retention is owned per layer: BoundedIdentityStore (identity, no eviction while pinned), BrokerFeedPipeline retention (evicts only clean LIVE/BACKFILL records), CandleStore (bounded CLOSED candles, append-only, explicit HistoryRequirement status). Why: PRE-2D R7, memory pressure may degrade availability but never market semantics.
 - InternalAggregatedBar and BrokerObservedBar (src/core/candles/BarSchemas.ts) are separate types; compareBars reports volumes side by side and never subtracts or copies them. Why: PRE-2D R8, observed_tick_count != tick_volume != real_volume.
 - src/probe/** is a diagnostic-only namespace (see src/probe/AGENTS.md); production code never imports it. Why: probe ≠ Stage 4.
+- Stage 3 chain is composed only in MarketRuntime (src/core/runtime); consumers get the frozen MarketRuntimeReader and tests swap only the gateway transport, never the middle components. Why: D2 — one canonical runtime, React never owns market-state transitions.
