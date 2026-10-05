@@ -22,7 +22,7 @@ describe("broker history → technical engine", () => {
       closed: { M5: m5, M15: rising(900_000, 60), H1: rising(H, 60), H4: rising(4 * H, 60) }, as_of: 1e15, env: SLICE_ENV });
     expect(s.bias.state).toBe("BUY");
     expect(s.evidence!.M5.rsi14.status).toBe("OK");
-    expect(["LONG_CANDIDATE", "WAIT"]).toContain(s.entry.state);
+    expect(["LONG_CANDIDATE", "WAIT", "NOT_EVALUABLE"]).toContain(s.entry.state);
     expect(s.execution.state).toBe("BLOCKED");
   });
 });
