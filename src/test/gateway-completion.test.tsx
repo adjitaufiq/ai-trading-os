@@ -278,14 +278,14 @@ describe("2C BrokerPipeline disposition matrix", () => {
     r.ws.push(tickEnv(1, T0 + 2000, {}, 2345.1));                      // ACCEPT
     r.ws.push(tickEnv(2, T0 + 3000, { connection_epoch: 1 }, 2345.2)); // epoch change → RECONNECT_BACKFILL flag
     r.ws.push(tickEnv(3, T0 + 2500, { connection_epoch: 1 }, 2345.3)); // older event_at, open bucket → OUT_OF_ORDER QUARANTINE
-    r.ws.push(tickEnv(4, T0 + 3000, { connection_epoch: 1 }, 2345.2)); // identical content → DUPLICATE REJECT
+    r.ws.push(tickEnv(4, T0 + 3000, { connection_epoch: 1 }, 2345.2)); // identical content, distinct id → R6 AMBIGUOUS_COLLISION flag (not dropped)
     r.ws.push(tickEnv(2, T0 + 4000, { connection_epoch: 1 }, 2345.9)); // sequence regression → client QUARANTINE
     const out = r.ticks.map((t) => r.ingest.ingest(t));
     expect(out.map((o) => (o.status === "FORWARDED" ? o.record.disposition : `HELD:${o.reason}`)))
-      .toEqual(["ACCEPT", "ACCEPT_WITH_FLAG", "QUARANTINE", "REJECT", "HELD:SEQUENCE_QUARANTINE"]);
-    // only ACCEPT / ACCEPT_WITH_FLAG reached the aggregator
-    expect(r.sunk.map((e) => e.provenance.raw_event_id)).toEqual([r.ticks[0]!.raw_event_id, r.ticks[1]!.raw_event_id]);
-    expect(r.agg.current?.tick_count).toBe(2);
+      .toEqual(["ACCEPT", "ACCEPT_WITH_FLAG", "QUARANTINE", "ACCEPT_WITH_FLAG", "HELD:SEQUENCE_QUARANTINE"]);
+    // only ACCEPT / ACCEPT_WITH_FLAG reached the aggregator (ambiguous collision preserved, R6)
+    expect(r.sunk.map((e) => e.provenance.raw_event_id)).toEqual([r.ticks[0]!.raw_event_id, r.ticks[1]!.raw_event_id, r.ticks[3]!.raw_event_id]);
+    expect(r.agg.current?.tick_count).toBe(3);
     expect(r.pipe.quarantine.map((q) => q.envelope.raw.raw_event_id)).toEqual([r.ticks[2]!.raw_event_id]);
     expect(r.ingest.heldObservations).toHaveLength(1);
   });

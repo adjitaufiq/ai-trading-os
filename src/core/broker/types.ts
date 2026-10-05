@@ -98,6 +98,7 @@ export type AnomalyClassification =
   | "TEMPORAL_INVALID"
   | "LATE_EVENT"
   | "DUPLICATE"
+  | "AMBIGUOUS_COLLISION"
   | "OUT_OF_ORDER"
   | "GAP"
   | "RECONNECT_BACKFILL";
