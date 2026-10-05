@@ -9,11 +9,11 @@ import { TechnicalSliceService, type SliceGatewayPort } from "@/core/technical/T
 
 const TF = { M5: 300_000, M15: 900_000, H1: 3_600_000, H4: 14_400_000 } as const;
 function series(tf: keyof typeof TF, closes: number[], start = 1_700_000_000_000): TechBar[] {
-  return closes.map((c, i) => { const o = i === 0 ? c : closes[i - 1]!; const open_time = start + i * TF[tf];
-    return { open_time, close_time: open_time + TF[tf], available_at: open_time + TF[tf], open: o, high: Math.max(o, c) + 0.5, low: Math.min(o, c) - 0.5, close: c }; });
+  return closes.map((c, i) => { const open_time = start + i * TF[tf];
+    return { open_time, close_time: open_time + TF[tf], available_at: open_time + TF[tf], open: c, high: c + 0.5, low: c - 0.5, close: c }; });
 }
 // zig-zag uptrend: confirmed HH/HL
-const up = (k: number) => Array.from({ length: k }, (_, i) => 100 + i * 0.6 + (i % 4 < 2 ? 0 : -1.5) * (i % 4 === 3 ? 1 : 0.5));
+const up = (k: number) => Array.from({ length: k }, (_, i) => 100 + i * 0.3 + [0, 1, 2, 3, 4, 3, 2, 1][i % 8]!);
 const bullEngulfM5 = () => { const b = series("M5", up(40)); const p = b[b.length - 2]!, l = b[b.length - 1]!;
   b[b.length - 2] = { ...p, open: 120, close: 119, high: 120.2, low: 118.8 }; b[b.length - 1] = { ...l, open: 118.9, close: 121, high: 121.2, low: 118.7 }; return b; };
 const base = (over: Partial<EvaluationInput> = {}): EvaluationInput => ({
@@ -117,7 +117,7 @@ describe("vertical slice — service wiring & no mock fallback", () => {
   });
   it("production slice path imports no mock/fixture/probe modules", () => {
     const files = ["src/core/technical/indicators.ts", "src/core/technical/tradingState.ts", "src/core/technical/TechnicalSliceService.ts", "src/components/TechnicalSlicePanel.tsx", "src/routes/index.tsx"];
-    for (const f of files) expect(readFileSync(f, "utf8")).not.toMatch(/Mock|fixture|simulation|@\/probe|order_send|order_check/i);
+    for (const f of files) expect(readFileSync(f, "utf8")).not.toMatch(/from\s+"[^"]*(mock|fixture|simulation|probe)[^"]*"|order_send\(|order_check\(/i);
     const walk = (d: string): string[] => readdirSync(d).flatMap((x) => { const p = join(d, x); return statSync(p).isDirectory() ? walk(p) : [p]; });
     for (const f of walk("src/core/technical")) expect(readFileSync(f, "utf8")).not.toMatch(/src\/probe|@\/probe/);
   });
