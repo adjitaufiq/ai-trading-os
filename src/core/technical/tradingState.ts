@@ -307,7 +307,7 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
       quote: null, evidence: null, last3_m5: [], engulfing: null,
       bias: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE" },
       setup: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE" },
-      signal: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE", triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED" },
+      signal: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE", triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED", origin: null, ttl_remaining_bars: null, chasing_guard: null, lifecycle: carryUnavailable(prevSignal, "MARKET_STATE_UNAVAILABLE") },
       execution: { state: "BLOCKED", reasons: ["MARKET_STATE_UNAVAILABLE", ...capabilityReasons] },
       entry: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE" },
       reference_plan: unavailablePlan("MARKET_STATE_UNAVAILABLE"),
@@ -337,17 +337,8 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
   else if (op.setup_ready && side) setup = { state: "ACTIVE", reason: `${op.regime}_${side}_LOCATION${op.regime === "TREND" ? "_RSI" : ""}` };
   else setup = { state: "INACTIVE", reason: op.reason };
 
-  let signal: TradingSnapshot["signal"];
-  const base = { triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED" as const };
-  if (setup.state === "NOT_EVALUABLE") signal = { state: "NOT_EVALUABLE", reason: setup.reason, ...base };
-  else if (setup.state !== "ACTIVE") signal = prevSignal?.state === "READY"
-    ? { state: setup.state === "INVALID" ? "INVALIDATED" : "WAITING", reason: `SETUP_${setup.state}`, ...base }
-    : { state: "WAITING", reason: "SETUP_NOT_ACTIVE", ...base };
-  else if (op.candidate && op.trigger_bar) {
-    const tb = op.trigger_bar;
-    signal = { state: "READY", reason: `${tb.timeframe}_CLOSED_${op.candidate === "BUY" ? "BULLISH" : "BEARISH"}_${tb.patterns.join("+")}`, triggered_at: tb.available_at, trigger_bar: tb.open_time, trigger_evidence: `${tb.timeframe}:${tb.patterns.join("+")}`, validity_policy: "RESEARCH_REQUIRED" };
-  } else if (prevSignal?.state === "READY") signal = prevSignal; // latched; validity policy RESEARCH_REQUIRED (no TTL)
-  else signal = { state: "WAITING", reason: op.reason, ...base };
+  // P0.3–P0.5 lifecycle: frozen origin + TTL (CLOSED M5 bars) + early invalidation + chasing guard.
+  const signal = deriveSignalLifecycle(i, prevSignal, setup, op, evidence);
 
   // GUARD (no invented thresholds). In MONITOR_ONLY the capability is structurally absent → BLOCKED.
   const reasons = [...capabilityReasons];
