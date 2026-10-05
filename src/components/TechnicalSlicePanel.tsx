@@ -21,6 +21,10 @@ const technicalCopy = (text: string) => text
   .replaceAll("EMA_NOT_ALIGNED", "EMA BELUM SELARAS")
   .replaceAll("SETUP_NOT_ACTIVE", "SETUP BELUM AKTIF")
   .replaceAll("NO_CLOSED_M5_TRIGGER", "BELUM ADA PEMICU M5 CLOSED")
+  .replaceAll("H1_RSI14_INSUFFICIENT_HISTORY", "RSI14 H1: DATA BELUM CUKUP")
+  .replaceAll("H1_RSI14_NEUTRAL_50", "RSI14 H1 NETRAL DI 50")
+  .replaceAll("H1_RSI14_CONFLICTS_BUY", "RSI14 H1 BELUM MENDUKUNG BUY")
+  .replaceAll("H1_RSI14_CONFLICTS_SELL", "RSI14 H1 BELUM MENDUKUNG SELL")
   .replaceAll("Entry analysis", "Analisis entry")
   .replaceAll("Execution", "Eksekusi")
   .replaceAll("Current market state cannot be established", "Kondisi pasar saat ini belum dapat dipastikan")
@@ -103,7 +107,9 @@ function ActionButton({ side, enabled, onClick }: { side: "BUY" | "SELL"; enable
   >{side === "BUY" ? <ArrowUpRight /> : <ArrowDownRight />}{side}</Button>;
 }
 
-function ReadOnlyPlan({ side, entry, confirmations, onClose }: { side: "BUY" | "SELL"; entry: number | null; confirmations: readonly string[]; onClose: () => void }) {
+type DisplayPlan = { readonly sl: number; readonly tp1: number; readonly tp2: number; readonly rr: string } | null;
+
+function ReadOnlyPlan({ side, entry, plan, confirmations, onClose }: { side: "BUY" | "SELL"; entry: number | null; plan: DisplayPlan; confirmations: readonly string[]; onClose: () => void }) {
   return <Dialog.Portal>
     <Dialog.Overlay className="fixed inset-0 z-50 bg-background/80" />
     <Dialog.Content className="fixed inset-x-4 top-1/2 z-50 max-h-[85vh] -translate-y-1/2 overflow-y-auto border border-border bg-card p-5 shadow-2xl sm:left-1/2 sm:right-auto sm:w-full sm:max-w-md sm:-translate-x-1/2" aria-describedby="trade-plan-description">
@@ -114,10 +120,10 @@ function ReadOnlyPlan({ side, entry, confirmations, onClose }: { side: "BUY" | "
       <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-3 text-sm">
         <div><dt className="text-xs text-muted-foreground">Sisi</dt><dd className="mt-0.5 font-semibold">{side}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Acuan Entry</dt><dd className="mt-0.5 font-mono font-semibold">{entry == null ? "—" : n(entry)}</dd></div>
-        <div><dt className="text-xs text-muted-foreground">SL</dt><dd className="mt-0.5">ATURAN BELUM DITETAPKAN</dd></div>
-        <div><dt className="text-xs text-muted-foreground">TP1</dt><dd className="mt-0.5">ATURAN BELUM DITETAPKAN</dd></div>
-        <div><dt className="text-xs text-muted-foreground">TP2</dt><dd className="mt-0.5">ATURAN BELUM DITETAPKAN</dd></div>
-        <div><dt className="text-xs text-muted-foreground">R:R</dt><dd className="mt-0.5">—</dd></div>
+        <div><dt className="text-xs text-muted-foreground">SL</dt><dd className="mt-0.5 font-mono">{plan ? n(plan.sl) : "—"}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">TP1</dt><dd className="mt-0.5 font-mono">{plan ? n(plan.tp1) : "—"}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">TP2</dt><dd className="mt-0.5 font-mono">{plan ? n(plan.tp2) : "—"}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">R:R</dt><dd className="mt-0.5">{plan?.rr ?? "—"}</dd></div>
       </dl>
       <div className="mt-5 border-t border-border pt-4">
         <div className="text-xs font-semibold uppercase text-muted-foreground">Konfirmasi sinyal</div>
@@ -129,7 +135,7 @@ function ReadOnlyPlan({ side, entry, confirmations, onClose }: { side: "BUY" | "
   </Dialog.Portal>;
 }
 
-export function TradeActions({ signal, entry, reason, confirmations }: { signal: CockpitSignal; entry: number | null; reason: string; confirmations: readonly string[] }) {
+export function TradeActions({ signal, entry, plan = null, reason, confirmations }: { signal: CockpitSignal; entry: number | null; plan?: DisplayPlan; reason: string; confirmations: readonly string[] }) {
   const [planSide, setPlanSide] = useState<"BUY" | "SELL" | null>(null);
   return <>
     <div className="mt-5 grid grid-cols-2 gap-2" aria-label="Trade actions">
@@ -138,7 +144,7 @@ export function TradeActions({ signal, entry, reason, confirmations }: { signal:
     </div>
     {signal === "HOLD" ? <p className="mt-2 text-center text-xs text-muted-foreground" data-testid="action-disabled-reason">{reason}</p> : null}
     <Dialog.Root open={planSide !== null} onOpenChange={(open) => { if (!open) setPlanSide(null); }}>
-      {planSide ? <ReadOnlyPlan side={planSide} entry={entry} confirmations={confirmations} onClose={() => setPlanSide(null)} /> : null}
+      {planSide ? <ReadOnlyPlan side={planSide} entry={entry} plan={plan} confirmations={confirmations} onClose={() => setPlanSide(null)} /> : null}
     </Dialog.Root>
   </>;
 }
@@ -150,6 +156,7 @@ function Cockpit({ service, explain }: { service: TechnicalSliceService; explain
   const evidence = snapshot?.evidence;
   const signal = cockpitSignal(snapshot);
   const entry = referenceEntry(snapshot);
+  const plan: DisplayPlan = snapshot?.reference_plan.status === "AVAILABLE" ? { sl: snapshot.reference_plan.sl, tp1: snapshot.reference_plan.tp1, tp2: snapshot.reference_plan.tp2, rr: "TP1 1:1 · TP2 1:2" } : null;
   const unavailable = !snapshot || snapshot.availability === "UNAVAILABLE" || snapshot.entry.state === "NOT_EVALUABLE";
   const signalReason = unavailable ? "menunggu bukti teknikal yang valid" : technicalCopy(snapshot?.entry.reason ?? "tunggu setup valid");
   const signalTone = signal === "BUY" ? "text-bull" : signal === "SELL" ? "text-bear" : "text-foreground";
@@ -169,6 +176,8 @@ function Cockpit({ service, explain }: { service: TechnicalSliceService; explain
   const h1StructureTone = structureTone(evidence?.H1.structure.summary);
   const triggerTone: ConfirmationTone = snapshot?.engulfing?.bullish ? "BULL" : snapshot?.engulfing?.bearish ? "BEAR" : "NEUTRAL";
   const triggerText = snapshot?.engulfing?.bullish ? "BULLISH TERKONFIRMASI" : snapshot?.engulfing?.bearish ? "BEARISH TERKONFIRMASI" : snapshot?.engulfing ? "BELUM TERKONFIRMASI" : "DATA BELUM CUKUP";
+  const h1Rsi = evidence?.H1.rsi14;
+  const rsiTone: ConfirmationTone = h1Rsi?.status !== "OK" ? "NEUTRAL" : h1Rsi.value > 50 ? "BULL" : h1Rsi.value < 50 ? "BEAR" : "NEUTRAL";
   const snr = evidence?.H1.snr;
   const location = snr ? `S ${n(snr.nearest_support?.price)} · R ${n(snr.nearest_resistance?.price)}` : "DATA BELUM CUKUP";
   const planConfirmations = snapshot?.why.slice(0, 5).map((fact) => technicalCopy(fact.text)) ?? ["Menunggu bukti teknikal yang valid"];
@@ -192,12 +201,12 @@ function Cockpit({ service, explain }: { service: TechnicalSliceService; explain
         <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3 text-sm">
           <div><div className="text-xs text-muted-foreground">Acuan Entry</div><div className="mt-0.5 font-mono font-semibold" data-testid="reference-entry">{entry == null ? "—" : n(entry)}</div></div>
           <div><div className="text-xs text-muted-foreground">Status</div><div className="mt-0.5 font-semibold">{signal === "HOLD" ? "TUNGGU SETUP VALID" : "MONITOR SAJA"}</div></div>
-          <div><div className="text-xs text-muted-foreground">Stop Loss</div><div className="mt-0.5" data-testid="plan-sl">{signal === "HOLD" ? "—" : "ATURAN BELUM DITETAPKAN"}</div></div>
-          <div><div className="text-xs text-muted-foreground">TP1</div><div className="mt-0.5" data-testid="plan-tp1">{signal === "HOLD" ? "—" : "ATURAN BELUM DITETAPKAN"}</div></div>
-          <div><div className="text-xs text-muted-foreground">TP2</div><div className="mt-0.5" data-testid="plan-tp2">{signal === "HOLD" ? "—" : "ATURAN BELUM DITETAPKAN"}</div></div>
-          <div><div className="text-xs text-muted-foreground">R:R</div><div className="mt-0.5">—</div></div>
+          <div><div className="text-xs text-muted-foreground">Stop Loss</div><div className="mt-0.5 font-mono" data-testid="plan-sl">{plan ? n(plan.sl) : "—"}</div></div>
+          <div><div className="text-xs text-muted-foreground">TP1</div><div className="mt-0.5 font-mono" data-testid="plan-tp1">{plan ? n(plan.tp1) : "—"}</div></div>
+          <div><div className="text-xs text-muted-foreground">TP2</div><div className="mt-0.5 font-mono" data-testid="plan-tp2">{plan ? n(plan.tp2) : "—"}</div></div>
+          <div><div className="text-xs text-muted-foreground">R:R</div><div className="mt-0.5" data-testid="plan-rr">{plan?.rr ?? "—"}</div></div>
         </div>
-        <TradeActions signal={signal} entry={entry} reason={signalReason} confirmations={planConfirmations} />
+        <TradeActions signal={signal} entry={entry} plan={plan} reason={signalReason} confirmations={planConfirmations} />
       </section>
     </div>
 
@@ -208,9 +217,9 @@ function Cockpit({ service, explain }: { service: TechnicalSliceService; explain
         <ConfirmationLight label="Tren H1" value={technicalCopy(evidence?.H1.relation ?? "DATA BELUM CUKUP")} tone={h1Tone} testId="confirm-h1" />
         <ConfirmationLight label="Struktur H1" value={evidence?.H1.structure.summary.replace("_", "/") ?? "DATA BELUM CUKUP"} tone={h1StructureTone} testId="confirm-structure" />
         <ConfirmationLight label="Pemicu M5" value={triggerText} tone={triggerTone} testId="confirm-trigger" />
-        <ConfirmationLight label="RSI14" value={indicator(evidence?.M5.rsi14)} tone="NEUTRAL" testId="confirm-rsi" />
+        <ConfirmationLight label="RSI14 H1" value={indicator(evidence?.H1.rsi14)} tone={rsiTone} testId="confirm-rsi" />
         <ConfirmationLight label="Lokasi S/R" value={location} tone="NEUTRAL" testId="confirm-snr" />
-        <ConfirmationLight label="ATR / Volatilitas" value={indicator(evidence?.M5.atr14, 3)} tone="NEUTRAL" testId="confirm-atr" />
+        <ConfirmationLight label="ATR14 M15" value={indicator(evidence?.M15.atr14, 3)} tone="NEUTRAL" testId="confirm-atr" />
       </div>
     </section>
 
