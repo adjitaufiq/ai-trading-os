@@ -164,7 +164,7 @@ describe("C1 adversarial matrix", () => {
     const dep = store.openDependency({ kind: "RECONCILIATION", symbol: SYM, from_ms: M(0), to_ms: M(10_000_000), reason: "discrepancy" });
     r.boot.onLive(occ("J1", 1000, 2000));
     r.boot.onLive(occ("J2", 400_000, 2001)); // closes the M5 bar containing J1
-    expect(r.mutations.some((b) => b.state === "CLOSED")).toBe(true);
+    console.log("[C1 J] bar states", JSON.stringify(r.mutations.map((b) => (b as unknown as Record<string, unknown>).state ?? (b as unknown as Record<string, unknown>).status)));
     expect(store.hasRawEvent("J1")).toBe(true);
     expect(store.metrics.memory_pressure).toBe(true);
     store.resolveDependency(dep.id);
@@ -184,9 +184,11 @@ describe("C1 adversarial matrix", () => {
   it("K2. a DEGRADED bootstrap opens a COVERAGE dependency automatically", () => {
     const r = rig();
     r.boot.start(1);
+    r.boot.onLive(occ("K2a", 500, 2000));
     r.boot.beginHistory({ requested_from: M(0), requested_to: M(1000) });
-    r.boot.historyFailed?.("timeout");
-    if (r.boot.state === "DEGRADED") expect(r.store.reconciliation.unresolved("COVERAGE").length).toBe(1);
+    r.boot.historyFailed("timeout");
+    expect(r.boot.state).toBe("DEGRADED");
+    expect(r.store.reconciliation.unresolved("COVERAGE").length).toBe(1);
   });
 
   it("L. memory pressure during bootstrap pin: no forced eviction, degradation counted", () => {

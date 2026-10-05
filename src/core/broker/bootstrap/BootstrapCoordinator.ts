@@ -166,6 +166,7 @@ export class BootstrapCoordinator {
   /** LIVE arrival. Buffered during bootstrap; processed through identity → pipeline once SYNCHRONIZED. */
   onLive(o: ObservationOccurrence): void {
     if (o.delivery !== "LIVE") throw new Error("onLive requires delivery LIVE");
+    this.lastSymbol = o.broker_symbol;
     switch (this._state) {
       case "UNINITIALIZED":
         throw new Error("live observation before bootstrap start");
