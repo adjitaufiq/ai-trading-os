@@ -16,12 +16,14 @@ export type ExecutionState = "ALLOWED" | "INHIBITED" | "BLOCKED";
 export const ALL_SIGNAL_STATES: readonly SignalState[] = ["READY", "WAITING", "EXPIRED", "INVALIDATED", "NOT_EVALUABLE"];
 
 export const SETUP_POLICY_VERSION = "setup-v0-baseline";
-export const SIGNAL_POLICY_VERSION = "signal-v0-baseline";
+export const SIGNAL_POLICY_VERSION = "signal-v1-h1-rsi-direction-gate";
+export const REFERENCE_PLAN_POLICY_VERSION = "reference-plan-v1-swing-atr-rsi";
 export const GUARD_POLICY_VERSION = "guard-v0-monitor-only";
 export const POLICIES = Object.freeze({
   bias: "H4 & H1 EMA5 vs EMA21 on CLOSED bars: both above → BUY, both below → SELL, else NEUTRAL",
   setup: "BUY bias + H1 latest HH & HL → ACTIVE; BUY bias + H1 latest LH & LL → INVALID; SELL mirror; otherwise INACTIVE. LOCATION criterion = RESEARCH_REQUIRED (not applied)",
-  signal: "Setup ACTIVE + latest CLOSED M5 engulfing in bias direction → READY (latched on trigger bar); ACTIVE without trigger → WAITING; setup leaves ACTIVE → INVALIDATED (if INVALID) else WAITING",
+  signal: "Setup ACTIVE + H1 RSI14 direction gate (>50 BUY, <50 SELL) + latest CLOSED M5 engulfing in bias direction → READY (latched on trigger bar); RSI=50/insufficient/conflicting evidence → WAITING; setup leaves ACTIVE → INVALIDATED (if INVALID) else WAITING",
+  reference_plan: "BUY ASK / SELL BID; SL outside latest confirmed H1 swing by 0.25×ATR14(M15); TP1=1R, TP2=2R. Read-only analysis, never execution",
   signal_validity: "RESEARCH_REQUIRED (no TTL; EXPIRED is never produced)",
   spread: "RESEARCH_REQUIRED (telemetry only, no threshold)",
   session: "RESEARCH_REQUIRED",
@@ -68,6 +70,27 @@ export interface EvaluationInput {
 
 export interface WhyFact { readonly ok: boolean | null; readonly text: string }
 
+export type ReferencePlan = {
+  readonly status: "AVAILABLE";
+  readonly policy_version: typeof REFERENCE_PLAN_POLICY_VERSION;
+  readonly side: "BUY" | "SELL";
+  readonly entry: number;
+  readonly anchor_kind: "CONFIRMED_H1_SWING_LOW" | "CONFIRMED_H1_SWING_HIGH";
+  readonly anchor_price: number;
+  readonly atr14_m15: number;
+  readonly atr_buffer: number;
+  readonly risk: number;
+  readonly sl: number;
+  readonly tp1: number;
+  readonly tp2: number;
+  readonly rr_tp1: 1;
+  readonly rr_tp2: 2;
+} | {
+  readonly status: "NOT_AVAILABLE";
+  readonly policy_version: typeof REFERENCE_PLAN_POLICY_VERSION;
+  readonly reason: string;
+};
+
 export interface TradingSnapshot {
   readonly symbol: string;
   readonly as_of: number;
@@ -84,8 +107,10 @@ export interface TradingSnapshot {
   readonly execution: { readonly state: ExecutionState; readonly reasons: readonly string[] };
   /** Analysis label only (MONITOR_ONLY). Never an order, never transmitted. */
   readonly entry: { readonly state: EntryAnalysis; readonly reason: string };
+  /** Deterministic read-only levels. Never an order and never execution authority. */
+  readonly reference_plan: ReferencePlan;
   readonly why: readonly WhyFact[];
-  readonly versions: { readonly technical_engine_version: string; readonly setup_policy_version: string; readonly signal_policy_version: string; readonly guard_policy_version: string };
+  readonly versions: { readonly technical_engine_version: string; readonly setup_policy_version: string; readonly signal_policy_version: string; readonly reference_plan_policy_version: string; readonly guard_policy_version: string };
 }
 
 function evidenceFor(tf: Timeframe, bars: readonly TechBar[], price: number | null): TimeframeEvidence {
@@ -100,9 +125,48 @@ function evidenceFor(tf: Timeframe, bars: readonly TechBar[], price: number | nu
 
 const fmt = (v: number) => (Math.abs(v) >= 1000 ? v.toFixed(2) : v.toFixed(3));
 
+function unavailablePlan(reason: string): ReferencePlan {
+  return { status: "NOT_AVAILABLE", policy_version: REFERENCE_PLAN_POLICY_VERSION, reason };
+}
+
+export function rsiDirectionGate(side: "BUY" | "SELL", rsi: Indicator): { readonly pass: boolean; readonly reason: string } {
+  if (rsi.status !== "OK") return { pass: false, reason: "H1_RSI14_INSUFFICIENT_HISTORY" };
+  if (rsi.value === 50) return { pass: false, reason: "H1_RSI14_NEUTRAL_50" };
+  const pass = side === "BUY" ? rsi.value > 50 : rsi.value < 50;
+  return { pass, reason: pass ? `H1_RSI14_SUPPORTS_${side}` : `H1_RSI14_CONFLICTS_${side}` };
+}
+
+export function deriveReferencePlan(
+  entry: TradingSnapshot["entry"],
+  quote: MarketObservation | null,
+  evidence: Readonly<Record<Timeframe, TimeframeEvidence>> | null,
+): ReferencePlan {
+  const side = entry.state === "LONG_CANDIDATE" ? "BUY" : entry.state === "SHORT_CANDIDATE" ? "SELL" : null;
+  if (!side) return unavailablePlan(entry.reason);
+  if (!quote || !evidence) return unavailablePlan("REFERENCE_PLAN_EVIDENCE_UNAVAILABLE");
+  const atr = evidence.M15.atr14;
+  if (atr.status !== "OK" || !Number.isFinite(atr.value) || atr.value <= 0) return unavailablePlan("ATR14_M15_UNAVAILABLE");
+  const kind = side === "BUY" ? "LOW" : "HIGH";
+  const anchor = [...evidence.H1.structure.swings].reverse().find((s) => s.kind === kind);
+  if (!anchor || !Number.isFinite(anchor.price)) return unavailablePlan(`CONFIRMED_H1_SWING_${kind}_UNAVAILABLE`);
+  const reference = side === "BUY" ? quote.ask : quote.bid;
+  const atrBuffer = 0.25 * atr.value;
+  const sl = side === "BUY" ? anchor.price - atrBuffer : anchor.price + atrBuffer;
+  const risk = side === "BUY" ? reference - sl : sl - reference;
+  if (![reference, atrBuffer, sl, risk].every(Number.isFinite) || risk <= 0) return unavailablePlan("REFERENCE_PLAN_NON_POSITIVE_RISK");
+  return {
+    status: "AVAILABLE", policy_version: REFERENCE_PLAN_POLICY_VERSION, side, entry: reference,
+    anchor_kind: side === "BUY" ? "CONFIRMED_H1_SWING_LOW" : "CONFIRMED_H1_SWING_HIGH", anchor_price: anchor.price,
+    atr14_m15: atr.value, atr_buffer: atrBuffer, risk, sl,
+    tp1: side === "BUY" ? reference + risk : reference - risk,
+    tp2: side === "BUY" ? reference + 2 * risk : reference - 2 * risk,
+    rr_tp1: 1, rr_tp2: 2,
+  };
+}
+
 /** Pure evaluation. `prevSignal` provides latching of a READY signal on its trigger bar. */
 export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal"] | null = null): TradingSnapshot {
-  const versions = { technical_engine_version: TECHNICAL_ENGINE_VERSION, setup_policy_version: SETUP_POLICY_VERSION, signal_policy_version: SIGNAL_POLICY_VERSION, guard_policy_version: GUARD_POLICY_VERSION };
+  const versions = { technical_engine_version: TECHNICAL_ENGINE_VERSION, setup_policy_version: SETUP_POLICY_VERSION, signal_policy_version: SIGNAL_POLICY_VERSION, reference_plan_policy_version: REFERENCE_PLAN_POLICY_VERSION, guard_policy_version: GUARD_POLICY_VERSION };
   const capabilityReasons: string[] = [];
   if (!i.env.execution_enabled) capabilityReasons.push("CAPABILITY_UNAUTHORIZED");
   if (i.env.operating_mode !== "DEMO") capabilityReasons.push("ENV_NOT_DEMO");
@@ -116,6 +180,7 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
       signal: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE", triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED" },
       execution: { state: "BLOCKED", reasons: ["MARKET_STATE_UNAVAILABLE", ...capabilityReasons] },
       entry: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE" },
+      reference_plan: unavailablePlan("MARKET_STATE_UNAVAILABLE"),
       why: [{ ok: false, text: "Current market state cannot be established" }], versions,
     };
   }
@@ -153,8 +218,11 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
     ? { state: setup.state === "INVALID" ? "INVALIDATED" : "WAITING", reason: `SETUP_${setup.state}`, ...base }
     : { state: "WAITING", reason: "SETUP_NOT_ACTIVE", ...base };
   else {
+    const h1Rsi = evidence.H1.rsi14;
+    const rsiGate = rsiDirectionGate(bias.state as "BUY" | "SELL", h1Rsi);
     const hit = eng && ((bias.state === "BUY" && eng.bullish) || (bias.state === "SELL" && eng.bearish));
-    if (hit) {
+    if (!rsiGate.pass) signal = { state: "WAITING", reason: rsiGate.reason, ...base };
+    else if (hit) {
       const last = m5[m5.length - 1]!;
       signal = { state: "READY", reason: `M5_CLOSED_${bias.state === "BUY" ? "BULLISH" : "BEARISH"}_ENGULFING`, triggered_at: last.available_at, trigger_bar: last.open_time, trigger_evidence: ENGULFING_DEFINITION, validity_policy: "RESEARCH_REQUIRED" };
     } else if (prevSignal?.state === "READY") signal = prevSignal; // latched; validity policy RESEARCH_REQUIRED (no TTL)
@@ -170,6 +238,7 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
   const entry: TradingSnapshot["entry"] = signal.state === "NOT_EVALUABLE" ? { state: "NOT_EVALUABLE", reason: signal.reason }
     : signal.state === "READY" ? { state: bias.state === "BUY" ? "LONG_CANDIDATE" : "SHORT_CANDIDATE", reason: `${bias.reason} + ${setup.reason} + ${signal.reason}` }
     : { state: "WAIT", reason: `${setup.state === "ACTIVE" ? signal.reason : setup.reason}` };
+  const referencePlan = deriveReferencePlan(entry, i.quote, evidence);
 
   const why: WhyFact[] = [];
   const rel = (tf: "H4" | "H1") => {
@@ -184,11 +253,13 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
   why.push({ ok: eng ? eng.bullish : null, text: `M5 bullish engulfing (CLOSED) = ${eng ? String(eng.bullish).toUpperCase() : "INSUFFICIENT_HISTORY"}` });
   why.push({ ok: eng ? eng.bearish : null, text: `M5 bearish engulfing (CLOSED) = ${eng ? String(eng.bearish).toUpperCase() : "INSUFFICIENT_HISTORY"}` });
   const v = (x: Indicator, d = 1) => (x.status === "OK" ? x.value.toFixed(d) : "INSUFFICIENT_HISTORY");
-  why.push({ ok: null, text: `RSI14 M5 ${v(evidence.M5.rsi14)} · H1 ${v(evidence.H1.rsi14)} · ATR14 M5 ${evidence.M5.atr14.status === "OK" ? fmt(evidence.M5.atr14.value) : "INSUFFICIENT_HISTORY"} (evidence only, no threshold)` });
+  const h1Rsi = evidence.H1.rsi14;
+  why.push({ ok: h1Rsi.status !== "OK" ? null : bias.state === "BUY" ? h1Rsi.value > 50 : bias.state === "SELL" ? h1Rsi.value < 50 : null, text: `RSI14 H1 ${v(h1Rsi)} (${bias.state === "BUY" ? "> 50 BUY gate" : bias.state === "SELL" ? "< 50 SELL gate" : "direction gate pending"}) · RSI14 M5 ${v(evidence.M5.rsi14)} (additional confirmation)` });
+  why.push({ ok: referencePlan.status === "AVAILABLE", text: referencePlan.status === "AVAILABLE" ? `Reference plan ${referencePlan.side}: confirmed H1 swing ${fmt(referencePlan.anchor_price)} ± 0.25×ATR14(M15) ${fmt(referencePlan.atr14_m15)}; TP1 1R, TP2 2R` : `Reference plan unavailable: ${referencePlan.reason}` });
   why.push({ ok: entry.state === "LONG_CANDIDATE" || entry.state === "SHORT_CANDIDATE", text: `Entry analysis ${entry.state}: ${entry.reason}` });
   why.push({ ok: false, text: `Execution ${execution.state}: ${execution.reasons.join(", ") || "—"}` });
 
-  return { symbol: i.symbol, as_of: i.as_of, label: "CURRENT", availability, availability_reason: availability === "STALE" ? "BAR_HISTORY_REFRESH_FAILED" : "OBSERVED", quote: i.quote, evidence, last3_m5: last3, engulfing: eng, bias, setup, signal, execution, entry, why, versions };
+  return { symbol: i.symbol, as_of: i.as_of, label: "CURRENT", availability, availability_reason: availability === "STALE" ? "BAR_HISTORY_REFRESH_FAILED" : "OBSERVED", quote: i.quote, evidence, last3_m5: last3, engulfing: eng, bias, setup, signal, execution, entry, reference_plan: referencePlan, why, versions };
 }
 
 /** A stored previous snapshot can never be labelled CURRENT. */
@@ -213,6 +284,7 @@ export interface StateTransition {
   readonly technical_engine_version: string;
   readonly setup_policy_version: string;
   readonly signal_policy_version: string;
+  readonly reference_plan_policy_version: string;
   readonly guard_policy_version: string;
   readonly evidence_refs: readonly string[];
 }

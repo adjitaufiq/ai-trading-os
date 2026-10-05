@@ -8,7 +8,8 @@ const snapshot = (entry: TradingSnapshot["entry"]["state"]): TradingSnapshot => 
   quote: { bid: 100, ask: 101, spread: 1, tick_time_ms: 1, observed_at: 1 }, evidence: null, last3_m5: [], engulfing: null,
   bias: { state: "NEUTRAL", reason: "TEST" }, setup: { state: "INACTIVE", reason: "TEST" }, signal: { state: "WAITING", reason: "TEST", triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED" },
   execution: { state: "BLOCKED", reasons: ["CAPABILITY_UNAUTHORIZED"] }, entry: { state: entry, reason: "TEST" }, why: [],
-  versions: { technical_engine_version: "test", setup_policy_version: "test", signal_policy_version: "test", guard_policy_version: "test" },
+  reference_plan: { status: "NOT_AVAILABLE", policy_version: "reference-plan-v1-swing-atr-rsi", reason: "TEST" },
+  versions: { technical_engine_version: "test", setup_policy_version: "test", signal_policy_version: "test", reference_plan_policy_version: "test", guard_policy_version: "test" },
 });
 
 const reader = (symbol: string, entry: TradingSnapshot["entry"]["state"]) => ({
@@ -42,9 +43,10 @@ describe("clean trading cockpit", () => {
     expect(screen.getByTestId("cockpit-BTCUSD")).toBeInTheDocument();
     expect(screen.queryByTestId("cockpit-XAUUSD")).not.toBeInTheDocument();
   });
-  it("never fabricates SL/TP when policy is absent", () => {
+  it("never fabricates SL/TP when required plan evidence is absent", () => {
     expect(snapshot("LONG_CANDIDATE").execution.state).toBe("BLOCKED");
     expect(snapshot("SHORT_CANDIDATE").execution.state).toBe("BLOCKED");
+    expect(snapshot("LONG_CANDIDATE").reference_plan.status).toBe("NOT_AVAILABLE");
   });
   it("keeps both actions visible and disabled while HOLD", () => {
     render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);
@@ -54,13 +56,16 @@ describe("clean trading cockpit", () => {
   });
   it("enables only BUY and opens a read-only plan without execution", () => {
     const brokerOrder = vi.fn();
-    render(<TradeActions signal="BUY" entry={101} reason="TEST" confirmations={["H4 bullish", "H1 bullish"]} />);
+    render(<TradeActions signal="BUY" entry={101} plan={{ sl: 98, tp1: 104, tp2: 107, rr: "TP1 1:1 · TP2 1:2" }} reason="TEST" confirmations={["H4 bullish", "H1 bullish"]} />);
     expect(screen.getByTestId("action-buy")).toBeEnabled();
     expect(screen.getByTestId("action-sell")).toBeDisabled();
     fireEvent.click(screen.getByTestId("action-buy"));
     expect(screen.getByRole("dialog")).toHaveTextContent("Rencana acuan BUY");
     expect(screen.getByTestId("no-order-status")).toHaveTextContent("MONITOR SAJA — TIDAK ADA ORDER DIKIRIM");
-    expect(screen.getByRole("dialog")).toHaveTextContent("ATURAN BELUM DITETAPKAN");
+    expect(screen.getByRole("dialog")).toHaveTextContent("98.000");
+    expect(screen.getByRole("dialog")).toHaveTextContent("104.000");
+    expect(screen.getByRole("dialog")).toHaveTextContent("107.000");
+    expect(screen.getByRole("dialog")).toHaveTextContent("TP1 1:1 · TP2 1:2");
     expect(brokerOrder).not.toHaveBeenCalled();
   });
   it("enables only SELL and opens its read-only plan", () => {
