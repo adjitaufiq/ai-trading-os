@@ -64,6 +64,9 @@ export interface MarketRuntimeSnapshot {
   readonly route_counts: Readonly<Record<FeedRoute, number>>;
   readonly held: readonly HeldObservation[];
   readonly silent_ambiguous_drops: number;
+  /** LIVE stream frames rejected by the client protocol validator (surfaced, never hidden or repaired). */
+  readonly stream_protocol_errors: number;
+  readonly last_stream_error: string | null;
   readonly timeframes: Readonly<Record<Timeframe, TimeframeView>>;
 }
 
@@ -94,6 +97,8 @@ export class MarketRuntime {
   private coverageStatus: string | null = null;
   private lastRequest: StartRequest | null = null;
   private lastLive: BrokerMarketEvent | null = null;
+  private streamErrors = 0;
+  private lastStreamError: string | null = null;
   private readonly maxHeld = 1000;
   readonly reader: MarketRuntimeReader;
 
@@ -146,6 +151,7 @@ export class MarketRuntime {
       // Subscribed only after BUFFERING_LIVE, so every LIVE observation is buffered by the coordinator.
       this.stream = this.o.gateway.subscribeMarketData({ stream: "ticks", symbols: [this.o.binding.broker_symbol] }, {
         onTick: (t) => this.onGatewayTick(t),
+        onError: (e) => { this.streamErrors++; this.lastStreamError = `${e.kind}: ${e.message}`; },
       });
     }
     this.boot.beginHistory({ requested_from: req.history_from, requested_to: req.history_to });
@@ -255,7 +261,8 @@ export class MarketRuntime {
           lifecycle: self.lifecycle, bootstrap_state: b.state, active_epoch: b.active_epoch, degraded_reason: b.degraded_reason,
           history_coverage_status: self.coverageStatus, market_coverage_proven_complete: false,
           route_counts: Object.freeze({ ...self.routeCounts }), held: Object.freeze([...self.held]),
-          silent_ambiguous_drops: self.boot.metrics.silent_ambiguous_drops, timeframes: Object.freeze(tfs),
+          silent_ambiguous_drops: self.boot.metrics.silent_ambiguous_drops,
+          stream_protocol_errors: self.streamErrors, last_stream_error: self.lastStreamError, timeframes: Object.freeze(tfs),
         });
       },
     });
