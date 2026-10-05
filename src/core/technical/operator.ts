@@ -11,7 +11,7 @@ import {
   type Indicator, type LabelledSwing, type Structure, type TechBar,
 } from "./indicators";
 
-export const OPERATOR_POLICY_VERSION = "operator-v2-mtf-sr-ema-rsi-candle";
+export const OPERATOR_POLICY_VERSION = "operator-v2.1-p0.1-macro-scalp-split";
 export const PATTERN_DEFINITION_VERSION = "candle-patterns-v1";
 export const ZONE_DEFINITION_VERSION = "sr-zone-swing-cluster-atr-v1";
 
@@ -48,7 +48,8 @@ export const OPERATOR_RULES = Object.freeze({
   ema_zone: "BAND = price inside [EMA21, EMA50]; else NEAR_EMA21 / NEAR_EMA50 within 0.25×ATR14(TF); else NOT_NEAR",
   location: "AT_SUPPORT / AT_RESISTANCE = within 0.5×ATR14(M15) of a support / resistance zone edge (inside counts); both ⇒ AMBIGUOUS; neither ⇒ MID",
   regime: "TREND = H4 UP/DOWN; RANGE = H4 not directional AND H1 has a support zone and a resistance zone each with ≥2 touches; otherwise CHOPPY",
-  trend_setup: "Direction d = H4. Context ALIGNED or RETURNING_TO_H4, or PULLBACK_AGAINST_H4 with M15 EMA5 vs EMA21 already back with d; location = S/R zone in d's entry side (support for BUY, resistance for SELL) OR EMA21/50 confluence (H1 or M15); H1 RSI14 gate passes; CLOSED M5/M15 trigger in d with no opposing trigger",
+  trend_setup: "P0.1 macro/scalp split. Macro d = H4. Scalp side = d, except price AT the opposite S/R wall (support in DOWN / resistance in UP) ⇒ local counter side. Location = S/R zone on the side's entry edge OR (macro side only) EMA21/50 confluence (H1 or M15); H1 RSI14 gate passes for the side; CLOSED M5/M15 trigger in side with no opposing trigger. H1 alignment is METADATA (checks.context, legacy), never a gate; H1 REVERSAL_CANDIDATE/INSUFFICIENT still ⇒ HOLD",
+  alignment: "WITH_MACRO = side matches H4 direction; COUNTER_MACRO = opposes clear H4; NEUTRAL_MACRO = H4 MIXED; NOT_APPLICABLE = no side or H4 INSUFFICIENT. Classification only, no veto in P0.1",
   range_setup: "AT_SUPPORT + bullish CLOSED trigger ⇒ BUY; AT_RESISTANCE + bearish ⇒ SELL; MID/AMBIGUOUS ⇒ HOLD. RSI gate not applied in range (RESEARCH_REQUIRED)",
   rsi_support: "M15/M5 RSI14 > 50 bullish, < 50 bearish — supporting evidence only; overbought/oversold thresholds RESEARCH_REQUIRED (not used)",
   patterns: "See candle-patterns-v1: engulfing (strict body), hammer-like, shooting-star-like, rejection wick, morning/evening-star-like on the last 3 CLOSED bars",
