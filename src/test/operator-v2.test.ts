@@ -66,15 +66,15 @@ describe("operator v2 — S/R zones & regime", () => {
   });
   it("range recognised only with bounded repeated zones; middle of range ⇒ HOLD", () => {
     const closed = { M5: series("M5", range(60)), M15: series("M15", range(60)), H1: series("H1", range(60)), H4: series("H4", range(60)) };
-    const mid = operatorAnalysis(closed, 108);
+    const mid = operatorAnalysis(closed, 104);
     expect(mid.h4_primary).toBe("MIXED");
     expect(mid.regime).toBe("RANGE");
     expect(mid.location).toBe("MID");
     expect(mid.status).toBe("HOLD");
-    expect(evaluate(input(closed, 108)).entry.state).toBe("WAIT");
+    expect(evaluate(input(closed, 104)).entry.state).toBe("WAIT");
     // Same flat oscillation without enough history for repeated touches ⇒ not a range.
     const short = { M5: series("M5", range(60)), M15: series("M15", range(60)), H1: series("H1", range(60).slice(0, 52)).slice(-7), H4: series("H4", range(60)) };
-    expect(operatorAnalysis(short, 108).regime).toBe("CHOPPY");
+    expect(operatorAnalysis(short, 104).regime).toBe("CHOPPY");
   });
   it("range BUY at support needs a CLOSED bullish trigger", () => {
     const base = { M15: series("M15", range(60)), H1: series("H1", range(60)), H4: series("H4", range(60)) };
