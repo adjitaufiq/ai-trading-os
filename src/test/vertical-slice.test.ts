@@ -95,12 +95,12 @@ describe("vertical slice — four-state contract", () => {
   it("reference plan refuses missing swings, invalid ATR, and non-positive risk", () => {
     const s = evaluate(base());
     const evidence = s.evidence!;
-    expect(deriveReferencePlan(s.entry, s.quote, { ...evidence, M15: { ...evidence.M15, structure: { swings: [], latest_high: null, latest_low: null, summary: "INSUFFICIENT_HISTORY" } }, M5: { ...evidence.M5, structure: { swings: [], latest_high: null, latest_low: null, summary: "INSUFFICIENT_HISTORY" } } })).toMatchObject({ status: "NOT_AVAILABLE", reason: "LOCAL_SCALP_SWING_LOW_UNAVAILABLE" });
-    expect(deriveReferencePlan(s.entry, s.quote, { ...evidence, M15: { ...evidence.M15, atr14: { status: "INSUFFICIENT_HISTORY", required: 15, have: 1 } } })).toMatchObject({ status: "NOT_AVAILABLE", reason: "ATR14_M15_UNAVAILABLE" });
+    expect(deriveReferencePlan({ state: "LONG_CANDIDATE" as const, reason: "TEST" }, s.quote, { ...evidence, M15: { ...evidence.M15, structure: { swings: [], latest_high: null, latest_low: null, summary: "INSUFFICIENT_HISTORY" } }, M5: { ...evidence.M5, structure: { swings: [], latest_high: null, latest_low: null, summary: "INSUFFICIENT_HISTORY" } } })).toMatchObject({ status: "NOT_AVAILABLE", reason: "LOCAL_SCALP_SWING_LOW_UNAVAILABLE" });
+    expect(deriveReferencePlan({ state: "LONG_CANDIDATE" as const, reason: "TEST" }, s.quote, { ...evidence, M15: { ...evidence.M15, atr14: { status: "INSUFFICIENT_HISTORY", required: 15, have: 1 } } })).toMatchObject({ status: "NOT_AVAILABLE", reason: "ATR14_M15_UNAVAILABLE" });
     // A LOW above entry is not protective ⇒ ignored (never an H1 fallback).
     const highAnchor = { ...evidence.M15.structure.swings[0]!, kind: "LOW" as const, price: s.quote!.ask + 10 };
     const noM5 = { ...evidence.M5, structure: { ...evidence.M5.structure, swings: [] } };
-    expect(deriveReferencePlan(s.entry, s.quote, { ...evidence, M5: noM5, M15: { ...evidence.M15, structure: { ...evidence.M15.structure, swings: [highAnchor] } } })).toMatchObject({ status: "NOT_AVAILABLE", reason: "LOCAL_SCALP_SWING_LOW_UNAVAILABLE" });
+    expect(deriveReferencePlan({ state: "LONG_CANDIDATE" as const, reason: "TEST" }, s.quote, { ...evidence, M5: noM5, M15: { ...evidence.M15, structure: { ...evidence.M15.structure, swings: [highAnchor] } } })).toMatchObject({ status: "NOT_AVAILABLE", reason: "LOCAL_SCALP_SWING_LOW_UNAVAILABLE" });
   });
   it("SELL plan uses BID, latest confirmed local M15 high + 0.25×ATR14(M15), raw 1R/2R below entry", () => {
     const s = evaluate(base());
