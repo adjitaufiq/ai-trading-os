@@ -1,11 +1,13 @@
 import { createFileRoute, ClientOnly } from "@tanstack/react-router";
-import { lazy, Suspense, useMemo } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { BrokerGatewayClient } from "@/core/broker/gateway/BrokerGatewayClient";
 import { makeGatewayConfig } from "@/core/broker/gateway/config";
 import { LiveClock } from "@/core/temporal/CanonicalClock";
 import { useServerFn } from "@tanstack/react-start";
 import { TechnicalSlicePanel } from "@/components/TechnicalSlicePanel";
 import { explainTradingState } from "@/lib/ai-why.functions";
+import { browserWebSocketFactory } from "@/lib/browserWebSocket";
+import { mountCanonicalRuntime, type MountedRuntime } from "@/lib/canonicalRuntimes";
 
 const RealMarketTerminal = lazy(() => import("@/components/RealMarketTerminal").then((m) => ({ default: m.RealMarketTerminal })));
 
@@ -21,19 +23,31 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-const RUNTIMES = Object.freeze([{ symbol: "XAUUSD", reader: null }, { symbol: "BTCUSD", reader: null }]);
-const CANONICAL_RUNTIME_BLOCKERS = "CANONICAL_RUNTIME_NOT_MOUNTED: G2 broker_utc_offset_ms unverified (no default allowed); real gateway LIVE stream /v1/stream unavailable (HTTP 404); WebSocket injection deferred";
+const SYMBOLS = ["XAUUSD", "BTCUSD"] as const;
 
 function Terminal() {
+  const config = useMemo(() => makeGatewayConfig({ timeoutMs: 15_000 }), []);
   const client = useMemo(() => new BrokerGatewayClient({
-    config: makeGatewayConfig({ timeoutMs: 15_000 }), wallClock: new LiveClock(), monoClock: { now: () => performance.now() },
-  }), []);
+    config, wallClock: new LiveClock(), monoClock: { now: () => performance.now() }, wsFactory: browserWebSocketFactory,
+  }), [config]);
+  const [mounted, setMounted] = useState<Record<string, MountedRuntime>>({});
+  useEffect(() => {
+    // Canonical runtime per symbol: spec + measured offset from the gateway, live WebSocket, finite BACKFILL bootstrap.
+    const stops = SYMBOLS.map((symbol) => mountCanonicalRuntime({
+      client, config, wsFactory: browserWebSocketFactory, symbol,
+      onChange: (m) => setMounted((old) => ({ ...old, [m.symbol]: m })),
+    }));
+    return () => { for (const s of stops) s(); };
+  }, [client, config]);
+  const runtimes = useMemo(() => SYMBOLS.map((symbol) => ({ symbol, reader: mounted[symbol]?.reader ?? null })),
+    // recreate only when a reader identity changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mounted.XAUUSD?.reader, mounted.BTCUSD?.reader]);
+  const unmountedReason = SYMBOLS.map((s) => `${s}: ${mounted[s]?.status ?? "PENDING"}`).join(" · ");
   const explain = useServerFn(explainTradingState);
-  // Technical state consumes ONLY the canonical MarketRuntime. It is not mounted yet: missing canonical capabilities are
-  // reported instead of falling back to direct REST bars (see CANONICAL_RUNTIME_BLOCKERS).
   return <>
     <RealMarketTerminal client={client} />
-    <TechnicalSlicePanel runtimes={RUNTIMES} unmountedReason={CANONICAL_RUNTIME_BLOCKERS} explain={(snapshot) => explain({ data: { snapshot } })} />
+    <TechnicalSlicePanel runtimes={runtimes} unmountedReason={`CANONICAL_RUNTIME_NOT_MOUNTED ${unmountedReason}`} explain={(snapshot) => explain({ data: { snapshot } })} />
   </>;
 }
 
