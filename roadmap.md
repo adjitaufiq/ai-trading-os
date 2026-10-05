@@ -5,9 +5,9 @@
 
 ## Patch B audit debt (must carry into Patch C / PRE-2D audit)
 - [ ] D1: REJECT → AMBIGUOUS_COLLISION/ACCEPT_WITH_FLAG test change (tick_count 2→3) — confirm in source audit that only fingerprint-equal/identity-different cases changed; same raw_event_id stays EXACT_TRANSPORT_DUPLICATE.
-- [ ] D2: Real-chain integration gap — BootstrapCoordinator not wired into Gateway → BrokerGatewayClient → history + LIVE → Bootstrap → Identity → Pipeline → canonical state. 178 core tests do NOT prove production handoff.
+- [x] D2: canonical MarketRuntime wires Gateway → client → Bootstrap → Identity → Pipeline → fanout → CandleStore (hermetic application-chain tests). Open: UI consumer migration; app start blocked on G2 (no verified broker-time offset).
 - [ ] D3: Drain order (source_event_ms, connection_epoch, sequence, arrival) — tie-break must be deterministic processing order only, never inferred market/causal order; same-ms ambiguous occurrences must not gain transport-sequence "market truth".
 
 ## Technical Validation Probe
 - [x] v1a — BACKFILL + deterministic replay diagnostics (EMA5/21, ATR14, retrospective vs causal swing). Real gateway was unreachable during the run.
-- [ ] v1b — live-chain validation (blocked: D2 real-chain integration). Spec in docs/TECHNICAL_PROBE_V1B_SPEC.md.
+- [ ] v1b — application-wiring validation PASS on hermetic transport; real-data validation pending (gateway unreachable, G2 open).

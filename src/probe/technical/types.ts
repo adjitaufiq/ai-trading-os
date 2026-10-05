@@ -10,7 +10,7 @@ export const SWING_ALGORITHM_VERSION = "SWING-strict-v1";
 /** Tie policy: candidate must be STRICTLY greater (high) / lower (low) than every bar in the window. Equal → no swing. */
 export const SWING_TIE_POLICY = "STRICT_EXTREME_BOTH_SIDES_TIES_REJECTED" as const;
 
-export type ProbeSourceMode = "REAL_LIVE_FETCH" | "RECORDED_REPLAY" | "DETERMINISTIC_FIXTURE";
+export type ProbeSourceMode = "REAL_LIVE_FETCH" | "RECORDED_REPLAY" | "DETERMINISTIC_FIXTURE" | "APPLICATION_RUNTIME";
 export type ProbeBarOrigin = "BROKER_OBSERVED" | "INTERNAL_REPLAY" | "FIXTURE";
 
 /**
