@@ -12,8 +12,7 @@ import {
   exactPriceConfluences, factualSummary, interaction, InvalidUserLevelError, SNR_RESEARCH_REGISTER, snrReport,
   timeframeSnrState, userHorizontalLevel, type DerivedSnrCandidate, type SnrReport,
 } from "@/probe/technical/snr";
-import { feedHours, HOUR, makeRig, type HourSpec } from "./helpers/v1cRig";
-import { T0 } from "./helpers/v1cRig";
+import { feedHours, HOUR, makeRig, T0, type HourSpec } from "./helpers/v1cRig";
 
 const json = (x: unknown) => JSON.stringify(x);
 const NO_SIGNAL = /"(buy|sell|long|short|entry|stop_loss|take_profit|position_size|risk_pct|signal|recommendation|decision|breakout|fakeout|retest|role_reversal|strength|score|zone|tolerance)"/i;
@@ -262,7 +261,9 @@ describe("v1d-SNR edge assertions", () => {
     const s = x.snaps.get(21)!.timeframes.H1;
     const resBelow = s.candidates.filter((c) => c.role_candidate === "RESISTANCE_CANDIDATE" && c.price < s.current_closed_price!);
     expect(resBelow.length).toBeGreaterThan(0);
-    for (const c of resBelow) expect(c.price).not.toBe(s.nearest_support_below_price === c.price && !s.candidates.some((o) => o.role_candidate === "SUPPORT_CANDIDATE" && o.price === c.price) ? c.price : NaN);
+    for (const c of resBelow) expect(c.role_candidate).toBe("RESISTANCE_CANDIDATE");
+    const sup = s.candidates.filter((c) => c.role_candidate === "SUPPORT_CANDIDATE" && c.price < s.current_closed_price!).map((c) => c.price);
+    expect(s.nearest_support_below_price).toBe(sup.length ? Math.max(...sup) : null);
     expect(s.has_support_below).toBe(s.nearest_support_below_price !== null);
     expect(s.is_bracketed_by_candidate_snr).toBe(s.has_support_below && s.has_resistance_above);
     allInvariants(x.snaps.get(21)!);
