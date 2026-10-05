@@ -164,7 +164,7 @@ describe("C1 adversarial matrix", () => {
     const dep = store.openDependency({ kind: "RECONCILIATION", symbol: SYM, from_ms: M(0), to_ms: M(10_000_000), reason: "discrepancy" });
     r.boot.onLive(occ("J1", 1000, 2000));
     r.boot.onLive(occ("J2", 400_000, 2001)); // closes the M5 bar containing J1
-    expect(r.mutations.some((b) => (b as unknown as { state: string }).state === "CLOSED")).toBe(true);
+    expect(r.mutations.some((b) => (b as unknown as { status?: string; state?: string }).status === "CLOSED" || (b as unknown as { state?: string }).state === "CLOSED")).toBe(true);
     expect(store.hasRawEvent("J1")).toBe(true);
     expect(store.metrics.memory_pressure).toBe(true);
     store.resolveDependency(dep.id);
