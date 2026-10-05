@@ -73,7 +73,7 @@ describe("vertical slice — four-state contract", () => {
     expect(EXECUTION_ENABLED).toBe(false);
     expect(s.reference_plan.status).toBe("AVAILABLE");
     if (s.reference_plan.status === "AVAILABLE") {
-      const latestLow = [...s.evidence!.M15.structure.swings, ...[]].reverse().find((swing) => swing.kind === "LOW" && swing.price < s.reference_plan.entry) ?? [...s.evidence!.M5.structure.swings].reverse().find((swing) => swing.kind === "LOW" && swing.price < s.reference_plan.entry)!;
+      const latestLow = [...s.evidence!.M15.structure.swings, ...[]].reverse().find((swing) => swing.kind === "LOW" && swing.price < (s.reference_plan as { entry: number }).entry) ?? [...s.evidence!.M5.structure.swings].reverse().find((swing) => swing.kind === "LOW" && swing.price < (s.reference_plan as { entry: number }).entry)!;
       const atr = (s.evidence!.M15.atr14 as { status: "OK"; value: number }).value;
       const expectedSl = s.quote!.ask - (s.quote!.ask - (latestLow.price - 0.25 * atr));
       expect(s.reference_plan.sl).toBeCloseTo(expectedSl, 10);
