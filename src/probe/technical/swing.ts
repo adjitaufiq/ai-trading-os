@@ -4,7 +4,8 @@ import { SWING_ALGORITHM_VERSION, type ProbeBar } from "./types";
 
 export type SwingType = "SWING_HIGH" | "SWING_LOW";
 
-function extreme(bars: readonly ProbeBar[], i: number, L: number, R: number): SwingType | null {
+/** Returns every independently-true extreme predicate. An outside bar may be BOTH (S1): neither is dropped. */
+function extreme(bars: readonly ProbeBar[], i: number, L: number, R: number): SwingType[] {
   const c = bars[i]!;
   let hi = true, lo = true;
   for (let j = i - L; j <= i + R; j++) {
@@ -13,7 +14,10 @@ function extreme(bars: readonly ProbeBar[], i: number, L: number, R: number): Sw
     if (!(c.high > b.high)) hi = false; // strict: ties reject
     if (!(c.low < b.low)) lo = false;
   }
-  return hi ? "SWING_HIGH" : lo ? "SWING_LOW" : null; // a bar cannot be both (would need H>H and L<L of all — allowed? report high first, deterministic)
+  const out: SwingType[] = [];
+  if (hi) out.push("SWING_HIGH");
+  if (lo) out.push("SWING_LOW");
+  return out;
 }
 
 function spansGap(g: readonly boolean[], from: number, to: number): boolean {
@@ -34,6 +38,8 @@ export interface RetrospectiveSwing {
   /** Earliest time the label could actually have been known = availability of the last right bar. */
   readonly earliest_knowable_at: number;
   readonly window_spans_missing_interval: boolean;
+  /** true when the same bar is both strict highest high and strict lowest low (one record per fact). */
+  readonly outside_bar: boolean;
 }
 
 /** Centered-window detector (concept of SMC swing_highs_lows). Intentionally temporally unsafe. */
@@ -41,14 +47,14 @@ export function retrospectiveSwings(bars: readonly ProbeBar[], tf: Timeframe, L 
   const g = gapBefore(bars, tf);
   const out: RetrospectiveSwing[] = [];
   for (let i = L; i + R < bars.length; i++) {
-    const t = extreme(bars, i, L, R);
-    if (!t) continue;
+    const ts = extreme(bars, i, L, R);
     const c = bars[i]!;
-    out.push(Object.freeze<RetrospectiveSwing>({
+    for (const t of ts) out.push(Object.freeze<RetrospectiveSwing>({
       mode: "RETROSPECTIVE_LOOKAHEAD", trading_authority: "NONE", live_safe: false, type: t, event_at: c.open_time,
       price: t === "SWING_HIGH" ? c.high : c.low,
       right_dependency_open_times: Object.freeze(bars.slice(i + 1, i + R + 1).map((b) => b.open_time)),
       earliest_knowable_at: bars[i + R]!.available_at!, window_spans_missing_interval: spansGap(g, i - L, i + R),
+      outside_bar: ts.length === 2,
     }));
   }
   return out;
@@ -69,6 +75,8 @@ export interface CausalSwing {
   readonly right_window: number;
   readonly algorithm_version: string;
   readonly window_spans_missing_interval: boolean;
+  /** true when the same bar is both strict highest high and strict lowest low (one record per fact). */
+  readonly outside_bar: boolean;
 }
 
 export interface CausalSwingResult {
@@ -87,16 +95,16 @@ export function causalSwings(bars: readonly ProbeBar[], tf: Timeframe, L = 2, R 
   const out: CausalSwing[] = [];
   for (let k = L + R; k < usable.length; k++) {
     const i = k - R;
-    const t = extreme(usable, i, L, R);
-    if (!t) continue;
+    const ts = extreme(usable, i, L, R);
     const c = usable[i]!, conf = usable[k]!;
     if (conf.lifecycle !== "CLOSED" || conf.closed_at === null || conf.available_at === null) continue; // FORMING cannot confirm
-    out.push(Object.freeze<CausalSwing>({
+    for (const t of ts) out.push(Object.freeze<CausalSwing>({
       mode: "CAUSAL_CONFIRMED", trading_authority: "NONE", type: t, event_at: c.open_time,
       price: t === "SWING_HIGH" ? c.high : c.low,
       available_at: Math.max(conf.closed_at, conf.available_at),
       confirmation_open_time: conf.open_time, confirmation_closed_at: conf.closed_at, confirmation_available_at: conf.available_at,
       left_window: L, right_window: R, algorithm_version: SWING_ALGORITHM_VERSION, window_spans_missing_interval: spansGap(g, i - L, k),
+      outside_bar: ts.length === 2,
     }));
   }
   return Object.freeze({ status: "VALID", swings: Object.freeze(out) });
