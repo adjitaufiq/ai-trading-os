@@ -46,22 +46,22 @@ const base = { maxLatencyMs: 60_000, maxReorderMs: 90_000, freshness: new Freshn
 
 describe("bounded positive source clock skew", () => {
   it("source 2.3s ahead of bridge is accepted and flagged, raw times untouched", () => {
-    const c = new AnomalyClassifier({ ...base, maxSourceClockSkewMs: 10_000 });
+    const c = new AnomalyClassifier({ ...base, maxSourceTimeSkewMs: 10_000 });
     const e = ev(1_000_2300, 1_000_0000, 1_000_0500);
     const out = c.classify(e, DISTINCT);
     expect(out.map((a) => a.disposition)).not.toContain("REJECT");
-    expect(out.find((a) => a.classification === "SOURCE_CLOCK_SKEW")?.disposition).toBe("ACCEPT_WITH_FLAG");
+    expect(out.find((a) => a.classification === "SOURCE_TIME_SKEW")?.disposition).toBe("ACCEPT_WITH_FLAG");
     expect(e.event_at).toBe(1_000_2300);
   });
   it("large future timestamps stay TEMPORAL_INVALID", () => {
-    const c = new AnomalyClassifier({ ...base, maxSourceClockSkewMs: 10_000 });
+    const c = new AnomalyClassifier({ ...base, maxSourceTimeSkewMs: 10_000 });
     expect(c.classify(ev(1_000_0000 + 30_000, 1_000_0000, 1_000_0500), DISTINCT)[0]!.classification).toBe("TEMPORAL_INVALID");
   });
   it("default (no skew policy) keeps strict ordering", () => {
     expect(new AnomalyClassifier(base).classify(ev(1_000_0001, 1_000_0000, 1_000_0500), DISTINCT)[0]!.classification).toBe("TEMPORAL_INVALID");
   });
   it("dashboard runtime classifier declares an explicit finite skew bound", () => {
-    expect(RUNTIME_CLASSIFIER.maxSourceClockSkewMs).toBe(RUNTIME_POLICY.max_source_clock_skew_ms);
+    expect(RUNTIME_CLASSIFIER.maxSourceTimeSkewMs).toBe(RUNTIME_POLICY.max_source_time_skew_ms);
     expect(Number.isFinite(RUNTIME_POLICY.history_window_ms)).toBe(true);
   });
 });

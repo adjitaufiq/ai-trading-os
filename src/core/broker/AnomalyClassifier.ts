@@ -25,10 +25,10 @@ export interface ClassifierConfig {
    */
   maxReorderMs: number;
   /**
-   * Positive cross-clock skew tolerance (finite) (source clock ahead of bridge, or bridge ahead of client).
+   * Positive cross-source time skew tolerance (finite) (source time ahead of bridge, or bridge ahead of client).
    * Default 0 = strict ordering. Not an Exness value; an explicit operator policy.
    */
-  maxSourceClockSkewMs?: number;
+  maxSourceTimeSkewMs?: number;
   /** Gap thresholds resolved per symbol/source. */
   freshness: FreshnessPolicy;
 }
@@ -63,17 +63,17 @@ export class AnomalyClassifier {
       out.push(Object.freeze({ classification, disposition, raw_event_id: id, detail }));
 
     const finite = [e.bid, e.ask, e.event_at, e.observed_at].every(Number.isFinite);
-    // Cross-clock comparisons (source → bridge → client) tolerate a bounded positive skew only.
+    // Cross-source time comparisons (source → bridge → client) tolerate a bounded positive skew only.
     // Raw times are never edited; skew is flagged and audited. Beyond the bound ⇒ TEMPORAL_INVALID.
-    const skew = Math.max(0, this.cfg.maxSourceClockSkewMs ?? 0);
+    const skew = Math.max(0, this.cfg.maxSourceTimeSkewMs ?? 0);
     const srcAhead = e.event_at - e.observed_at;
     const bridgeAhead = e.observed_at - e.ingested_at;
     if (!finite || e.ask < e.bid || srcAhead > skew || bridgeAhead > skew) {
       add("TEMPORAL_INVALID", "REJECT", `event_at <= observed_at <= ingested_at (skew limit ${skew}ms) or price sanity violated`);
       return out;
     }
-    if (srcAhead > 0) add("SOURCE_CLOCK_SKEW", "ACCEPT_WITH_FLAG", `event_at ${srcAhead}ms ahead of observed_at (limit ${skew}ms)`);
-    if (bridgeAhead > 0) add("SOURCE_CLOCK_SKEW", "ACCEPT_WITH_FLAG", `observed_at ${bridgeAhead}ms ahead of ingested_at (limit ${skew}ms)`);
+    if (srcAhead > 0) add("SOURCE_TIME_SKEW", "ACCEPT_WITH_FLAG", `event_at ${srcAhead}ms ahead of observed_at (limit ${skew}ms)`);
+    if (bridgeAhead > 0) add("SOURCE_TIME_SKEW", "ACCEPT_WITH_FLAG", `observed_at ${bridgeAhead}ms ahead of ingested_at (limit ${skew}ms)`);
 
     switch (identity.dedup_class) {
       case "EXACT_TRANSPORT_DUPLICATE":

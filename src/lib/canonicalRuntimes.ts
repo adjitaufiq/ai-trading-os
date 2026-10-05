@@ -14,8 +14,8 @@ import type { MarketRuntime, MarketRuntimeReader } from "@/core/runtime/MarketRu
 export const RUNTIME_POLICY = Object.freeze({
   /** Finite history window requested at bootstrap (BACKFILL only; never mutates live candles). */
   history_window_ms: 15 * 60_000,
-  /** Bounded positive cross-clock skew accepted and flagged as SOURCE_CLOCK_SKEW. */
-  max_source_clock_skew_ms: 10_000,
+  /** Bounded positive cross-clock skew accepted and flagged as SOURCE_TIME_SKEW. */
+  max_source_time_skew_ms: 10_000,
   /** Offset alignment: a real tick may be at most this old relative to bridge receive time to measure the offset. */
   max_offset_probe_staleness_ms: 60_000,
   max_closed_bars_per_timeframe: 500,
@@ -26,7 +26,7 @@ export const RUNTIME_POLICY = Object.freeze({
 export const RUNTIME_CLASSIFIER: ClassifierConfig = Object.freeze({
   maxLatencyMs: 60_000,
   maxReorderMs: 90_000,
-  maxSourceClockSkewMs: RUNTIME_POLICY.max_source_clock_skew_ms,
+  maxSourceTimeSkewMs: RUNTIME_POLICY.max_source_time_skew_ms,
   freshness: new FreshnessPolicy({ maxTickAgeMs: 60_000, maxGapMs: 86_400_000 }),
 });
 
@@ -42,8 +42,8 @@ export type OffsetMeasurement =
 export function measureBrokerOffset(raw_time_msc: number, bridge_received_at: number, p = RUNTIME_POLICY): OffsetMeasurement {
   const diff = raw_time_msc - bridge_received_at;
   if (!Number.isFinite(diff)) return { status: "UNRESOLVED", reason: "non-finite timestamps", observed_diff_ms: null };
-  if (diff <= p.max_source_clock_skew_ms && diff >= -p.max_offset_probe_staleness_ms) return { status: "MEASURED", broker_utc_offset_ms: 0, observed_diff_ms: diff };
-  return { status: "UNRESOLVED", reason: `G2_OFFSET_UNRESOLVED: raw_time_msc − bridge_received_at = ${diff}ms outside [−${p.max_offset_probe_staleness_ms}, +${p.max_source_clock_skew_ms}]`, observed_diff_ms: diff };
+  if (diff <= p.max_source_time_skew_ms && diff >= -p.max_offset_probe_staleness_ms) return { status: "MEASURED", broker_utc_offset_ms: 0, observed_diff_ms: diff };
+  return { status: "UNRESOLVED", reason: `G2_OFFSET_UNRESOLVED: raw_time_msc − bridge_received_at = ${diff}ms outside [−${p.max_offset_probe_staleness_ms}, +${p.max_source_time_skew_ms}]`, observed_diff_ms: diff };
 }
 
 export type ResolveResult =

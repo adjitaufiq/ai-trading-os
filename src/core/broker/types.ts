@@ -102,7 +102,7 @@ export type AnomalyClassification =
   | "OUT_OF_ORDER"
   | "GAP"
   | "RECONNECT_BACKFILL"
-  | "SOURCE_CLOCK_SKEW";
+  | "SOURCE_TIME_SKEW";
 
 export type AnomalyDisposition = "ACCEPT" | "ACCEPT_WITH_FLAG" | "QUARANTINE" | "RECONCILE" | "REJECT";
 
