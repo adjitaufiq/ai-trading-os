@@ -161,7 +161,8 @@ export class MarketRuntime {
       if (occ) items.push(occ);
     }
     this.boot.historyReceived(items, {
-      requested_from: c.requested_from, requested_to: c.requested_to, returned_count: c.returned_count,
+      // Wire bounds may be null; the request bounds the runtime itself sent are recorded instead (never invented).
+      requested_from: c.requested_from ?? req.history_from, requested_to: c.requested_to ?? req.history_to, returned_count: c.returned_count,
       oldest_returned_at: c.oldest_returned_at, newest_returned_at: c.newest_returned_at, coverage_status: c.coverage_status,
       ...(c.reason === null ? {} : { reason: c.reason }),
     });
