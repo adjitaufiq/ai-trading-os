@@ -8,7 +8,7 @@ const snapshot = (entry: TradingSnapshot["entry"]["state"]): TradingSnapshot => 
   quote: { bid: 100, ask: 101, spread: 1, tick_time_ms: 1, observed_at: 1 }, evidence: null, last3_m5: [], engulfing: null,
   bias: { state: "NEUTRAL", reason: "TEST" }, setup: { state: "INACTIVE", reason: "TEST" }, signal: { state: "WAITING", reason: "TEST", triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED" },
   execution: { state: "BLOCKED", reasons: ["CAPABILITY_UNAUTHORIZED"] }, entry: { state: entry, reason: "TEST" }, why: [],
-  reference_plan: { status: "NOT_AVAILABLE", policy_version: "reference-plan-v1-swing-atr-rsi", reason: "TEST" },
+  reference_plan: { status: "NOT_AVAILABLE", policy_version: "reference-plan-v2-swing-atr-plus-sr-context", reason: "TEST" },
   versions: { technical_engine_version: "test", setup_policy_version: "test", signal_policy_version: "test", reference_plan_policy_version: "test", guard_policy_version: "test" },
 });
 
