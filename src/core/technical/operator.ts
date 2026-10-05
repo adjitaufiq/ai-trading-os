@@ -433,7 +433,93 @@ export function operatorAnalysis(closed: Readonly<Record<Timeframe, readonly Tec
   };
 }
 
-const scalpTf = (t: OperatorTf): ScalpTf => ({ ema5: t.ema5, ema21: t.ema21, ema50: t.ema50, atr14: t.atr14, rsi14: t.rsi14, trend: t.trend, structure: t.events });
+const scalpTf = (t: OperatorTf, bars: readonly TechBar[], price: number): ScalpTf => ({
+  ema5: t.ema5, ema21: t.ema21, ema50: t.ema50, atr14: t.atr14, rsi14: t.rsi14, trend: t.trend, structure: t.events,
+  momentum: scalpMomentumTf(bars), ema_location: emaZone(price, t.ema21, t.ema50, t.atr14), ema_reaction: emaReaction(bars),
+});
+
+// ---------------- P0.2 scalp momentum (EMA5/21 slope + gap) & EMA21/50 local dynamic S/R ----------------
+
+export const SCALP_MOMENTUM_POLICY_VERSION = "scalp-momentum-v0.4-p0.2-ema-slope-gap";
+export const SCALP_MOMENTUM_PARAMS = Object.freeze({
+  slope_lookback_bars: 3,
+  gap_lookback_bars: 3,
+  /** Only sign comparisons; no magnitude thresholds. */
+  status: "OPERATOR_DEFINED_NOT_OPTIMIZED_RESEARCH_REQUIRED",
+});
+export type MomentumState = "BULLISH_EXPANDING" | "BULLISH" | "BEARISH_EXPANDING" | "BEARISH" | "CROSS_UP" | "CROSS_DOWN" | "FLAT_OR_WEAK" | "INSUFFICIENT";
+export type CombinedMomentum = "STRONG_BUY" | "BUY" | "STRONG_SELL" | "SELL" | "CONFLICT" | "HOLD";
+export interface MomentumTf {
+  readonly state: MomentumState;
+  /** Cross evidence kept separate so a cross never overrides a stronger directional state. */
+  readonly cross: "UP" | "DOWN" | null;
+  readonly slope5_norm: number | null;
+  readonly slope21_norm: number | null;
+  readonly gap_norm: number | null;
+  readonly prior_gap_norm: number | null;
+  readonly gap_delta: number | null;
+}
+const NO_MOMENTUM: MomentumTf = { state: "INSUFFICIENT", cross: null, slope5_norm: null, slope21_norm: null, gap_norm: null, prior_gap_norm: null, gap_delta: null };
+
+/** CLOSED bars only. Lookback EMAs are computed on the causal prefix ending N bars ago. */
+export function scalpMomentumTf(bars: readonly TechBar[]): MomentumTf {
+  const n = SCALP_MOMENTUM_PARAMS.slope_lookback_bars, g = SCALP_MOMENTUM_PARAMS.gap_lookback_bars;
+  const e5 = ema(bars, P.timing_ema), e21 = ema(bars, P.trend_ema_fast), atr = atrWilder(bars, P.atr_period);
+  const s5 = ema(bars.slice(0, bars.length - n), P.timing_ema), s21 = ema(bars.slice(0, bars.length - n), P.trend_ema_fast);
+  const g5 = ema(bars.slice(0, bars.length - g), P.timing_ema), g21 = ema(bars.slice(0, bars.length - g), P.trend_ema_fast);
+  if (bars.length <= Math.max(n, g) || [e5, e21, atr, s5, s21, g5, g21].some((x) => x.status !== "OK")) return NO_MOMENTUM;
+  const v = (x: Indicator) => (x as { value: number }).value;
+  const a = v(atr);
+  if (!(a > 0)) return NO_MOMENTUM;
+  const slope5 = (v(e5) - v(s5)) / a, slope21 = (v(e21) - v(s21)) / a;
+  const gap = Math.abs(v(e5) - v(e21)) / a, prior = Math.abs(v(g5) - v(g21)) / a, delta = gap - prior;
+  const above = v(e5) > v(e21), below = v(e5) < v(e21);
+  const cross = v(s5) <= v(s21) && above ? "UP" : v(s5) >= v(s21) && below ? "DOWN" : null;
+  let state: MomentumState;
+  if (above && slope5 > 0 && slope21 >= 0 && delta > 0) state = "BULLISH_EXPANDING";
+  else if (above && slope5 > 0) state = "BULLISH";
+  else if (below && slope5 < 0 && slope21 <= 0 && delta > 0) state = "BEARISH_EXPANDING";
+  else if (below && slope5 < 0) state = "BEARISH";
+  else if (cross === "UP") state = "CROSS_UP";
+  else if (cross === "DOWN") state = "CROSS_DOWN";
+  else state = "FLAT_OR_WEAK";
+  const r = (x: number) => Math.round(x * 1e4) / 1e4;
+  return { state, cross, slope5_norm: r(slope5), slope21_norm: r(slope21), gap_norm: r(gap), prior_gap_norm: r(prior), gap_delta: r(delta) };
+}
+
+const bullFam = (s: MomentumState) => s === "BULLISH" || s === "BULLISH_EXPANDING" || s === "CROSS_UP";
+const bearFam = (s: MomentumState) => s === "BEARISH" || s === "BEARISH_EXPANDING" || s === "CROSS_DOWN";
+/** M5 = fast driver, M15 confirms or conflicts. H4/H1 never participate. */
+export function combineMomentum(m5: MomentumState, m15: MomentumState): CombinedMomentum {
+  if ((bullFam(m5) && bearFam(m15)) || (bearFam(m5) && bullFam(m15))) return "CONFLICT";
+  if (bullFam(m5)) return bullFam(m15) ? "STRONG_BUY" : "BUY";
+  if (bearFam(m5)) return bearFam(m15) ? "STRONG_SELL" : "SELL";
+  return "HOLD";
+}
+export const momentumSide = (c: CombinedMomentum): "BUY" | "SELL" | null => c === "STRONG_BUY" || c === "BUY" ? "BUY" : c === "STRONG_SELL" || c === "SELL" ? "SELL" : null;
+
+export type EmaReactionKind = "REJECTED_UP" | "REJECTED_DOWN" | "BROKE_ABOVE" | "BROKE_BELOW" | "TOUCHED";
+export interface EmaReaction { readonly ema: 21 | 50; readonly kind: EmaReactionKind }
+/** Latest CLOSED bar vs EMA21/EMA50 at that bar (EMA including it); prior side from the previous CLOSED bar and its EMA. */
+export function emaReaction(bars: readonly TechBar[]): readonly EmaReaction[] {
+  if (bars.length < 2) return [];
+  const last = bars[bars.length - 1]!, prev = bars[bars.length - 2]!, out: EmaReaction[] = [];
+  for (const n of [21, 50] as const) {
+    const now = ema(bars, n), before = ema(bars.slice(0, -1), n);
+    if (now.status !== "OK") continue;
+    const e = now.value, touched = last.low <= e && last.high >= e;
+    const prevSide = before.status === "OK" ? Math.sign(prev.close - before.value) : 0;
+    let kind: EmaReactionKind | null = null;
+    if (prevSide < 0 && last.close > e) kind = "BROKE_ABOVE";
+    else if (prevSide > 0 && last.close < e) kind = "BROKE_BELOW";
+    else if (touched && last.close > e && last.close > last.open) kind = "REJECTED_UP";
+    else if (touched && last.close < e && last.close < last.open) kind = "REJECTED_DOWN";
+    else if (touched) kind = "TOUCHED";
+    if (kind) out.push({ ema: n, kind });
+  }
+  return out;
+}
+const emaNear = (z: EmaZone) => z === "BAND" || z === "NEAR_EMA21" || z === "NEAR_EMA50";
 
 export function macroDirectionOf(h4: TrendState): MacroDirection {
   return h4 === "UP" ? "BULLISH" : h4 === "DOWN" ? "BEARISH" : h4 === "MIXED" ? "NEUTRAL_OR_MIXED" : "INSUFFICIENT";
