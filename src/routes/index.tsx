@@ -7,6 +7,8 @@ import { LiveClock } from "@/core/temporal/CanonicalClock";
 import { useServerFn } from "@tanstack/react-start";
 import { TechnicalSlicePanel } from "@/components/TechnicalSlicePanel";
 import { JournalPanel } from "@/components/JournalPanel";
+import { AlertCenter } from "@/components/AlertCenter";
+import { browserAlarm, browserNotificationApi, sharedSignalAlerts, showNativeNotification, type SignalAlert } from "@/lib/signalAlerts";
 import { Button } from "@/components/ui/button";
 import { explainTradingState } from "@/lib/ai-why.functions";
 import { browserWebSocketFactory } from "@/lib/browserWebSocket";
@@ -50,14 +52,20 @@ function Terminal() {
   const unmountedReason = SYMBOLS.filter((s) => !mounted[s]?.reader).map((s) => `${s}: ${mounted[s]?.status ?? "PENDING"}`).join(" · ");
   const explain = useServerFn(explainTradingState);
   const [tab, setTab] = useState<"COCKPIT" | "JOURNAL">("COCKPIT");
+  const alerts = useMemo(() => sharedSignalAlerts(), []);
+  const alarm = useMemo(() => browserAlarm(), []);
+  const notificationApi = useMemo(() => browserNotificationApi(), []);
+  const focusAlert = (symbol: string) => { if (symbol === "XAUUSD" || symbol === "BTCUSD") setSelectedSymbol(symbol); setTab("COCKPIT"); };
+  const onAlert = (a: SignalAlert) => { alarm.play(a.side); showNativeNotification(notificationApi, a, () => focusAlert(a.symbol)); };
   return <>
     <RealMarketTerminal client={client} liveReaders={liveReaders} selectedSymbol={selectedSymbol} onSelectedSymbolChange={setSelectedSymbol} />
     <div className="mx-auto flex max-w-screen-2xl gap-1 px-4 pb-3 sm:px-8" role="tablist">
       <Button size="sm" role="tab" aria-selected={tab === "COCKPIT"} variant={tab === "COCKPIT" ? "secondary" : "ghost"} onClick={() => setTab("COCKPIT")}>Kokpit</Button>
       <Button size="sm" role="tab" aria-selected={tab === "JOURNAL"} variant={tab === "JOURNAL" ? "secondary" : "ghost"} onClick={() => setTab("JOURNAL")}>Jurnal &amp; Backtest</Button>
+      <AlertCenter store={alerts} alarm={alarm} notificationApi={notificationApi} onSelect={focusAlert} />
     </div>
     {/* Cockpit stays mounted (hidden) so paper marks and signal journaling keep running. */}
-    <div hidden={tab !== "COCKPIT"}><TechnicalSlicePanel runtimes={runtimes} selectedSymbol={selectedSymbol} unmountedReason={`CANONICAL_RUNTIME_NOT_MOUNTED ${unmountedReason}`} explain={(snapshot) => explain({ data: { snapshot } })} /></div>
+    <div hidden={tab !== "COCKPIT"}><TechnicalSlicePanel runtimes={runtimes} selectedSymbol={selectedSymbol} unmountedReason={`CANONICAL_RUNTIME_NOT_MOUNTED ${unmountedReason}`} explain={(snapshot) => explain({ data: { snapshot } })} alerts={alerts} onAlert={onAlert} /></div>
     {tab === "JOURNAL" ? <JournalPanel runtimes={runtimes} selectedSymbol={selectedSymbol} /> : null}
   </>;
 }

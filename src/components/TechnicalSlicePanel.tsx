@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type { SignalAlert, SignalAlertStore } from "@/lib/signalAlerts";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Activity, ArrowDownRight, ArrowUpRight, BrainCircuit, Check, Circle, Minus, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -85,6 +86,9 @@ export interface TechnicalSlicePanelProps {
   explain?: (snapshot: string) => Promise<AiWhyResult>;
   /** Paper/journal store (tests inject one; defaults to the shared local store). */
   store?: PaperJournalStore;
+  /** Radar: ENGINE snapshots of EVERY symbol are fed here (fresh BUY/SELL transitions ⇒ onAlert). */
+  alerts?: SignalAlertStore;
+  onAlert?: (alert: SignalAlert) => void;
 }
 
 function trendTone(relation: Relation | undefined): ConfirmationTone {
@@ -323,9 +327,11 @@ function Cockpit({ service, explain, store }: { service: TechnicalSliceService; 
   </article>;
 }
 
-export function TechnicalSlicePanel({ runtimes, selectedSymbol, unmountedReason, tickMs = 2000, explain, store }: TechnicalSlicePanelProps) {
+export function TechnicalSlicePanel({ runtimes, selectedSymbol, unmountedReason, tickMs = 2000, explain, store, alerts, onAlert }: TechnicalSlicePanelProps) {
   const services = useMemo(() => runtimes.map((runtime) => new TechnicalSliceService(runtime.reader, runtime.symbol, new LiveClock(), unmountedReason)), [runtimes, unmountedReason]);
   const journal = useMemo(() => store ?? sharedPaperJournal(), [store]);
+  const onAlertRef = useRef(onAlert);
+  onAlertRef.current = onAlert;
   useEffect(() => {
     const tick = () => {
       for (const service of services) {
@@ -334,12 +340,14 @@ export function TechnicalSlicePanel({ runtimes, selectedSymbol, unmountedReason,
         // Journal: ENGINE signal transitions only (deduplicated per symbol). Paper marks: SIMULATION only.
         journal.recordSignal(snap, service.symbol, now);
         if (snap.quote) journal.mark(service.symbol, snap.quote, now);
+        const alert = alerts?.observe(snap, service.symbol, now);
+        if (alert) onAlertRef.current?.(alert);
       }
     };
     tick();
     const timer = setInterval(tick, tickMs);
     return () => clearInterval(timer);
-  }, [services, tickMs, journal]);
+  }, [services, tickMs, journal, alerts]);
   const selected = services.find((service) => service.symbol === selectedSymbol) ?? null;
   return <section className="bg-background px-4 pb-8 sm:px-8" aria-label="Kokpit trading">
     <div className="mx-auto max-w-screen-2xl">{selected ? <Cockpit service={selected} explain={explain} store={journal} /> : <div className="border border-border bg-card p-4 text-sm text-muted-foreground">Menunggu pasar terpilih…</div>}</div>
