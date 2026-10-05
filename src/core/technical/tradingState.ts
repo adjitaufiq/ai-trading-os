@@ -18,16 +18,16 @@ export type ExecutionState = "ALLOWED" | "INHIBITED" | "BLOCKED";
 export const ALL_SIGNAL_STATES: readonly SignalState[] = ["READY", "WAITING", "EXPIRED", "INVALIDATED", "NOT_EVALUABLE"];
 
 export const SETUP_POLICY_VERSION = "setup-v2.1-p0.1-scalp-location-macro-metadata";
-export const SIGNAL_POLICY_VERSION = "signal-v2-operator-closed-m5-m15-patterns";
+export const SIGNAL_POLICY_VERSION = "signal-v3-p0.3-frozen-origin-ttl-invalidation-chasing";
 export const REFERENCE_PLAN_POLICY_VERSION = "reference-plan-v2-swing-atr-plus-sr-context";
 export const GUARD_POLICY_VERSION = "guard-v0-monitor-only";
 export const POLICIES = Object.freeze({
   bias: "H4 primary trend (EMA21/EMA50 + confirmed structure): UP → BUY, DOWN → SELL, MIXED → NEUTRAL, insufficient → NOT_EVALUABLE",
   setup: `${OPERATOR_POLICY_VERSION}: ACTIVE when operator status is CARI_BUY/CARI_SELL with local location (+ H1 RSI gate in TREND) satisfied; H1 alignment is metadata only (P0.1); H1 REVERSAL_CANDIDATE → INVALID; otherwise INACTIVE`,
-  signal: "Setup ACTIVE + CLOSED M5/M15 pattern trigger in the setup direction with no opposing trigger → READY (latched); otherwise WAITING; setup leaves ACTIVE → INVALIDATED (if INVALID) else WAITING",
+  signal: "Setup ACTIVE + fresh CLOSED M5/M15 trigger (new identity) → READY with frozen origin; READY carried until TTL / early invalidation / chasing (signal-ttl-v0.4-p0.3-v1); consumed triggers never resurrect",
   reference_plan: "BUY ASK / SELL BID; SL outside latest confirmed H1 swing by 0.25×ATR14(M15); TP1=1R, TP2=2R (unchanged from v1). v2 adds structural context: invalidation = nearest S/R zone behind entry ± 0.25×ATR14(M15); target = near edge of next opposing S/R zone. Read-only analysis, never execution",
   operator: OPERATOR_RULES,
-  signal_validity: "RESEARCH_REQUIRED (no TTL; EXPIRED is never produced)",
+  signal_validity: "signal-ttl-v0.4-p0.3-v1: TTL 3 CLOSED M5 bars, chasing 1.0R, early invalidation ON (baseline research params)",
   spread: "RESEARCH_REQUIRED (telemetry only, no threshold)",
   session: "RESEARCH_REQUIRED",
   risk: "UNAVAILABLE (no account data on the read-only bridge)",
@@ -116,7 +116,14 @@ export interface TradingSnapshot {
   readonly engulfing: { readonly bullish: boolean; readonly bearish: boolean; readonly definition: string; readonly bar_open_time: number | null } | null;
   readonly bias: { readonly state: BiasState; readonly reason: string };
   readonly setup: { readonly state: SetupState; readonly reason: string };
-  readonly signal: { readonly state: SignalState; readonly reason: string; readonly triggered_at: number | null; readonly trigger_bar: number | null; readonly trigger_evidence: string | null; readonly validity_policy: "RESEARCH_REQUIRED" };
+  readonly signal: {
+    readonly state: SignalState; readonly reason: string; readonly triggered_at: number | null; readonly trigger_bar: number | null; readonly trigger_evidence: string | null; readonly validity_policy: "RESEARCH_REQUIRED";
+    /** P0.3: frozen at READY birth, carried unchanged while READY. */
+    readonly origin?: SignalOrigin | null;
+    readonly ttl_remaining_bars?: number | null;
+    readonly chasing_guard?: "AVAILABLE" | "UNAVAILABLE_NO_INITIAL_R" | null;
+    readonly lifecycle?: SignalLifecycle;
+  };
   readonly execution: { readonly state: ExecutionState; readonly reasons: readonly string[] };
   /** Analysis label only (MONITOR_ONLY). Never an order, never transmitted. */
   readonly entry: { readonly state: EntryAnalysis; readonly reason: string };
@@ -141,6 +148,140 @@ function evidenceFor(tf: Timeframe, bars: readonly TechBar[], price: number | nu
 }
 
 const fmt = (v: number) => (Math.abs(v) >= 1000 ? v.toFixed(2) : v.toFixed(3));
+
+// ---------------- SIGNAL SAFETY LIFECYCLE (P0.3–P0.5) ----------------
+export const SIGNAL_TTL_POLICY_VERSION = "signal-ttl-v0.4-p0.3-v1";
+/** Baseline research params — NOT optimized. */
+export const SIGNAL_TTL_PARAMS = Object.freeze({ ttl_m5_bars: 3, chasing_limit_r: 1.0, early_invalidation: true, authority: "RESEARCH_REQUIRED_BASELINE" as const });
+export const SIGNAL_TTL_RULES = Object.freeze({
+  birth: "Fresh CLOSED trigger (new signal_id = symbol:side:tf:trigger_open_time) ⇒ READY; origin entry (BUY=ASK, SELL=BID), SL and initial R frozen at birth",
+  ttl: "READY expires after ttl_m5_bars CLOSED M5 bars (open_time > birth M5 bar) regardless of trigger TF ⇒ SIGNAL_TTL_EXPIRED",
+  invalidation: "BUY: CLOSED M5 low < trigger_low; combined momentum SELL/STRONG_SELL; CONFLICT; newer opposing CLOSED trigger; setup INVALID/NOT_EVALUABLE. SELL mirror. Macro changes never invalidate",
+  chasing: "BUY ASK ≥ origin_entry + chasing_limit_r×initial_R (SELL mirror on BID) ⇒ EXPIRED CHASING_PRICE_ALREADY_MOVED; skipped when initial_R unavailable",
+  rearm: "A consumed signal_id never resurrects; only a new trigger identity can create READY",
+});
+
+export interface SignalOrigin {
+  readonly signal_id: string;
+  readonly side: "BUY" | "SELL";
+  readonly created_at: number;
+  readonly triggered_at: number;
+  readonly trigger_tf: Timeframe;
+  readonly trigger_bar_open_time: number;
+  readonly trigger_bar_available_at: number;
+  readonly trigger_high: number;
+  readonly trigger_low: number;
+  readonly trigger_close: number;
+  readonly trigger_patterns: readonly string[];
+  readonly birth_m5_bar_open_time: number;
+  readonly origin_entry: number;
+  readonly origin_sl: number | null;
+  readonly initial_r: number | null;
+  readonly origin_plan: Extract<SidePlan, { ok: true }> | null;
+  readonly origin_plan_reason: string | null;
+  readonly origin_macro_alignment: string;
+  readonly origin_scalp_momentum: string;
+  readonly origin_location: string;
+  readonly ttl_bars: number;
+  /** Open time of the M5 bar whose CLOSE ends the TTL (nominal; counting uses actual CLOSED bars). */
+  readonly expires_at_m5_bar_open_time: number;
+  readonly ttl_policy_version: typeof SIGNAL_TTL_POLICY_VERSION;
+  readonly chasing_limit_r: number;
+}
+export type LifecycleEvent = "NONE" | "READY_CREATED" | "FRESH_READY_CREATED" | "READY_ACTIVE" | "READY_EXPIRED" | "READY_INVALIDATED" | "READY_MISSED_CHASING";
+export interface SignalLifecycle {
+  readonly event: LifecycleEvent;
+  readonly reason: string | null;
+  /** Most recent born signal_id (consumed identity; never resurrected). */
+  readonly last_signal_id: string | null;
+  readonly last_terminal: { readonly state: "EXPIRED" | "INVALIDATED"; readonly reason: string; readonly signal_id: string; readonly origin: SignalOrigin | null } | null;
+}
+const M5_MS = 5 * 60_000;
+
+function carryUnavailable(prev: TradingSnapshot["signal"] | null, reason: string): SignalLifecycle {
+  const lc = prev?.lifecycle;
+  const o = prev?.state === "READY" ? prev.origin ?? null : null;
+  if (o) return { event: "READY_INVALIDATED", reason, last_signal_id: o.signal_id, last_terminal: { state: "INVALIDATED", reason, signal_id: o.signal_id, origin: o } };
+  return { event: "NONE", reason: null, last_signal_id: lc?.last_signal_id ?? null, last_terminal: lc?.last_terminal ?? null };
+}
+
+function frozenPlan(o: SignalOrigin): ReferencePlan {
+  if (!o.origin_plan) return unavailablePlan(o.origin_plan_reason ?? "ORIGIN_PLAN_UNAVAILABLE");
+  const { ok: _ok, ...rest } = o.origin_plan;
+  return { status: "AVAILABLE", policy_version: REFERENCE_PLAN_POLICY_VERSION, ...rest, rr_tp1: 1, rr_tp2: 2 };
+}
+
+export function deriveSignalLifecycle(
+  i: EvaluationInput, prev: TradingSnapshot["signal"] | null, setup: TradingSnapshot["setup"], op: OperatorAnalysis,
+  evidence: Readonly<Record<Timeframe, TimeframeEvidence>>,
+): TradingSnapshot["signal"] {
+  const P = SIGNAL_TTL_PARAMS;
+  const base = { triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED" as const, origin: null, ttl_remaining_bars: null, chasing_guard: null };
+  const prevOrigin = prev?.state === "READY" ? prev.origin ?? null : null;
+  const lastId = prev?.lifecycle?.last_signal_id ?? prevOrigin?.signal_id ?? null;
+  const lastTerminal = prev?.lifecycle?.last_terminal ?? null;
+  const m5 = i.closed.M5;
+  const lastM5 = m5[m5.length - 1]?.open_time ?? null;
+  const terminate = (o: SignalOrigin, state: "EXPIRED" | "INVALIDATED", reason: string, event: LifecycleEvent): TradingSnapshot["signal"] =>
+    ({ ...base, state, reason, lifecycle: { event, reason, last_signal_id: o.signal_id, last_terminal: { state, reason, signal_id: o.signal_id, origin: o } } });
+
+  if (setup.state === "NOT_EVALUABLE") {
+    if (prevOrigin) { const t = terminate(prevOrigin, "INVALIDATED", `SIGNAL_SETUP_NOT_EVALUABLE_${setup.reason}`, "READY_INVALIDATED"); return { ...t, state: "NOT_EVALUABLE", reason: setup.reason }; }
+    return { ...base, state: "NOT_EVALUABLE", reason: setup.reason, lifecycle: { event: "NONE", reason: null, last_signal_id: lastId, last_terminal: lastTerminal } };
+  }
+
+  const tb = setup.state === "ACTIVE" && op.candidate ? op.trigger_bar : null;
+  const freshId = tb && op.candidate ? `${i.symbol}:${op.candidate}:${tb.timeframe}:${tb.open_time}` : null;
+  if (tb && op.candidate && freshId && freshId !== lastId && i.quote && lastM5 !== null) {
+    const side = op.candidate;
+    const bar = i.closed[tb.timeframe].find((b) => b.open_time === tb.open_time);
+    const entry = side === "BUY" ? i.quote.ask : i.quote.bid;
+    const p = buildSidePlan(side, entry, evidence, op);
+    const origin: SignalOrigin = Object.freeze({
+      signal_id: freshId, side, created_at: i.as_of, triggered_at: tb.available_at, trigger_tf: tb.timeframe,
+      trigger_bar_open_time: tb.open_time, trigger_bar_available_at: tb.available_at,
+      trigger_high: bar?.high ?? NaN, trigger_low: bar?.low ?? NaN, trigger_close: bar?.close ?? NaN, trigger_patterns: [...tb.patterns],
+      birth_m5_bar_open_time: lastM5, origin_entry: entry,
+      origin_sl: p.ok ? p.sl : null, initial_r: p.ok ? p.risk : null, origin_plan: p.ok ? p : null, origin_plan_reason: p.ok ? null : p.reason,
+      origin_macro_alignment: op.alignment, origin_scalp_momentum: op.scalp.combined_momentum, origin_location: op.location,
+      ttl_bars: P.ttl_m5_bars, expires_at_m5_bar_open_time: lastM5 + P.ttl_m5_bars * M5_MS, ttl_policy_version: SIGNAL_TTL_POLICY_VERSION, chasing_limit_r: P.chasing_limit_r,
+    });
+    return {
+      state: "READY", reason: `${tb.timeframe}_CLOSED_${side === "BUY" ? "BULLISH" : "BEARISH"}_${tb.patterns.join("+")}`,
+      triggered_at: tb.available_at, trigger_bar: tb.open_time, trigger_evidence: `${tb.timeframe}:${tb.patterns.join("+")}`, validity_policy: "RESEARCH_REQUIRED",
+      origin, ttl_remaining_bars: P.ttl_m5_bars, chasing_guard: origin.initial_r && origin.initial_r > 0 ? "AVAILABLE" : "UNAVAILABLE_NO_INITIAL_R",
+      lifecycle: { event: lastId ? "FRESH_READY_CREATED" : "READY_CREATED", reason: null, last_signal_id: freshId, last_terminal: lastTerminal },
+    };
+  }
+
+  if (prevOrigin) {
+    const o = prevOrigin, buy = o.side === "BUY";
+    const after = m5.filter((b) => b.open_time > o.birth_m5_bar_open_time);
+    if (P.early_invalidation) {
+      if (setup.state === "INVALID") return terminate(o, "INVALIDATED", `SIGNAL_SETUP_INVALID_${setup.reason}`, "READY_INVALIDATED");
+      if (after.some((b) => (buy ? b.low < o.trigger_low : b.high > o.trigger_high))) return terminate(o, "INVALIDATED", buy ? "SIGNAL_TRIGGER_LOW_BROKEN" : "SIGNAL_TRIGGER_HIGH_BROKEN", "READY_INVALIDATED");
+      const cm = op.scalp.combined_momentum;
+      if (buy ? cm === "SELL" || cm === "STRONG_SELL" : cm === "BUY" || cm === "STRONG_BUY") return terminate(o, "INVALIDATED", "SIGNAL_SCALP_MOMENTUM_FLIPPED", "READY_INVALIDATED");
+      if (cm === "CONFLICT") return terminate(o, "INVALIDATED", "SIGNAL_SCALP_CONFLICT", "READY_INVALIDATED");
+      const opp = buy ? "BEARISH" : "BULLISH";
+      if ([op.patterns.M5, op.patterns.M15].some((p) => p.direction === opp && p.bar_available_at !== null && p.bar_available_at > o.trigger_bar_available_at))
+        return terminate(o, "INVALIDATED", "SIGNAL_OPPOSING_TRIGGER", "READY_INVALIDATED");
+    }
+    const r = o.initial_r;
+    if (r !== null && r > 0 && i.quote && (buy ? i.quote.ask >= o.origin_entry + o.chasing_limit_r * r : i.quote.bid <= o.origin_entry - o.chasing_limit_r * r))
+      return terminate(o, "EXPIRED", "CHASING_PRICE_ALREADY_MOVED", "READY_MISSED_CHASING");
+    if (after.length >= o.ttl_bars) return terminate(o, "EXPIRED", "SIGNAL_TTL_EXPIRED", "READY_EXPIRED");
+    return { ...prev!, origin: o, ttl_remaining_bars: Math.max(0, o.ttl_bars - after.length), chasing_guard: r !== null && r > 0 ? "AVAILABLE" : "UNAVAILABLE_NO_INITIAL_R",
+      lifecycle: { event: "READY_ACTIVE", reason: null, last_signal_id: o.signal_id, last_terminal: lastTerminal } };
+  }
+
+  const lc: SignalLifecycle = { event: "NONE", reason: null, last_signal_id: lastId, last_terminal: lastTerminal };
+  // Sticky terminal state until a genuinely new trigger identity appears.
+  if (lastTerminal && lastTerminal.signal_id === lastId) return { ...base, state: lastTerminal.state, reason: lastTerminal.reason, lifecycle: lc };
+  if (setup.state !== "ACTIVE") return { ...base, state: "WAITING", reason: "SETUP_NOT_ACTIVE", lifecycle: lc };
+  if (freshId && freshId === lastId) return { ...base, state: "WAITING", reason: "SIGNAL_TRIGGER_ALREADY_CONSUMED", lifecycle: lc };
+  return { ...base, state: "WAITING", reason: op.reason, lifecycle: lc };
+}
 
 function unavailablePlan(reason: string): ReferencePlan {
   return { status: "NOT_AVAILABLE", policy_version: REFERENCE_PLAN_POLICY_VERSION, reason };
@@ -300,7 +441,7 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
       quote: null, evidence: null, last3_m5: [], engulfing: null,
       bias: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE" },
       setup: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE" },
-      signal: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE", triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED" },
+      signal: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE", triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED", origin: null, ttl_remaining_bars: null, chasing_guard: null, lifecycle: carryUnavailable(prevSignal, "MARKET_STATE_UNAVAILABLE") },
       execution: { state: "BLOCKED", reasons: ["MARKET_STATE_UNAVAILABLE", ...capabilityReasons] },
       entry: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE" },
       reference_plan: unavailablePlan("MARKET_STATE_UNAVAILABLE"),
@@ -330,17 +471,8 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
   else if (op.setup_ready && side) setup = { state: "ACTIVE", reason: `${op.regime}_${side}_LOCATION${op.regime === "TREND" ? "_RSI" : ""}` };
   else setup = { state: "INACTIVE", reason: op.reason };
 
-  let signal: TradingSnapshot["signal"];
-  const base = { triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED" as const };
-  if (setup.state === "NOT_EVALUABLE") signal = { state: "NOT_EVALUABLE", reason: setup.reason, ...base };
-  else if (setup.state !== "ACTIVE") signal = prevSignal?.state === "READY"
-    ? { state: setup.state === "INVALID" ? "INVALIDATED" : "WAITING", reason: `SETUP_${setup.state}`, ...base }
-    : { state: "WAITING", reason: "SETUP_NOT_ACTIVE", ...base };
-  else if (op.candidate && op.trigger_bar) {
-    const tb = op.trigger_bar;
-    signal = { state: "READY", reason: `${tb.timeframe}_CLOSED_${op.candidate === "BUY" ? "BULLISH" : "BEARISH"}_${tb.patterns.join("+")}`, triggered_at: tb.available_at, trigger_bar: tb.open_time, trigger_evidence: `${tb.timeframe}:${tb.patterns.join("+")}`, validity_policy: "RESEARCH_REQUIRED" };
-  } else if (prevSignal?.state === "READY") signal = prevSignal; // latched; validity policy RESEARCH_REQUIRED (no TTL)
-  else signal = { state: "WAITING", reason: op.reason, ...base };
+  // P0.3–P0.5 lifecycle: frozen origin + TTL (CLOSED M5 bars) + early invalidation + chasing guard.
+  const signal = deriveSignalLifecycle(i, prevSignal, setup, op, evidence);
 
   // GUARD (no invented thresholds). In MONITOR_ONLY the capability is structurally absent → BLOCKED.
   const reasons = [...capabilityReasons];
@@ -348,10 +480,12 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
   const execution: TradingSnapshot["execution"] = capabilityReasons.length ? { state: "BLOCKED", reasons } : availability === "STALE" ? { state: "INHIBITED", reasons } : { state: "ALLOWED", reasons };
 
   // ENTRY ANALYSIS (label only; READY requires a CLOSED M5 trigger, so forming candles can never produce it)
+  const readySide = signal.state === "READY" ? signal.origin?.side ?? side : null;
   const entry: TradingSnapshot["entry"] = signal.state === "NOT_EVALUABLE" ? { state: "NOT_EVALUABLE", reason: signal.reason }
-    : signal.state === "READY" ? { state: side === "BUY" ? "LONG_CANDIDATE" : "SHORT_CANDIDATE", reason: `${bias.reason} + ${setup.reason} + ${signal.reason}` }
-    : { state: "WAIT", reason: `${setup.state === "ACTIVE" ? signal.reason : setup.reason}` };
-  const referencePlan = deriveReferencePlan(entry, i.quote, evidence, op);
+    : signal.state === "READY" && readySide ? { state: readySide === "BUY" ? "LONG_CANDIDATE" : "SHORT_CANDIDATE", reason: `${bias.reason} + ${setup.reason} + ${signal.reason}` }
+    : { state: "WAIT", reason: `${setup.state === "ACTIVE" || signal.state === "EXPIRED" || signal.state === "INVALIDATED" ? signal.reason : setup.reason}` };
+  // READY ⇒ frozen origin plan (never recomputed from the current quote).
+  const referencePlan = signal.state === "READY" && signal.origin ? frozenPlan(signal.origin) : deriveReferencePlan(entry, i.quote, evidence, op);
   const radarPlan = deriveRadarPlan(entry, i.quote, evidence, op, referencePlan);
 
   const why: WhyFact[] = [];

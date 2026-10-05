@@ -43,6 +43,7 @@ export class SignalAlertStore {
   private alerts: SignalAlert[] = [];
   /** Per-runtime-session baseline (NOT persisted): a reload never rings for an already-existing signal. */
   private last = new Map<string, EngineSignal>();
+  private lastId = new Map<string, string | null>();
   private listeners = new Set<() => void>();
   private seq = 0;
   constructor(private readonly kv: KV | null) {
@@ -61,8 +62,11 @@ export class SignalAlertStore {
   observe(s: TradingSnapshot | null, symbol: string, now: number): SignalAlert | null {
     if (!s || s.availability === "UNAVAILABLE") return null;
     const to = engineSignalOf(s), from = this.last.get(symbol);
-    this.last.set(symbol, to);
-    if (from === undefined || from === to || to === "HOLD") return null;
+    const id = to === "HOLD" ? null : s.signal.origin?.signal_id ?? null, prevId = this.lastId.get(symbol) ?? null;
+    this.last.set(symbol, to); this.lastId.set(symbol, id);
+    if (from === undefined || to === "HOLD") return null;
+    // Fresh READY = side change OR a new signal_id (fresh trigger replacing a prior READY of the same side).
+    if (from === to && (id === null || id === prevId)) return null;
     const alert = buildAlert(s, symbol, to, from, now, `alert-${now}-${++this.seq}`);
     this.commit([alert, ...this.alerts]);
     return alert;

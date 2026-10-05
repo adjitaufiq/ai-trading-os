@@ -251,6 +251,25 @@ function PaperPositions({ store, symbol, quote }: { store: PaperJournalStore; sy
   </section>;
 }
 
+/** P0.3 signal safety strip: READY TTL + frozen origin, or the concise reason the last READY ended. Presentation only. */
+export function SignalSafetyStrip({ signal }: { signal: TradingSnapshot["signal"] | null }) {
+  if (!signal) return null;
+  const o = signal.origin;
+  if (signal.state === "READY" && o) return <div className="mt-3 border border-border bg-muted/40 px-3 py-2 text-xs" data-testid="signal-safety-strip">
+    <div className="font-semibold">READY · berlaku {signal.ttl_remaining_bars ?? o.ttl_bars} bar M5 lagi</div>
+    <div className="mt-1 text-muted-foreground">Entry beku {n(o.origin_entry)} · SL {n(o.origin_sl)} · 1R {n(o.initial_r)} · trigger {o.trigger_tf} {o.trigger_patterns.join("+")}</div>
+  </div>;
+  const t = signal.lifecycle?.last_terminal;
+  if (!t || (signal.state !== "EXPIRED" && signal.state !== "INVALIDATED")) return null;
+  const msg = t.reason === "CHASING_PRICE_ALREADY_MOVED" ? "MISSED / CHASING — harga sudah bergerak ≥1R"
+    : t.reason === "SIGNAL_TTL_EXPIRED" ? "SIGNAL EXPIRED — tunggu trigger baru"
+    : t.reason.includes("TRIGGER_LOW") || t.reason.includes("TRIGGER_HIGH") ? "INVALID — trigger low/high ditembus"
+    : t.reason === "SIGNAL_SCALP_MOMENTUM_FLIPPED" ? "INVALID — momentum scalp berbalik"
+    : t.reason === "SIGNAL_SCALP_CONFLICT" ? "INVALID — momentum M5/M15 konflik"
+    : t.reason === "SIGNAL_OPPOSING_TRIGGER" ? "INVALID — muncul trigger berlawanan" : "INVALID — setup tidak valid lagi";
+  return <div className="mt-3 border border-border px-3 py-2 text-xs text-muted-foreground" data-testid="signal-safety-strip">{msg}</div>;
+}
+
 function Cockpit({ service, explain, store }: { service: TechnicalSliceService; explain?: TechnicalSlicePanelProps["explain"]; store: PaperJournalStore }) {
   useSyncExternalStore(service.subscribe, service.getVersion, service.getVersion);
   const view = service.view();
@@ -308,6 +327,7 @@ function Cockpit({ service, explain, store }: { service: TechnicalSliceService; 
           <div className={`text-5xl font-semibold sm:text-6xl ${signalTone}`} data-testid="cockpit-signal">{signal}</div>
         </div>
         <p className="mt-3 max-w-2xl text-sm text-muted-foreground" data-testid="cockpit-signal-reason">{signalReason}</p>
+        <SignalSafetyStrip signal={snapshot?.signal ?? null} />
       </section>
 
       <section className="border border-border bg-card p-4 sm:p-5" aria-label="Rencana transaksi acuan" data-testid="radar-card">
@@ -378,6 +398,7 @@ export function TechnicalSlicePanel({ runtimes, selectedSymbol, unmountedReason,
         const now = uiClock.now();
         // Journal: ENGINE signal transitions only (deduplicated per symbol). Paper marks: SIMULATION only.
         journal.recordSignal(snap, service.symbol, now);
+        journal.recordLifecycle(snap, service.symbol, now);
         if (snap.quote) journal.mark(service.symbol, snap.quote, now);
         const alert = alerts?.observe(snap, service.symbol, now);
         if (alert) onAlertRef.current?.(alert);
