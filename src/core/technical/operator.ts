@@ -361,10 +361,14 @@ export function operatorAnalysis(closed: Readonly<Record<Timeframe, readonly Tec
     const atS = !!ns && ns.distance <= k, atR = !!nr && nr.distance <= k;
     location = atS && atR ? "AMBIGUOUS" : atS ? "AT_SUPPORT" : atR ? "AT_RESISTANCE" : "MID";
   }
-  const emaTf = (["H1", "M15"] as const).find((tf) => per[tf].ema_zone === "BAND" || per[tf].ema_zone === "NEAR_EMA21" || per[tf].ema_zone === "NEAR_EMA50") ?? null;
-  const emaConf = { timeframe: emaTf, zone: emaTf ? per[emaTf].ema_zone : per.H1.ema_zone === "INSUFFICIENT" && per.M15.ema_zone === "INSUFFICIENT" ? "INSUFFICIENT" as const : "NOT_NEAR" as const };
+  // P0.2: EMA21/50 local dynamic S/R is read on the scalp TFs only (M5 first = most relevant, then M15).
+  const emaTf = (["M5", "M15"] as const).find((tf) => emaNear(per[tf].ema_zone)) ?? null;
+  const emaConf = { timeframe: emaTf, zone: emaTf ? per[emaTf].ema_zone : per.M5.ema_zone === "INSUFFICIENT" && per.M15.ema_zone === "INSUFFICIENT" ? "INSUFFICIENT" as const : "NOT_NEAR" as const };
   const patterns = { M5: readPatterns(closed.M5, "M5"), M15: readPatterns(closed.M15, "M15") };
   const trigger = combinedTrigger(patterns.M5, patterns.M15);
+  const sM5 = scalpTf(per.M5, closed.M5, price), sM15 = scalpTf(per.M15, closed.M15, price);
+  const combined = combineMomentum(sM5.momentum.state, sM15.momentum.state);
+  const mSide = momentumSide(combined);
 
   const h1Zones = zones.H1 ?? [];
   const bounded = h1Zones.some((z) => z.role === "SUPPORT" && z.touches >= P.range_min_touches) && h1Zones.some((z) => z.role === "RESISTANCE" && z.touches >= P.range_min_touches);
@@ -373,43 +377,42 @@ export function operatorAnalysis(closed: Readonly<Record<Timeframe, readonly Tec
   let status: OperatorStatus = "HOLD", candidateSide: "BUY" | "SELL" | null = null;
   let checks: OperatorAnalysis["checks"] = { context: false, location: false, rsi: null, trigger: false };
   let reason: string;
+  // Legacy veto (documented P0.x blocker): regime INSUFFICIENT / CHOPPY still ⇒ HOLD. They veto, never pick a side.
   if (regime === "INSUFFICIENT") reason = "H4_TREND_INSUFFICIENT_HISTORY";
   else if (regime === "CHOPPY") reason = "REGIME_CHOPPY_NO_CLEAR_BOUNDS";
-  else if (regime === "TREND") {
-    const d = h4 as "UP" | "DOWN";
-    const macroSide = d === "UP" ? "BUY" : "SELL";
-    // P0.1: scalp side is chosen from LOCAL location evidence. Default = macro side; the opposite S/R wall
-    // (support in a DOWN macro / resistance in an UP macro) yields a local COUNTER_MACRO scalp side.
-    const counterWall = macroSide === "BUY" ? location === "AT_RESISTANCE" : location === "AT_SUPPORT";
-    const side: "BUY" | "SELL" = counterWall ? (macroSide === "BUY" ? "SELL" : "BUY") : macroSide;
-    // Legacy H1 alignment flag — macro METADATA only since P0.1 (no longer a gate).
-    const context = ctx === "ALIGNED" || ctx === "RETURNING_TO_H4" || (ctx === "PULLBACK_AGAINST_H4" && per.M15.fast === d);
+  else if (!mSide) reason = `SCALP_MOMENTUM_${combined}`;
+  else {
+    // P0.2: side comes ONLY from combined M5/M15 momentum. H4/H1 never pick BUY/SELL.
+    const side = mSide;
     const zoneOk = side === "BUY" ? location === "AT_SUPPORT" : location === "AT_RESISTANCE";
-    const loc = zoneOk || (!counterWall && emaTf !== null);
-    const rsi = rsiDirectionGate(side, per.H1.rsi14);
     const trig = trigger === (side === "BUY" ? "BULLISH" : "BEARISH");
-    checks = { context, location: loc, rsi: rsi.pass, trigger: trig };
-    if (ctx === "REVERSAL_CANDIDATE" || ctx === "INSUFFICIENT") reason = `H1_${ctx}`;
-    else {
-      status = side === "BUY" ? "CARI_BUY" : "CARI_SELL";
-      if (!loc) reason = "NOT_AT_SR_OR_EMA_CONFLUENCE";
-      else if (!rsi.pass) reason = rsi.reason;
-      else if (!trig) reason = `NO_CLOSED_${side === "BUY" ? "BULLISH" : "BEARISH"}_TRIGGER`;
-      else { candidateSide = side; reason = `TREND_${side}_H4_${h4}_H1_${ctx}_${zoneOk ? "SR_ZONE" : `EMA_${emaConf.zone}`}_RSI_TRIGGER`; }
-    }
-  } else {
-    // RANGE
-    const side = location === "AT_SUPPORT" ? "BUY" : location === "AT_RESISTANCE" ? "SELL" : null;
-    if (!side) reason = location === "AMBIGUOUS" ? "RANGE_LOCATION_AMBIGUOUS" : "RANGE_MIDDLE";
-    else {
-      status = side === "BUY" ? "CARI_BUY" : "CARI_SELL";
-      const trig = trigger === (side === "BUY" ? "BULLISH" : "BEARISH");
-      checks = { context: true, location: true, rsi: null, trigger: trig };
-      if (trig) { candidateSide = side; reason = `RANGE_${side}_${side === "BUY" ? "SUPPORT" : "RESISTANCE"}_TRIGGER`; }
-      else reason = `NO_CLOSED_${side === "BUY" ? "BULLISH" : "BEARISH"}_TRIGGER`;
+    const dirTag = side === "BUY" ? "BULLISH" : "BEARISH";
+    if (regime === "TREND") {
+      const d = h4 as "UP" | "DOWN";
+      const context = ctx === "ALIGNED" || ctx === "RETURNING_TO_H4" || (ctx === "PULLBACK_AGAINST_H4" && per.M15.fast === d);
+      const loc = zoneOk || emaTf !== null;
+      const rsi = rsiDirectionGate(side, per.H1.rsi14); // retained H1 RSI hard gate until P0.8
+      checks = { context, location: loc, rsi: rsi.pass, trigger: trig };
+      // Legacy H1 REVERSAL_CANDIDATE / INSUFFICIENT veto retained (known P0.8/P0.x blocker).
+      if (ctx === "REVERSAL_CANDIDATE" || ctx === "INSUFFICIENT") reason = `H1_${ctx}`;
+      else {
+        status = side === "BUY" ? "CARI_BUY" : "CARI_SELL";
+        if (!loc) reason = "NOT_AT_SR_OR_EMA_CONFLUENCE";
+        else if (!rsi.pass) reason = rsi.reason;
+        else if (!trig) reason = `NO_CLOSED_${dirTag}_TRIGGER`;
+        else { candidateSide = side; reason = `SCALP_${side}_${combined}_${zoneOk ? "SR_ZONE" : `EMA_${emaConf.zone}_${emaTf}`}_RSI_TRIGGER`; }
+      }
+    } else {
+      // RANGE: static S/R edge on the momentum side is required; RSI gate not applied.
+      checks = { context: true, location: zoneOk, rsi: null, trigger: trig };
+      if (!zoneOk) reason = location === "AMBIGUOUS" ? "RANGE_LOCATION_AMBIGUOUS" : location === "MID" ? "RANGE_MIDDLE" : `RANGE_${side}_NOT_AT_${side === "BUY" ? "SUPPORT" : "RESISTANCE"}`;
+      else {
+        status = side === "BUY" ? "CARI_BUY" : "CARI_SELL";
+        if (trig) { candidateSide = side; reason = `RANGE_${side}_${combined}_${side === "BUY" ? "SUPPORT" : "RESISTANCE"}_TRIGGER`; }
+        else reason = `NO_CLOSED_${dirTag}_TRIGGER`;
+      }
     }
   }
-  // P0.1: H1 alignment (checks.context) is no longer part of setup readiness.
   const setupReady = status !== "HOLD" && checks.location && checks.rsi !== false;
   let triggerBar: OperatorAnalysis["trigger_bar"] = null;
   if (candidateSide) {
@@ -422,10 +425,12 @@ export function operatorAnalysis(closed: Readonly<Record<Timeframe, readonly Tec
     major_zones: { H4: zones.H4 ?? [], H1: zones.H1 ?? [] }, macro_direction: macroDirectionOf(h4),
   };
   const scalp: ScalpContext = {
-    M15: scalpTf(per.M15), M5: scalpTf(per.M5), local_zones: zones.M15 ?? [], location, nearest_support: ns, nearest_resistance: nr,
+    M15: sM15, M5: sM5, local_zones: zones.M15 ?? [], location, nearest_support: ns, nearest_resistance: nr,
     ema_confluence: emaConf, patterns, trigger,
+    momentum_policy_version: SCALP_MOMENTUM_POLICY_VERSION, combined_momentum: combined, momentum_side: mSide,
   };
-  const searchSide = candidateSide ?? (status === "CARI_BUY" ? "BUY" : status === "CARI_SELL" ? "SELL" : null);
+  // Alignment derived AFTER the local side exists.
+  const searchSide = candidateSide ?? (status === "CARI_BUY" ? "BUY" : status === "CARI_SELL" ? "SELL" : mSide);
   return {
     policy_version: OPERATOR_POLICY_VERSION, architecture_version: ARCHITECTURE_VERSION, macro, scalp, alignment: macroAlignment(searchSide, macro.macro_direction),
     price, per_tf: per, h4_primary: h4, h1_context: ctx, zones, nearest_support: ns, nearest_resistance: nr,
