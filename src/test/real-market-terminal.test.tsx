@@ -19,7 +19,8 @@ function fakeClient(fail = false) {
   const getSymbol = vi.fn(async (symbol: string) => ok(spec(symbol)));
   const getBars = vi.fn(async ({ symbol, timeframe }: { symbol: string; timeframe: string }) => ok({ items: [bar(symbol, timeframe)], coverage: {} }, "BACKFILL"));
   const getHealth = vi.fn(async () => ok({ terminal_connected: true }));
-  return { getLatestTick, getSymbol, getBars, getHealth };
+  const getTerminal = vi.fn(async () => ok({ connected: true, terminal_ping_us: 12345, terminal_ping_ms: 12.345, retransmission: 0, trade_allowed_observed: false, tradeapi_disabled_observed: false, authority: "OBSERVATION_ONLY" }));
+  return { getLatestTick, getSymbol, getBars, getHealth, getTerminal };
 }
 const setup = (client = fakeClient(), now = () => 1790974684954) => render(<RealMarketTerminal client={client as unknown as BrokerGatewayClient} now={now} pollMs={60000} />);
 
@@ -58,6 +59,21 @@ describe("real dual-market monitor terminal", () => {
     await waitFor(() => expect(screen.getByTestId("quote-error")).toHaveTextContent("DATA UNAVAILABLE"));
     expect(screen.getByTestId("bid")).toHaveTextContent("—");
     expect(screen.queryByText("2347.30")).not.toBeInTheDocument();
+  });
+  it("renders verified terminal connectivity, ping and OBSERVATION_ONLY authority without claiming account identity", async () => {
+    const client = fakeClient(); setup(client);
+    await waitFor(() => expect(screen.getByTestId("terminal-status")).toHaveTextContent("MT5 terminal connected · ping 12.3 ms · OBSERVATION_ONLY"));
+    expect(client.getTerminal).toHaveBeenCalled();
+    expect(screen.getByTestId("connection")).toHaveTextContent("CONNECTED");
+    expect(screen.getAllByText(/CONFIGURED TARGET/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/login|account #/i)).not.toBeInTheDocument();
+  });
+  it("health connected but terminal route disconnected is not CONNECTED", async () => {
+    const client = fakeClient();
+    client.getTerminal.mockImplementation(async () => ok({ connected: false, terminal_ping_us: 0, terminal_ping_ms: 0, retransmission: 0, trade_allowed_observed: false, tradeapi_disabled_observed: false, authority: "OBSERVATION_ONLY" }));
+    setup(client);
+    await waitFor(() => expect(screen.getByTestId("terminal-status")).toHaveTextContent("disconnected"));
+    expect(screen.getByTestId("connection")).toHaveTextContent("DATA DEGRADED");
   });
   it("preserves precision policy without altering raw market values", () => {
     expect(formatMarketPrice(4140.348, null)).toBe("4140.348");
