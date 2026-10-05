@@ -15,7 +15,14 @@ export interface IdentityRetentionMetrics {
   readonly pinned_overflow_peak: number;
 }
 
+/**
+ * LEGACY (Patch C test store, not a production default). C1: capacity-FIFO eviction here is NOT a semantic
+ * eligibility rule; to stay safe it records an evidence horizon so forgotten evidence can never yield a
+ * false DISTINCT_OBSERVATION. Production uses RetentionIdentityStore.
+ */
 export class BoundedIdentityStore implements IdentityStore {
+  private readonly horizon = new Map<string, number>();
+  evidenceHorizon(symbol: string): number | null { return this.horizon.get(symbol) ?? null; }
   private readonly order: { fp: string; o: Stored }[] = [];
   private readonly ids = new Map<string, number>();
   private readonly raws = new Map<string, number>();
@@ -66,6 +73,8 @@ export class BoundedIdentityStore implements IdentityStore {
       const l = this.fps.get(fp)!;
       l.splice(l.indexOf(o), 1);
       if (l.length === 0) this.fps.delete(fp);
+      const sym = o.broker_symbol ?? "?";
+      this.horizon.set(sym, Math.max(this.horizon.get(sym) ?? -Infinity, o.source_event_ms));
       this.evicted++;
     }
   }

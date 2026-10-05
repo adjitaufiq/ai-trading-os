@@ -2,6 +2,15 @@ import type { FreshnessPolicy } from "../temporal/TemporalPolicy";
 import type { AnomalyDisposition, BrokerMarketEvent, FeedAnomaly } from "./types";
 
 /**
+ * C1: identity verdict supplied by the single dedup authority (ObservationIdentityRegistry / its
+ * retention store, or the pipeline's fallback store). The classifier holds NO identity memory.
+ */
+export interface IdentityHint {
+  readonly dedup_class: "EXACT_TRANSPORT_DUPLICATE" | "PROBABLE_SOURCE_DUPLICATE" | "AMBIGUOUS_COLLISION" | "DISTINCT_OBSERVATION" | "STALE_EPOCH_OCCURRENCE";
+  readonly evidence_status: "PROVEN" | "EVIDENCE_EVICTED";
+}
+
+/**
  * Feed-quality configuration only. Deliberately contains NO timeframe and no candle
  * lifecycle knowledge (PRE-2D R3): interval ownership/closure belongs to each
  * CandleAggregator behind the LIVE fanout, never to the feed classifier.
@@ -36,15 +45,13 @@ export function resolveDisposition(anomalies: readonly FeedAnomaly[]): AnomalyDi
  * which candle owns the event or whether any candle is closed.
  */
 export class AnomalyClassifier {
-  private readonly seenIds = new Set<string>();
-  private readonly seenContent = new Set<string>();
   /** Last observation that mutated LIVE state (live watermark). BACKFILL never moves it. */
   private lastLive: BrokerMarketEvent | null = null;
   private lastEpoch: number | null = null;
 
   constructor(private readonly cfg: ClassifierConfig) {}
 
-  classify(e: BrokerMarketEvent): FeedAnomaly[] {
+  classify(e: BrokerMarketEvent, identity: IdentityHint): FeedAnomaly[] {
     const id = e.provenance.raw_event_id;
     const out: FeedAnomaly[] = [];
     const add = (classification: FeedAnomaly["classification"], disposition: AnomalyDisposition, detail: string) =>
@@ -56,14 +63,24 @@ export class AnomalyClassifier {
       return out;
     }
 
-    const contentKey = `${e.symbol}|${e.event_at}|${e.bid}|${e.ask}`;
-    if (this.seenIds.has(id)) {
-      add("DUPLICATE", "REJECT", "raw_event_id already seen");
-      return out;
-    }
-    // PRE-2D R6: identical content is NOT proof of the same occurrence. Flag, never drop.
-    if (this.seenContent.has(contentKey)) {
-      add("AMBIGUOUS_COLLISION", "ACCEPT_WITH_FLAG", "identical symbol/event_at/bid/ask already seen with a distinct raw_event_id");
+    switch (identity.dedup_class) {
+      case "EXACT_TRANSPORT_DUPLICATE":
+        add("DUPLICATE", "REJECT", "raw_event_id already seen (identity authority)");
+        return out;
+      case "STALE_EPOCH_OCCURRENCE":
+        add("RECONNECT_BACKFILL", "QUARANTINE", "stale transport epoch (identity authority)");
+        return out;
+      case "PROBABLE_SOURCE_DUPLICATE":
+      case "AMBIGUOUS_COLLISION":
+        // PRE-2D R6: identical content is NOT proof of the same occurrence. Flag, never drop.
+        if (identity.evidence_status === "EVIDENCE_EVICTED") {
+          add("AMBIGUOUS_COLLISION", "RECONCILE", "identity evidence evicted; distinctness unproven (C1)");
+        } else {
+          add("AMBIGUOUS_COLLISION", "ACCEPT_WITH_FLAG", "identical source content already seen with a distinct raw_event_id");
+        }
+        break;
+      case "DISTINCT_OBSERVATION":
+        break;
     }
 
     const backfill = e.provenance.delivery === "BACKFILL";
@@ -95,13 +112,11 @@ export class AnomalyClassifier {
   }
 
   /**
-   * Commit state after the pipeline routed the event. Every temporally valid observation
-   * counts as seen (dedup); only a LIVE mutation advances the live watermark/epoch.
+   * Commit feed state after routing. Only a LIVE mutation advances the live watermark/epoch.
+   * Identity (dedup) memory is NOT kept here (C1) — it lives in the identity authority.
    */
   commit(e: BrokerMarketEvent, liveMutation: boolean, temporallyValid: boolean): void {
     if (!temporallyValid) return;
-    this.seenIds.add(e.provenance.raw_event_id);
-    this.seenContent.add(`${e.symbol}|${e.event_at}|${e.bid}|${e.ask}`);
     if (liveMutation) {
       this.lastLive = e;
       this.lastEpoch = e.provenance.connection_epoch;
