@@ -264,7 +264,7 @@ describe("Technical Probe v1b — application-wiring consumer of the runtime rea
     const before = JSON.stringify(s.r.snapshot());
     for (const tf of ["M5", "M15", "H1", "H4"] as const) probeRuntime(s.r, tf);
     expect(JSON.stringify(s.r.snapshot())).toBe(before);
-    expect(Object.keys(s.r).sort()).toEqual(["closedBars", "formingBar", "latestLiveObservation", "missingIntervals", "now", "snapshot", "symbol"]);
+    expect(Object.keys(s.r).sort()).toEqual(["brokerHistoryBars", "closedBars", "firstLiveEventAt", "formingBar", "latestLiveObservation", "missingIntervals", "now", "snapshot", "symbol"]);
     expect(Object.isFrozen(s.r)).toBe(true);
     expect(Object.isFrozen(s.r.closedBars("M5")[0])).toBe(true);
   });
