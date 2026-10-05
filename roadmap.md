@@ -15,3 +15,4 @@
 - [x] v1a — BACKFILL + deterministic replay diagnostics (EMA5/21, ATR14, retrospective vs causal swing). Real gateway was unreachable during the run.
 - [ ] v1b — application-wiring validation PASS on hermetic transport; real-data validation pending (gateway unreachable, G2 open).
 - [ ] Real Vertical Slice v1 acceptance — code + 354 tests done; BLOCKED: gateway tunnel URL NXDOMAIN (needs new URL); canonical tick MarketRuntime mount blocked by G2 offset + WS deferred.
+- [ ] Canonical unification: TechnicalSliceService now reads MarketRuntimeReader only; BLOCKED mounting real runtime: G2 offset + real /v1/stream WS 404. G2 note: broker raw_time_s observed later than bridge_received_at (do not fix by offset).
