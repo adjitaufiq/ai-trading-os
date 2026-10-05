@@ -245,7 +245,7 @@ function PaperPositions({ store, symbol, quote }: { store: PaperJournalStore; sy
     <ul className="mt-2 divide-y divide-border text-sm">{open.map((p) => <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2" data-testid="paper-position">
       <span className={`font-semibold ${p.side === "BUY" ? "text-bull" : "text-bear"}`}>{p.side} @ {n(p.entry)}</span>
       <span className="font-mono text-xs">Mark {n(p.mark)} · PnL <span data-testid="paper-pnl">{n(p.pnl ?? 0)}</span>{p.r_multiple != null ? ` · ${p.r_multiple.toFixed(2)}R` : ""}</span>
-      <span className="text-xs text-muted-foreground">SL {n(p.sl)} · TP2 {n(p.tp2)}</span>
+      <span className="text-xs text-muted-foreground">SL {n(p.sl)} · TP2 {n(p.tp2)}{p.action_source ? ` · ${p.action_source.replaceAll("_", " ")}` : ""}</span>
       <Button size="sm" variant="outline" disabled={!quote} onClick={() => quote && store.close(p.id, quote, Date.now())}>Tutup</Button>
     </li>)}</ul>
   </section>;
