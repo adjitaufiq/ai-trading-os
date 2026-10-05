@@ -9,7 +9,7 @@ import type { CanonicalClock } from "../temporal/CanonicalClock";
 import type { ClassifierConfig } from "../broker/AnomalyClassifier";
 import { BrokerFeedPipeline, type AuditRecord, type FeedRoute } from "../broker/BrokerFeedPipeline";
 import { LIVE_FANOUT_TIMEFRAMES, LiveCandleFanout } from "../broker/LiveCandleFanout";
-import type { SymbolSpecification } from "../broker/types";
+import type { BrokerMarketEvent, SymbolSpecification } from "../broker/types";
 import { BootstrapCoordinator, type BootstrapSnapshot, type BootstrapState } from "../broker/bootstrap/BootstrapCoordinator";
 import { ObservationIdentityRegistry, type ObservationOccurrence } from "../broker/identity/ObservationIdentity";
 import { CandleStore, type CandleStoreMetrics } from "../candles/CandleStore";
@@ -74,6 +74,8 @@ export interface MarketRuntimeReader {
   formingBar(tf: Timeframe): Bar | null;
   missingIntervals(tf: Timeframe): readonly MissingInterval[];
   snapshot(): MarketRuntimeSnapshot;
+  /** Latest observation that actually reached the LIVE sink (LIVE_MUTATION only). Never BACKFILL/RECONCILE. */
+  latestLiveObservation(): BrokerMarketEvent | null;
   now(): number;
 }
 
@@ -91,6 +93,7 @@ export class MarketRuntime {
   private lifecycle: MarketRuntimeSnapshot["lifecycle"] = "IDLE";
   private coverageStatus: string | null = null;
   private lastRequest: StartRequest | null = null;
+  private lastLive: BrokerMarketEvent | null = null;
   private readonly maxHeld = 1000;
   readonly reader: MarketRuntimeReader;
 
@@ -103,7 +106,7 @@ export class MarketRuntime {
       this.stores[tf].attach(this.fanout.aggregators[tf]);
     }
     const count = (r: AuditRecord) => { this.routeCounts[r.route]++; };
-    this.pipeline = new BrokerFeedPipeline(o.spec, o.classifier, o.clock, (e) => this.fanout.ingest(e));
+    this.pipeline = new BrokerFeedPipeline(o.spec, o.classifier, o.clock, (e) => { this.fanout.ingest(e); this.lastLive = e; });
     const pipe = this.pipeline;
     this.boot = new BootstrapCoordinator({ process: (env, id) => { const r = pipe.process(env, id); count(r); return r; } }, new ObservationIdentityRegistry());
     this.reader = this.makeReader();
@@ -235,6 +238,7 @@ export class MarketRuntime {
       closedBars: closed,
       formingBar: forming,
       now: () => self.o.clock.now(),
+      latestLiveObservation: () => self.lastLive,
       missingIntervals(tf) {
         const c = closed(tf);
         if (c.length < 2) return Object.freeze([]);
