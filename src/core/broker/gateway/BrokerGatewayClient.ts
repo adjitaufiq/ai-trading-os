@@ -57,6 +57,8 @@ const GROUP_RE = /^[A-Za-z0-9*!,._\\-]{1,64}$/;
 const MAX_COUNT = 100_000;
 
 export class GatewayRequestError extends Error {}
+/** Non-3.0B-1 capability label observed on the real gateway's LIVE stream. Stream-only; never accepted on REST. */
+export const STREAM_CAPABILITY_ALIAS = "MARKET_DATA.TICK";
 
 export type StreamState = "CONNECTING" | "OPEN" | "CLOSED";
 export interface MarketDataHandlers {
@@ -88,6 +90,9 @@ export class BrokerGatewayClient {
   readonly tracker = new SequenceTracker();
   readonly health: GatewayHealthModel;
   private readonly errors: ClientError[] = [];
+  private aliasCount = 0;
+  /** LIVE stream frames that used the non-3.0B-1 capability label "MARKET_DATA.TICK" (gateway contract debt). */
+  get streamCapabilityAliasCount(): number { return this.aliasCount; }
 
   constructor(private readonly o: BrokerGatewayClientOptions) {
     this.fetchImpl = o.fetchImpl ?? ((url, init) => globalThis.fetch(url, init));
@@ -288,6 +293,14 @@ export class BrokerGatewayClient {
     } catch {
       h.onError?.(this.err("CLIENT_PROTOCOL_ERROR", "stream message is not JSON", null, null, null, this.timing(null, null, null)));
       return;
+    }
+    // Observed gateway dialect (concrete incompatibility, recorded): the live /v1/stream emits capability
+    // "MARKET_DATA.TICK" where 3.0B-1 specifies "MARKET_DATA.TICKS". Accepted ONLY for LIVE stream frames,
+    // counted, and otherwise validated exactly as 3.0B-1. REST validation is unchanged.
+    if (body !== null && typeof body === "object" && (body as Record<string, unknown>)["capability"] === STREAM_CAPABILITY_ALIAS
+      && (body as Record<string, unknown>)["delivery"] === "LIVE") {
+      this.aliasCount++;
+      body = { ...(body as Record<string, unknown>), capability: "MARKET_DATA.TICKS" };
     }
     const v = validateEnvelope<BridgeTick>(body, "TICK");
     if (!v.ok) {
