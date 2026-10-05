@@ -116,7 +116,14 @@ export interface TradingSnapshot {
   readonly engulfing: { readonly bullish: boolean; readonly bearish: boolean; readonly definition: string; readonly bar_open_time: number | null } | null;
   readonly bias: { readonly state: BiasState; readonly reason: string };
   readonly setup: { readonly state: SetupState; readonly reason: string };
-  readonly signal: { readonly state: SignalState; readonly reason: string; readonly triggered_at: number | null; readonly trigger_bar: number | null; readonly trigger_evidence: string | null; readonly validity_policy: "RESEARCH_REQUIRED" };
+  readonly signal: {
+    readonly state: SignalState; readonly reason: string; readonly triggered_at: number | null; readonly trigger_bar: number | null; readonly trigger_evidence: string | null; readonly validity_policy: "RESEARCH_REQUIRED";
+    /** P0.3: frozen at READY birth, carried unchanged while READY. */
+    readonly origin?: SignalOrigin | null;
+    readonly ttl_remaining_bars?: number | null;
+    readonly chasing_guard?: "AVAILABLE" | "UNAVAILABLE_NO_INITIAL_R" | null;
+    readonly lifecycle?: SignalLifecycle;
+  };
   readonly execution: { readonly state: ExecutionState; readonly reasons: readonly string[] };
   /** Analysis label only (MONITOR_ONLY). Never an order, never transmitted. */
   readonly entry: { readonly state: EntryAnalysis; readonly reason: string };
