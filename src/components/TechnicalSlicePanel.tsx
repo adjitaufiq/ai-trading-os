@@ -66,16 +66,20 @@ export function referenceEntry(snapshot: TradingSnapshot | null): number | null 
 export function operatorSummary(snapshot: TradingSnapshot | null) {
   const op = snapshot?.operator ?? null;
   const dash = "—";
-  if (!op) return { mode: "TIDAK JELAS", h4: dash, h1: dash, area: dash, ema: dash, trigger: "belum ada", status: "HOLD", alignment: null as string | null };
+  if (!op) return { mode: "TIDAK JELAS", h4: dash, h1: dash, area: dash, ema: dash, trigger: "belum ada", status: "HOLD", alignment: null as string | null, m15: dash, m5: dash, momentum: dash };
   const mode = op.regime === "TREND" ? "TREND" : op.regime === "RANGE" ? "RANGE" : "TIDAK JELAS";
   const h4 = op.h4_primary === "UP" ? "NAIK" : op.h4_primary === "DOWN" ? "TURUN" : op.h4_primary === "MIXED" ? "CAMPURAN" : "DATA BELUM CUKUP";
   const h1 = ({ ALIGNED: "SEARAH", PULLBACK_AGAINST_H4: "PULLBACK", RETURNING_TO_H4: "MULAI KEMBALI", REVERSAL_CANDIDATE: "CAMPURAN", MIXED: "CAMPURAN", NO_PRIMARY_DIRECTION: "CAMPURAN", INSUFFICIENT: "DATA BELUM CUKUP" } as const)[op.h1_context];
   const area = op.location === "AT_SUPPORT" ? "SUPPORT" : op.location === "AT_RESISTANCE" ? "RESISTANCE" : op.location === "MID" ? (op.regime === "RANGE" ? "TENGAH RANGE" : "TENGAH") : op.location === "AMBIGUOUS" ? "CAMPURAN" : dash;
-  const ema = ({ BAND: "BAND", NEAR_EMA21: "DEKAT EMA21", NEAR_EMA50: "DEKAT EMA50", NOT_NEAR: "TIDAK DEKAT", INSUFFICIENT: "DATA BELUM CUKUP" } as const)[op.ema_confluence.zone];
+  const emaBase = ({ BAND: "BAND", NEAR_EMA21: "DEKAT EMA21", NEAR_EMA50: "DEKAT EMA50", NOT_NEAR: "TIDAK DEKAT", INSUFFICIENT: "DATA BELUM CUKUP" } as const)[op.ema_confluence.zone];
+  const ema = op.ema_confluence.timeframe ? `${emaBase} ${op.ema_confluence.timeframe}` : emaBase;
+  const momCopy = (st: string | undefined) => st ? ({ BULLISH_EXPANDING: "BULLISH EXPANDING", BULLISH: "BULLISH", BEARISH_EXPANDING: "BEARISH EXPANDING", BEARISH: "BEARISH", CROSS_UP: "CROSS UP", CROSS_DOWN: "CROSS DOWN", FLAT_OR_WEAK: "LEMAH", INSUFFICIENT: "DATA BELUM CUKUP" } as Record<string, string>)[st] ?? st : dash;
+  const m15 = momCopy(op.scalp?.M15.momentum?.state), m5 = momCopy(op.scalp?.M5.momentum?.state);
+  const momentum = op.scalp?.combined_momentum ? op.scalp.combined_momentum.replace("_", " ") : dash;
   const trigger = op.trigger === "BULLISH" ? "bullish" : op.trigger === "BEARISH" ? "bearish" : op.trigger === "CONFLICT" ? "bertentangan" : "belum ada";
   const status = op.status === "CARI_BUY" ? "CARI BUY" : op.status === "CARI_SELL" ? "CARI SELL" : "HOLD";
   const alignment = ({ WITH_MACRO: "WITH MACRO", COUNTER_MACRO: "COUNTER MACRO", NEUTRAL_MACRO: "NEUTRAL MACRO", NOT_APPLICABLE: null } as const)[op.alignment ?? "NOT_APPLICABLE"];
-  return { mode, h4, h1, area, ema, trigger, status, alignment: alignment as string | null };
+  return { mode, h4, h1, area, ema, trigger, status, alignment: alignment as string | null, m15, m5, momentum };
 }
 
 export interface TechnicalSlicePanelProps {
@@ -234,8 +238,6 @@ function Cockpit({ service, explain, store }: { service: TechnicalSliceService; 
     } catch (error) { setAi({ status: "AI_ANALYST_UNAVAILABLE", reason: friendlyAiError((error as Error).message) }); }
   };
 
-  const h4Tone = trendTone(evidence?.H4.relation);
-  const h1Tone = trendTone(evidence?.H1.relation);
   const h1StructureTone = structureTone(evidence?.H1.structure.summary);
   const triggerTone: ConfirmationTone = snapshot?.engulfing?.bullish ? "BULL" : snapshot?.engulfing?.bearish ? "BEAR" : "NEUTRAL";
   const triggerText = snapshot?.engulfing?.bullish ? "BULLISH TERKONFIRMASI" : snapshot?.engulfing?.bearish ? "BEARISH TERKONFIRMASI" : snapshot?.engulfing ? "BELUM TERKONFIRMASI" : "DATA BELUM CUKUP";
@@ -281,7 +283,7 @@ function Cockpit({ service, explain, store }: { service: TechnicalSliceService; 
     <section aria-label="Ringkasan trader" data-testid="operator-summary">
       {(() => {
         const o = operatorSummary(snapshot);
-        const tone = (value: string) => value === "NAIK" || value === "bullish" || value === "CARI BUY" ? "BULL" as const : value === "TURUN" || value === "bearish" || value === "CARI SELL" ? "BEAR" as const : "NEUTRAL" as const;
+        const tone = (value: string) => value === "NAIK" || value === "bullish" || value === "CARI BUY" || value.startsWith("BULLISH") || value === "CROSS UP" || value.endsWith("BUY") ? "BULL" as const : value === "TURUN" || value === "bearish" || value === "CARI SELL" || value.startsWith("BEARISH") || value === "CROSS DOWN" || value.endsWith("SELL") ? "BEAR" as const : "NEUTRAL" as const;
         const light = ([label, value, id]: readonly [string, string, string]) => <ConfirmationLight key={id} label={label} value={value} tone={tone(value)} testId={id} />;
         return <div className="grid gap-3 lg:grid-cols-[3fr_4fr]">
           <div data-testid="macro-context">
@@ -293,7 +295,7 @@ function Cockpit({ service, explain, store }: { service: TechnicalSliceService; 
               <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Scalp engine · M15/M5</h3>
               {o.alignment && <span data-testid="op-alignment" className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${o.alignment === "COUNTER MACRO" ? "border-destructive/50 text-destructive" : "border-border text-foreground"}`}>{o.alignment}</span>}
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{([["Area", o.area, "op-area"], ["EMA", o.ema, "op-ema"], ["Trigger", o.trigger, "op-trigger"], ["Status", o.status, "op-status"]] as const).map(light)}</div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{([["Momentum M15", o.m15, "op-m15-momentum"], ["Momentum M5", o.m5, "op-m5-momentum"], ["Scalp", o.momentum, "op-momentum"], ["Area", o.area, "op-area"], ["EMA", o.ema, "op-ema"], ["Trigger", o.trigger, "op-trigger"], ["Status", o.status, "op-status"]] as const).map(light)}</div>
           </div>
         </div>;
       })()}
@@ -301,9 +303,7 @@ function Cockpit({ service, explain, store }: { service: TechnicalSliceService; 
 
     <section aria-label="Konfirmasi teknikal">
       <div className="mb-2 flex items-center gap-2"><Activity className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">Konfirmasi teknikal</h3></div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-        <ConfirmationLight label="Tren H4" value={technicalCopy(evidence?.H4.relation ?? "DATA BELUM CUKUP")} tone={h4Tone} testId="confirm-h4" />
-        <ConfirmationLight label="Tren H1" value={technicalCopy(evidence?.H1.relation ?? "DATA BELUM CUKUP")} tone={h1Tone} testId="confirm-h1" />
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
         <ConfirmationLight label="Struktur H1" value={evidence?.H1.structure.summary.replace("_", "/") ?? "DATA BELUM CUKUP"} tone={h1StructureTone} testId="confirm-structure" />
         <ConfirmationLight label="Pemicu M5" value={triggerText} tone={triggerTone} testId="confirm-trigger" />
         <ConfirmationLight label="RSI14 H1" value={indicator(evidence?.H1.rsi14)} tone={rsiTone} testId="confirm-rsi" />
