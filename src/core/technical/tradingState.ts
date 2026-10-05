@@ -17,13 +17,13 @@ export type ExecutionState = "ALLOWED" | "INHIBITED" | "BLOCKED";
 
 export const ALL_SIGNAL_STATES: readonly SignalState[] = ["READY", "WAITING", "EXPIRED", "INVALIDATED", "NOT_EVALUABLE"];
 
-export const SETUP_POLICY_VERSION = "setup-v2-operator-mtf-sr-ema";
+export const SETUP_POLICY_VERSION = "setup-v2.1-p0.1-scalp-location-macro-metadata";
 export const SIGNAL_POLICY_VERSION = "signal-v2-operator-closed-m5-m15-patterns";
 export const REFERENCE_PLAN_POLICY_VERSION = "reference-plan-v2-swing-atr-plus-sr-context";
 export const GUARD_POLICY_VERSION = "guard-v0-monitor-only";
 export const POLICIES = Object.freeze({
   bias: "H4 primary trend (EMA21/EMA50 + confirmed structure): UP → BUY, DOWN → SELL, MIXED → NEUTRAL, insufficient → NOT_EVALUABLE",
-  setup: `${OPERATOR_POLICY_VERSION}: ACTIVE when operator status is CARI_BUY/CARI_SELL with context + location (+ H1 RSI gate in TREND) satisfied; H1 REVERSAL_CANDIDATE → INVALID; otherwise INACTIVE`,
+  setup: `${OPERATOR_POLICY_VERSION}: ACTIVE when operator status is CARI_BUY/CARI_SELL with local location (+ H1 RSI gate in TREND) satisfied; H1 alignment is metadata only (P0.1); H1 REVERSAL_CANDIDATE → INVALID; otherwise INACTIVE`,
   signal: "Setup ACTIVE + CLOSED M5/M15 pattern trigger in the setup direction with no opposing trigger → READY (latched); otherwise WAITING; setup leaves ACTIVE → INVALIDATED (if INVALID) else WAITING",
   reference_plan: "BUY ASK / SELL BID; SL outside latest confirmed H1 swing by 0.25×ATR14(M15); TP1=1R, TP2=2R (unchanged from v1). v2 adds structural context: invalidation = nearest S/R zone behind entry ± 0.25×ATR14(M15); target = near edge of next opposing S/R zone. Read-only analysis, never execution",
   operator: OPERATOR_RULES,
@@ -230,7 +230,7 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
   let setup: TradingSnapshot["setup"];
   if (op.regime === "INSUFFICIENT" || op.h1_context === "INSUFFICIENT") setup = { state: "NOT_EVALUABLE", reason: op.reason === "H4_TREND_INSUFFICIENT_HISTORY" ? "INSUFFICIENT_HISTORY" : "H1_CONTEXT_INSUFFICIENT_HISTORY" };
   else if (op.h1_context === "REVERSAL_CANDIDATE") setup = { state: "INVALID", reason: "H1_REVERSAL_CANDIDATE_AGAINST_H4" };
-  else if (op.setup_ready && side) setup = { state: "ACTIVE", reason: `${op.regime}_${side}_CONTEXT_LOCATION${op.regime === "TREND" ? "_RSI" : ""}` };
+  else if (op.setup_ready && side) setup = { state: "ACTIVE", reason: `${op.regime}_${side}_LOCATION${op.regime === "TREND" ? "_RSI" : ""}` };
   else setup = { state: "INACTIVE", reason: op.reason };
 
   let signal: TradingSnapshot["signal"];

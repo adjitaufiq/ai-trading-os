@@ -22,6 +22,8 @@ export interface CompactSummary {
   readonly regime: string | null;
   readonly h4: string | null;
   readonly h1_context: string | null;
+  readonly macro_direction: string | null;
+  readonly alignment: string | null;
   readonly location: string | null;
   readonly support: string | null;
   readonly resistance: string | null;
@@ -41,7 +43,7 @@ export function compactSummary(s: TradingSnapshot): CompactSummary {
     : { unavailable: s.reference_plan.reason.slice(0, 120) };
   return {
     symbol: s.symbol, as_of: s.as_of, signal: engineSignalOf(s), entry_state: s.entry.state, entry_reason: s.entry.reason.slice(0, 200),
-    regime: op?.regime ?? null, h4: op?.h4_primary ?? null, h1_context: op?.h1_context ?? null, location: op?.location ?? null,
+    regime: op?.regime ?? null, h4: op?.h4_primary ?? null, h1_context: op?.h1_context ?? null, macro_direction: op?.macro?.macro_direction ?? null, alignment: op?.alignment ?? null, location: op?.location ?? null,
     support: zone(op?.nearest_support), resistance: zone(op?.nearest_resistance),
     ema_confluence: op ? `${op.ema_confluence.zone}${op.ema_confluence.timeframe ? ` ${op.ema_confluence.timeframe}` : ""}` : null,
     rsi: { H1: ind(ev?.H1.rsi14), M15: ind(ev?.M15.rsi14), M5: ind(ev?.M5.rsi14) },
