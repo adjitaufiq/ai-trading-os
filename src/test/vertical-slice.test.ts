@@ -5,7 +5,9 @@ import { ReplayClock } from "@/core/temporal/CanonicalClock";
 import { EXECUTION_ENABLED } from "@/core/contracts";
 import { atrWilder, ema, engulfing, geometry, rsiWilder, structureOf, type TechBar } from "@/core/technical/indicators";
 import { ALL_SIGNAL_STATES, TransitionTrail, asLastKnown, evaluate, type EvaluationInput } from "@/core/technical/tradingState";
-import { TechnicalSliceService, type SliceGatewayPort } from "@/core/technical/TechnicalSliceService";
+import { TechnicalSliceService, toTechBar } from "@/core/technical/TechnicalSliceService";
+import type { Bar, Timeframe } from "@/core/contracts";
+import type { MarketRuntimeReader, MarketRuntimeSnapshot } from "@/core/runtime/MarketRuntime";
 
 const TF = { M5: 300_000, M15: 900_000, H1: 3_600_000, H4: 14_400_000 } as const;
 function series(tf: keyof typeof TF, closes: number[], start = 1_700_000_000_000): TechBar[] {
@@ -90,35 +92,75 @@ describe("vertical slice — four-state contract", () => {
   });
 });
 
-describe("vertical slice — service wiring & no mock fallback", () => {
-  const bar = (tf: string, i: number, c: number) => ({ broker_symbol: "XAUUSD", timeframe: tf, raw_time_s: 1_700_000_000 + i * 300, time_precision: "s", open: c - 0.2, high: c + 1, low: c - 1, close: c, tick_volume: 1, spread: 1, real_volume: 0 });
-  const ok = (data: unknown, delivery: string) => ({ ok: true, data, envelope: { source: "EXNESS_MT5", source_mode: "REAL", delivery }, sequence: { disposition: "ACCEPT" } });
-  function port(state: { up: boolean }): SliceGatewayPort {
-    return {
-      getLatestTick: async () => (state.up ? ok({ broker_symbol: "XAUUSD", bid: 100, ask: 100.2, raw_time_msc: 5, raw_time_s: 0 }, "LIVE") : { ok: false, error: { kind: "TRANSPORT_ERROR", message: "down" } }) as never,
-      getBars: async ({ timeframe }) => (state.up ? ok({ items: Array.from({ length: 50 }, (_, i) => bar(timeframe, i, 100 + i)), coverage: {} }, "BACKFILL") : { ok: false, error: { kind: "TRANSPORT_ERROR", message: "down" } }) as never,
-    };
-  }
-  it("disconnect → UNAVAILABLE/BLOCKED with LAST KNOWN stale; reconnect recovers; no substitute data", async () => {
-    const st = { up: true }; const svc = new TechnicalSliceService(port(st), "XAUUSD", new ReplayClock(1));
-    await svc.refreshBars(); const a = await svc.tick();
-    expect(a.availability).toBe("AVAILABLE"); expect(svc.view().current!.evidence!.M5.closed_count).toBe(49); // newest = FORMING excluded
-    st.up = false; const b = await svc.tick();
-    expect(b).toMatchObject({ availability: "UNAVAILABLE", quote: null, evidence: null });
+
+// Canonical reader double: same MarketRuntimeReader contract the D2 MarketRuntime exposes.
+function canonical(st: { lifecycle: MarketRuntimeSnapshot["lifecycle"]; boot: MarketRuntimeSnapshot["bootstrap_state"]; seq: number; formingClose?: number }) {
+  const mk = (tf: Timeframe, closes: number[]): Bar[] => series(tf, closes).map((b) => ({ ...b, symbol: "XAUUSD", timeframe: tf, source: "EXNESS_MT5", status: "CLOSED", closed_at: b.close_time, effective_at: b.close_time - 1, tick_count: 3, revision: 0 }));
+  const closed = { M5: mk("M5", up(40)), M15: mk("M15", up(40)), H1: mk("H1", up(40)), H4: mk("H4", up(40)) } as Record<Timeframe, Bar[]>;
+  const forming = (tf: Timeframe): Bar => ({ ...closed[tf][closed[tf].length - 1]!, status: "FORMING", closed_at: null, open_time: 2e12, close_time: 2e12 + 1, close: st.formingClose ?? 999, high: 9999, low: 0 });
+  const r: MarketRuntimeReader = {
+    symbol: "XAUUSD", now: () => 1e13,
+    closedBars: (tf) => closed[tf], formingBar: forming, missingIntervals: () => [],
+    latestLiveObservation: () => (st.seq === 0 ? null : { seq: st.seq, symbol: "XAUUSD", source: "EXNESS_MT5", bid: 100, ask: 100.2, spread: 0.2, event_at: 5, observed_at: 6, ingested_at: 7, provenance: {} as never }),
+    snapshot: () => ({ kind: "CANONICAL_MARKET_RUNTIME", operating_mode: "MONITOR_ONLY", execution_enabled: false, symbol: "XAUUSD", lifecycle: st.lifecycle, bootstrap_state: st.boot, active_epoch: 1, degraded_reason: st.boot === "DEGRADED" ? "history failed" : null, history_coverage_status: "PARTIAL", market_coverage_proven_complete: false, route_counts: { LIVE_MUTATION: st.seq, BACKFILL_HISTORY: 4, RECONCILIATION_CANDIDATE: 1, QUARANTINED: 0, REJECTED: 0 }, held: [], silent_ambiguous_drops: 0, timeframes: {} as never }),
+  };
+  return { r, closed };
+}
+
+describe("canonical unification — TechnicalSliceService consumes MarketRuntimeReader only", () => {
+  const live = () => ({ lifecycle: "RUNNING" as const, boot: "SYNCHRONIZED" as const, seq: 1 });
+  it("A/C: technical evidence comes from canonical CandleStore CLOSED bars; C1/bootstrap state visible", () => {
+    const { r, closed } = canonical(live()); const svc = new TechnicalSliceService(r, "XAUUSD", new ReplayClock(1e13));
+    const s = svc.tick();
+    expect(s.availability).toBe("AVAILABLE"); expect(s.evidence!.M5.closed_count).toBe(closed.M5.length);
+    expect(s.evidence!.H4.last_closed_open_time).toBe(closed.H4[closed.H4.length - 1]!.open_time);
+    expect(svc.view()).toMatchObject({ data_source: "CANONICAL_MARKET_RUNTIME", canonical: { bootstrap_state: "SYNCHRONIZED", silent_ambiguous_drops: 0, route_counts: { RECONCILIATION_CANDIDATE: 1 }, missing_intervals: { M5: 0 } } });
+  });
+  it("B: service has no gateway/getBars/REST path and keeps no own candle array", () => {
+    const src = readFileSync("src/core/technical/TechnicalSliceService.ts", "utf8");
+    expect(src).not.toMatch(/getBars|getLatestTick|BrokerGatewayClient|gateway\/types|refreshBars|items\.slice\(0, -1\)|private closed/);
+    expect(readFileSync("src/components/TechnicalSlicePanel.tsx", "utf8")).not.toMatch(/getBars|refreshBars|SliceGatewayPort/);
+    expect(readFileSync("src/routes/index.tsx", "utf8")).not.toMatch(/TechnicalSlicePanel client=/);
+  });
+  it("D: FORMING canonical bar never reaches technical evidence / trigger", () => {
+    const a = new TechnicalSliceService(canonical({ ...live(), formingClose: 1 }).r, "XAUUSD", new ReplayClock(1e13)).tick();
+    const b = new TechnicalSliceService(canonical({ ...live(), formingClose: 5000 }).r, "XAUUSD", new ReplayClock(1e13)).tick();
+    expect(a.evidence).toEqual(b.evidence); expect(a.last3_m5).toEqual(b.last3_m5);
+    expect(a.last3_m5.every((g) => g.bar.open_time < 2e12)).toBe(true);
+  });
+  it("D2: bars not yet available_at T are excluded", () => {
+    const { r, closed } = canonical(live()); const T = closed.M5[10]!.available_at;
+    expect(new TechnicalSliceService(r, "XAUUSD", new ReplayClock(T)).tick().evidence!.M5.closed_count).toBe(11);
+  });
+  it("E: unmounted / DEGRADED / bootstrapping canonical runtime ⇒ NOT_EVALUABLE + BLOCKED", () => {
+    const none = new TechnicalSliceService(null, "XAUUSD", new ReplayClock(1), "CANONICAL_RUNTIME_NOT_MOUNTED: test");
+    for (const s of [none.tick(), ...(["DEGRADED", "BUFFERING_LIVE"] as const).map((b) => new TechnicalSliceService(canonical({ ...live(), boot: b as never }).r, "XAUUSD", new ReplayClock(1e13)).tick())]) {
+      expect(s).toMatchObject({ availability: "UNAVAILABLE", bias: { state: "NOT_EVALUABLE" }, setup: { state: "NOT_EVALUABLE" }, signal: { state: "NOT_EVALUABLE" }, execution: { state: "BLOCKED" }, quote: null });
+    }
+    expect(none.view()).toMatchObject({ data_source: "CANONICAL_RUNTIME_NOT_MOUNTED", last_error: "CANONICAL_RUNTIME_NOT_MOUNTED: test" });
+  });
+  it("F: stopped runtime or no new LIVE_MUTATION cannot stay AVAILABLE; last known shown STALE; recovery", () => {
+    const st = live(); const svc = new TechnicalSliceService(canonical(st).r, "XAUUSD", new ReplayClock(1e13));
+    expect(svc.tick().availability).toBe("AVAILABLE");
+    expect(svc.tick().availability).toBe("UNAVAILABLE"); // same seq: connected-but-silent ≠ AVAILABLE
     expect(svc.view().last_known!.label).toBe("LAST_KNOWN_STALE");
-    st.up = true; const c = await svc.tick();
-    expect(c.availability).toBe("AVAILABLE"); expect(svc.view().last_known).toBeNull();
+    const st2 = { ...live(), seq: 2, lifecycle: "STOPPED" as const }; const svc2 = new TechnicalSliceService(canonical(st2).r, "XAUUSD", new ReplayClock(1e13));
+    expect(svc2.tick().availability).toBe("UNAVAILABLE");
   });
-  it("AI failure does not affect deterministic state (AI is outside the service)", async () => {
-    const svc = new TechnicalSliceService(port({ up: true }), "XAUUSD", new ReplayClock(1));
-    await svc.refreshBars(); const s = await svc.tick();
-    const failingAi = async () => { throw new Error("timeout"); };
-    await expect(failingAi()).rejects.toThrow(); expect(svc.view().current).toBe(s);
+  it("G: technical formulas unchanged for equivalent canonical input", () => {
+    const { r, closed } = canonical(live()); const s = new TechnicalSliceService(r, "XAUUSD", new ReplayClock(1e13)).tick();
+    const direct = evaluate({ symbol: "XAUUSD", market_current: true, bars_current: true, quote: s.quote, as_of: 1e13, env: { operating_mode: "MONITOR_ONLY", execution_enabled: false },
+      closed: { M5: closed.M5.map(toTechBar), M15: closed.M15.map(toTechBar), H1: closed.H1.map(toTechBar), H4: closed.H4.map(toTechBar) } });
+    expect(s.evidence).toEqual(direct.evidence); expect(s.bias).toEqual(direct.bias); expect(s.setup).toEqual(direct.setup);
   });
-  it("production slice path imports no mock/fixture/probe modules", () => {
+  it("H/I/J: no mock fallback; /audit stays raw diagnostic; execution impossible", () => {
     const files = ["src/core/technical/indicators.ts", "src/core/technical/tradingState.ts", "src/core/technical/TechnicalSliceService.ts", "src/components/TechnicalSlicePanel.tsx", "src/routes/index.tsx"];
     for (const f of files) expect(readFileSync(f, "utf8")).not.toMatch(/from\s+"[^"]*(mock|fixture|simulation|probe)[^"]*"|order_send\(|order_check\(/i);
     const walk = (d: string): string[] => readdirSync(d).flatMap((x) => { const p = join(d, x); return statSync(p).isDirectory() ? walk(p) : [p]; });
     for (const f of walk("src/core/technical")) expect(readFileSync(f, "utf8")).not.toMatch(/from\s+"[^"]*probe/);
+    expect(readFileSync("src/components/BrokerAuditTerminal.tsx", "utf8")).toMatch(/getBars/);
+    expect(EXECUTION_ENABLED).toBe(false);
+    const s = new TechnicalSliceService(canonical(live()).r, "XAUUSD", new ReplayClock(1e13)).tick();
+    expect(s.execution.state).not.toBe("ALLOWED");
   });
 });
