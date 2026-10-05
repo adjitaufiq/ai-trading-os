@@ -66,9 +66,10 @@ export interface HourSpec { c: number; w?: number; extra?: boolean }
 /** Ticks for hour k: open (prev close) → extreme → extreme → close. Deterministic; `extra` adds an in-range M5-only tick. */
 export function hourTicks(k: number, prevClose: number, h: HourSpec): Tick[] {
   const w = h.w ?? 0.5;
-  const hi = +(Math.max(prevClose, h.c) + w).toFixed(2), lo = +(Math.min(prevClose, h.c) - w).toFixed(2);
-  const base = T0 + k * HOUR;
   const up = h.c >= prevClose;
+  // Open-side extreme overshoots by w/2, close-side by w: avoids structural equal-high/low ties between adjacent bars.
+  const hi = +(up ? h.c + w : prevClose + w / 2).toFixed(2), lo = +(up ? prevClose - w / 2 : h.c - w).toFixed(2);
+  const base = T0 + k * HOUR;
   const t: Tick[] = [
     { ms: base + 1 * MIN, bid: prevClose },
     { ms: base + 15 * MIN, bid: up ? lo : hi },

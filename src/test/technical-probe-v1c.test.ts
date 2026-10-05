@@ -212,6 +212,7 @@ describe("v1c diagnostic timeline — WHEN the system may change its mind", () =
     ];
     x.live({ ms: T0 + 101 * HOUR + 1 * MIN, bid: P });
     x.live({ ms: T0 + 101 * HOUR + 30 * MIN, bid: P - 80 });
+    expect(relationIncludingForming(x.r, "H1")).toBe("BEARISH");
     rows.push({ label: "T3 forming H1 below EMA21", rep: technicalStateReport(x.r) });
     x.live({ ms: T0 + 101 * HOUR + 50 * MIN, bid: P - 80 });
     x.live({ ms: T0 + 102 * HOUR + 1 * MIN, bid: P - 80 }); // closes hour 101
@@ -222,7 +223,7 @@ describe("v1c diagnostic timeline — WHEN the system may change its mind", () =
     expect(rows[0]!.rep.timeframes.H1.ema_relation).toBe("INSUFFICIENT_DATA");
     expect(rows[1]!.rep.timeframes.H1.ema_relation).toBe("BULLISH");
     expect(rows[1]!.rep.timeframes.H4.ema_relation).toBe("INSUFFICIENT_DATA");
-    expect(rows[3]!.rep.timeframes.H1.history_status.forming_excluded).toBe(true);
+    expect(rows[3]!.rep.timeframes.H1.history_status.forming_policy).toBe("FORMING_NEVER_CONSUMED");
     expect(rows[4]!.rep.timeframes.H1.ema_relation).toBe("BEARISH");
     expect(rows[4]!.rep.timeframes.H4.ema_relation).toBe("BULLISH");
   });

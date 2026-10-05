@@ -1,4 +1,5 @@
 // TECHNICAL VALIDATION PROBE v1c — BASE TECHNICAL STATE. DIAGNOSTIC_PROBE, authority NONE. NOT STAGE 4.
+// State fields depend only on CLOSED bars with available_at <= as_of, so a snapshot at T never changes later.
 // Reads ONLY MarketRuntimeReader canonical CLOSED candles. Produces technical STATE, never a signal.
 // There is intentionally no BUY/SELL/entry/stop/target/size field anywhere in this module.
 import type { Timeframe } from "@/core/contracts";
@@ -43,7 +44,7 @@ export interface TimeframeTechnicalState {
   readonly timeframe: Timeframe;
   readonly as_of: number;
   readonly latest_closed_bar: { readonly open_time: number; readonly close_time: number; readonly closed_at: number; readonly available_at: number; readonly close: number } | null;
-  readonly history_status: { readonly status: "NO_CLOSED_BARS" | "AVAILABLE"; readonly closed_bars_used: number; readonly forming_excluded: boolean; readonly future_bars_excluded: number };
+  readonly history_status: { readonly status: "NO_CLOSED_BARS" | "AVAILABLE"; readonly closed_bars_used: number; readonly forming_policy: "FORMING_NEVER_CONSUMED"; readonly future_policy: "AVAILABLE_AT_LE_AS_OF" };
   readonly ema5: number | null;
   readonly ema21: number | null;
   readonly ema_relation: EmaRelation;
@@ -152,13 +153,12 @@ export function timeframeState(reader: MarketRuntimeReader, tf: Timeframe, asOf:
   if (ema5 === null || ema21 === null) reasons.push("EMA_WARMUP_UNSATISFIED");
   if (insideWindow) reasons.push("MISSING_INTERVAL_INSIDE_EMA21_WINDOW");
   const lb = bars[bars.length - 1];
-  const forming = reader.formingBar(tf);
 
   return Object.freeze<TimeframeTechnicalState>({
     kind: "DIAGNOSTIC_PROBE", authority: "NONE", state_version: TECHNICAL_STATE_VERSION, symbol: reader.symbol, timeframe: tf, as_of: asOf,
     latest_closed_bar: lb ? Object.freeze({ open_time: lb.open_time, close_time: lb.close_time, closed_at: lb.closed_at!, available_at: lb.available_at!, close: lb.close }) : null,
     history_status: Object.freeze({ status: bars.length ? "AVAILABLE" : "NO_CLOSED_BARS", closed_bars_used: bars.length,
-      forming_excluded: forming !== null, future_bars_excluded: all.length - eligibleBars.length }),
+      forming_policy: "FORMING_NEVER_CONSUMED", future_policy: "AVAILABLE_AT_LE_AS_OF" }),
     ema5, ema21, ema_relation: rel,
     atr14, atr_status: atr14 === null ? "WARMUP_UNSATISFIED" : "VALID",
     latest_causal_swing_high: h0 ? fact(h0) : null,
@@ -199,8 +199,6 @@ export function technicalStateReport(reader: MarketRuntimeReader, asOf: number =
   const warnings: string[] = [];
   for (const tf of V1C_TIMEFRAMES) {
     const s = tfs[tf];
-    if (s.history_status.forming_excluded) warnings.push(`${tf}: FORMING bar excluded (CLOSED_BAR policy)`);
-    if (s.history_status.future_bars_excluded) warnings.push(`${tf}: ${s.history_status.future_bars_excluded} CLOSED bar(s) available after as_of excluded`);
     if (s.missing_interval_status.count) warnings.push(`${tf}: ${s.missing_interval_status.count} missing interval(s), no candle fabricated`);
     if (s.structure_uses_swing_across_missing_interval) warnings.push(`${tf}: structure uses a swing whose window spans a missing interval`);
   }
