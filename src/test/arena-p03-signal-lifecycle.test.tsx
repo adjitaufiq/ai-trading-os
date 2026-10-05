@@ -14,7 +14,7 @@ import { resolveTrade } from "@/core/technical/backtest";
 const M5 = 300_000;
 const bar = (k: number, o: Partial<TechBar> = {}): TechBar => ({ open_time: k * M5, close_time: (k + 1) * M5, available_at: (k + 1) * M5, open: 100, high: 101, low: 99, close: 100.5, ...o });
 const memKV = (): KV => { const d = new Map<string, string>(); return { getItem: (k) => d.get(k) ?? null, setItem: (k, v) => { d.set(k, v); } }; };
-const evidence = { M5: {}, M15: { atr14: { status: "OK", value: 4 } }, H1: { structure: { swings: [{ kind: "LOW", price: 90 }, { kind: "HIGH", price: 120 }] } } } as never;
+const evidence = { M5: {}, M15: { atr14: { status: "OK", value: 4 }, structure: { swings: [{ kind: "LOW", price: 90 }, { kind: "HIGH", price: 120 }] } }, H1: { structure: { swings: [] } } } as never;
 const pat = (direction = "NONE", at: number | null = null) => ({ direction, bar_available_at: at, bar_open_time: at === null ? null : at - M5, bullish: [], bearish: [] });
 
 type OpArgs = { candidate?: "BUY" | "SELL" | null; trigK?: number; momentum?: string; m5?: ReturnType<typeof pat> };
@@ -92,9 +92,9 @@ describe("P0.3–P0.5 signal safety lifecycle", () => {
   });
 
   it("11. no initial R ⇒ chasing guard unavailable, no fabricated threshold", () => {
-    const noSwing = { ...(evidence as object), H1: { structure: { swings: [] } } } as never;
+    const noSwing = { ...(evidence as object), M15: { atr14: { status: "OK", value: 4 }, structure: { swings: [] } }, M5: { structure: { swings: [] } } } as never;
     const s0 = deriveSignalLifecycle(input(upto(10), 100, 100.2), null, ACTIVE, op({ candidate: "BUY" }), noSwing);
-    expect(s0.origin).toMatchObject({ initial_r: null, origin_sl: null, origin_plan_reason: "CONFIRMED_H1_SWING_LOW_UNAVAILABLE" });
+    expect(s0.origin).toMatchObject({ initial_r: null, origin_sl: null, origin_plan_reason: "LOCAL_SCALP_SWING_LOW_UNAVAILABLE" });
     expect(s0.chasing_guard).toBe("UNAVAILABLE_NO_INITIAL_R");
     expect(deriveSignalLifecycle(input(upto(10), 1000, 1000.2), s0, ACTIVE, op({ candidate: "BUY" }), noSwing).state).toBe("READY");
   });
