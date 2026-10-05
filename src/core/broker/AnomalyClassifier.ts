@@ -25,7 +25,7 @@ export interface ClassifierConfig {
    */
   maxReorderMs: number;
   /**
-   * Bounded positive cross-clock skew tolerance (source clock ahead of bridge, or bridge ahead of client).
+   * Positive cross-clock skew tolerance (finite) (source clock ahead of bridge, or bridge ahead of client).
    * Default 0 = strict ordering. Not an Exness value; an explicit operator policy.
    */
   maxSourceClockSkewMs?: number;
@@ -69,11 +69,11 @@ export class AnomalyClassifier {
     const srcAhead = e.event_at - e.observed_at;
     const bridgeAhead = e.observed_at - e.ingested_at;
     if (!finite || e.ask < e.bid || srcAhead > skew || bridgeAhead > skew) {
-      add("TEMPORAL_INVALID", "REJECT", `event_at <= observed_at <= ingested_at (skew bound ${skew}ms) or price sanity violated`);
+      add("TEMPORAL_INVALID", "REJECT", `event_at <= observed_at <= ingested_at (skew limit ${skew}ms) or price sanity violated`);
       return out;
     }
-    if (srcAhead > 0) add("SOURCE_CLOCK_SKEW", "ACCEPT_WITH_FLAG", `event_at ${srcAhead}ms ahead of observed_at (bound ${skew}ms)`);
-    if (bridgeAhead > 0) add("SOURCE_CLOCK_SKEW", "ACCEPT_WITH_FLAG", `observed_at ${bridgeAhead}ms ahead of ingested_at (bound ${skew}ms)`);
+    if (srcAhead > 0) add("SOURCE_CLOCK_SKEW", "ACCEPT_WITH_FLAG", `event_at ${srcAhead}ms ahead of observed_at (limit ${skew}ms)`);
+    if (bridgeAhead > 0) add("SOURCE_CLOCK_SKEW", "ACCEPT_WITH_FLAG", `observed_at ${bridgeAhead}ms ahead of ingested_at (limit ${skew}ms)`);
 
     switch (identity.dedup_class) {
       case "EXACT_TRANSPORT_DUPLICATE":

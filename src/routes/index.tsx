@@ -39,7 +39,7 @@ function Terminal() {
     }));
     return () => { for (const s of stops) s(); };
   }, [client, config]);
-  const xau = mounted.XAUUSD?.reader ?? null, btc = mounted.BTCUSD?.reader ?? null;
+  const xau = mounted["XAUUSD"]?.reader ?? null, btc = mounted["BTCUSD"]?.reader ?? null;
   // Recreated only when a reader identity changes (so transition trails survive status updates).
   const runtimes = useMemo(() => [{ symbol: "XAUUSD", reader: xau }, { symbol: "BTCUSD", reader: btc }], [xau, btc]);
   const unmountedReason = SYMBOLS.filter((s) => !mounted[s]?.reader).map((s) => `${s}: ${mounted[s]?.status ?? "PENDING"}`).join(" · ");

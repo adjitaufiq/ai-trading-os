@@ -95,7 +95,7 @@ describe("live runtime mounting", () => {
     const wsFactory = vi.fn();
     const stop = mountCanonicalRuntime({ client: fakeClient() as never, config: makeGatewayConfig({ httpBaseUrl: "https://a.example" }), wsFactory, symbol: "XAUUSD", now: () => 5_000_000, onChange: (m) => seen.push(m), create });
     await vi.waitFor(() => expect(rt.start).toHaveBeenCalled());
-    expect(create.mock.calls[0]![0]).toMatchObject({ wsFactory, classifier: RUNTIME_CLASSIFIER, binding: { broker_symbol: "XAUUSD" } });
+    expect((create.mock.calls as unknown as [Record<string, unknown>][])[0]![0]).toMatchObject({ wsFactory, classifier: RUNTIME_CLASSIFIER, binding: { broker_symbol: "XAUUSD" } });
     expect(rt.start).toHaveBeenCalledWith({ history_from: 5_000_000 - RUNTIME_POLICY.history_window_ms, history_to: 5_000_000 });
     expect(seen.at(-1)?.reader).toBe(reader);
     stop();
