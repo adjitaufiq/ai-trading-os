@@ -16,3 +16,4 @@
 - [ ] v1b — application-wiring validation PASS on hermetic transport; real-data validation pending (gateway unreachable, G2 open).
 - [ ] Real Vertical Slice v1 acceptance — code + 354 tests done; BLOCKED: gateway tunnel URL NXDOMAIN (needs new URL); canonical tick MarketRuntime mount blocked by G2 offset + WS deferred.
 - [ ] Canonical unification: TechnicalSliceService now reads MarketRuntimeReader only; BLOCKED mounting real runtime: G2 offset + real /v1/stream WS 404. G2 note: broker raw_time_s observed later than bridge_received_at (do not fix by offset).
+- [ ] Live dashboard runtime mounted (XAUUSD/BTCUSD, WSS, measured offset 0, skew limit 10s). BLOCKED on gateway contract: live /v1/stream frames carry capability "MARKET_DATA.TICK" but 3.0B-1 requires "MARKET_DATA.TICKS" → every LIVE frame is CLIENT_PROTOCOL_ERROR (surfaced as stream_protocol_errors). Fix on the Windows gateway, not the validator.
