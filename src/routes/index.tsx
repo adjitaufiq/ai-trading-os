@@ -39,11 +39,10 @@ function Terminal() {
     }));
     return () => { for (const s of stops) s(); };
   }, [client, config]);
-  const runtimes = useMemo(() => SYMBOLS.map((symbol) => ({ symbol, reader: mounted[symbol]?.reader ?? null })),
-    // recreate only when a reader identity changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mounted.XAUUSD?.reader, mounted.BTCUSD?.reader]);
-  const unmountedReason = SYMBOLS.map((s) => `${s}: ${mounted[s]?.status ?? "PENDING"}`).join(" · ");
+  const xau = mounted.XAUUSD?.reader ?? null, btc = mounted.BTCUSD?.reader ?? null;
+  // Recreated only when a reader identity changes (so transition trails survive status updates).
+  const runtimes = useMemo(() => [{ symbol: "XAUUSD", reader: xau }, { symbol: "BTCUSD", reader: btc }], [xau, btc]);
+  const unmountedReason = SYMBOLS.filter((s) => !mounted[s]?.reader).map((s) => `${s}: ${mounted[s]?.status ?? "PENDING"}`).join(" · ");
   const explain = useServerFn(explainTradingState);
   return <>
     <RealMarketTerminal client={client} />

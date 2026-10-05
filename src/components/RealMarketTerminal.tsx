@@ -113,6 +113,12 @@ export function RealMarketTerminal({ client, now = Date.now, pollMs = 1000 }: Re
           ? { value: r.data, failed: false, error: null }
           : { ...old, failed: true, error: errorOf(r) });
       } catch { if (active) setHealth((old) => ({ ...old, failed: true, error: "Gateway unreachable" })); }
+      try {
+        const t = await client.getTerminal();
+        if (active) setTerminal((old) => t.ok && t.envelope.source === "EXNESS_MT5" && t.envelope.source_mode === "REAL" && t.data.authority === "OBSERVATION_ONLY"
+          ? { value: t.data, failed: false, error: null }
+          : { ...old, failed: true, error: errorOf(t) });
+      } catch { if (active) setTerminal((old) => ({ ...old, failed: true, error: "Terminal status unreachable" })); }
       finally { busy = false; if (active) setHealthBusy(false); }
     };
     void poll();
