@@ -137,7 +137,7 @@ describe("P0.3–P0.5 signal safety lifecycle", () => {
     const NA = { status: "INSUFFICIENT_HISTORY" };
     const radarOp = { status: "CARI_BUY", reason: "x", ema_confluence: { zone: "NOT_NEAR", timeframe: null }, patterns: { M5: { bullish: [], bearish: [] }, M15: { bullish: [], bearish: [] } }, zones: { H4: [], H1: [], M15: [zone] }, scalp: { local_zones: [zone], M15: { ema21: NA, ema50: NA, atr14: NA, ema_location: "NOT_NEAR", ema_reaction: [] }, M5: { ema21: NA, ema50: NA, atr14: NA, ema_location: "NOT_NEAR", ema_reaction: [] } } } as never;
     const WAIT = { state: "WAIT" as const, reason: "SIGNAL_TTL_EXPIRED" };
-    const NOREF = { status: "NOT_AVAILABLE" as const, policy_version: "reference-plan-v2-swing-atr-plus-sr-context" as const, reason: "x" };
+    const NOREF = { status: "NOT_AVAILABLE" as const, policy_version: "reference-plan-v3-p0.6-local-swing-structural-clamp" as const, reason: "x" };
     const q = (b: number) => ({ bid: b, ask: b + 0.2, spread: 0.2, tick_time_ms: 1, observed_at: 1 });
     const a = deriveRadarPlan(WAIT, q(98), evidence, radarOp, NOREF), b = deriveRadarPlan(WAIT, q(98.5), evidence, radarOp, NOREF);
     expect(a).toMatchObject({ mode: "RADAR", status: "AVAILABLE" });

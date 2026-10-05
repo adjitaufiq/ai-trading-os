@@ -15,7 +15,7 @@ const op = (status: "CARI_BUY" | "CARI_SELL" | "HOLD", zones: ReturnType<typeof 
 }) as never;
 const q = (bid: number, ask: number) => ({ bid, ask, spread: ask - bid, tick_time_ms: 1, observed_at: 1 });
 const WAIT = { state: "WAIT" as const, reason: "NO_CLOSED_TRIGGER" };
-const NOREF = { status: "NOT_AVAILABLE" as const, policy_version: "reference-plan-v2-swing-atr-plus-sr-context" as const, reason: "WAIT" };
+const NOREF = { status: "NOT_AVAILABLE" as const, policy_version: "reference-plan-v3-p0.6-local-swing-structural-clamp" as const, reason: "WAIT" };
 
 const snap = (o: never, quote: ReturnType<typeof q>): TradingSnapshot => ({
   symbol: "BTCUSD", as_of: 1, label: "CURRENT", availability: "AVAILABLE", availability_reason: "OBSERVED", quote, evidence, last3_m5: [], engulfing: null,
