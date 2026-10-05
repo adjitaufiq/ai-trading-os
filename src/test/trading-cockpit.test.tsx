@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { TechnicalSlicePanel, cockpitSignal, referenceEntry } from "@/components/TechnicalSlicePanel";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { TechnicalSlicePanel, TradeActions, cockpitSignal, referenceEntry } from "@/components/TechnicalSlicePanel";
 import type { TradingSnapshot } from "@/core/technical/tradingState";
 
 const snapshot = (entry: TradingSnapshot["entry"]["state"]): TradingSnapshot => ({
@@ -32,7 +32,8 @@ describe("clean trading cockpit", () => {
     expect(screen.getByTestId("cockpit-XAUUSD")).toBeInTheDocument();
     expect(screen.queryByTestId("cockpit-BTCUSD")).not.toBeInTheDocument();
     expect(screen.queryByText(/CANONICAL_MARKET_RUNTIME|BACKFILL_HISTORY|LIVE_MUTATION|QUARANTINED|protocol errors|state transitions/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^(buy|sell|order)/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "BUY reference plan" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "SELL reference plan" })).toBeDisabled();
   });
   it("switches cockpit selection without rendering both technical cards", () => {
     const runtimes = [{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }, { symbol: "BTCUSD", reader: reader("BTCUSD", "WAIT") }];
@@ -44,5 +45,30 @@ describe("clean trading cockpit", () => {
   it("never fabricates SL/TP when policy is absent", () => {
     expect(snapshot("LONG_CANDIDATE").execution.state).toBe("BLOCKED");
     expect(snapshot("SHORT_CANDIDATE").execution.state).toBe("BLOCKED");
+  });
+  it("keeps both actions visible and disabled while HOLD", () => {
+    render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);
+    expect(screen.getByTestId("action-buy")).toBeDisabled();
+    expect(screen.getByTestId("action-sell")).toBeDisabled();
+    expect(screen.getByTestId("action-disabled-reason")).toHaveTextContent(/waiting|test/i);
+  });
+  it("enables only BUY and opens a read-only plan without execution", () => {
+    const brokerOrder = vi.fn();
+    render(<TradeActions signal="BUY" entry={101} reason="TEST" confirmations={["H4 bullish", "H1 bullish"]} />);
+    expect(screen.getByTestId("action-buy")).toBeEnabled();
+    expect(screen.getByTestId("action-sell")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("action-buy"));
+    expect(screen.getByRole("dialog")).toHaveTextContent("BUY reference plan");
+    expect(screen.getByTestId("no-order-status")).toHaveTextContent("MONITOR ONLY — NO ORDER SENT");
+    expect(screen.getByRole("dialog")).toHaveTextContent("POLICY PENDING");
+    expect(brokerOrder).not.toHaveBeenCalled();
+  });
+  it("enables only SELL and opens its read-only plan", () => {
+    render(<TradeActions signal="SELL" entry={100} reason="TEST" confirmations={["H4 bearish", "H1 bearish"]} />);
+    expect(screen.getByTestId("action-buy")).toBeDisabled();
+    expect(screen.getByTestId("action-sell")).toBeEnabled();
+    fireEvent.click(screen.getByTestId("action-sell"));
+    expect(screen.getByRole("dialog")).toHaveTextContent("SELL reference plan");
+    expect(screen.getByTestId("no-order-status")).toBeInTheDocument();
   });
 });
