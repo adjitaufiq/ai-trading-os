@@ -106,8 +106,17 @@ export class InMemoryIdentityStore implements IdentityStore {
  */
 export class ObservationIdentityRegistry {
   private readonly log: { occurrence: ObservationOccurrence; classification: IdentityClassification }[] = [];
+  /** Cumulative per-class counters (R7): unaffected by audit-log retention, so metrics never shrink. */
+  private readonly counts: Record<DedupClass, number> = {
+    EXACT_TRANSPORT_DUPLICATE: 0, PROBABLE_SOURCE_DUPLICATE: 0, AMBIGUOUS_COLLISION: 0, DISTINCT_OBSERVATION: 0, STALE_EPOCH_OCCURRENCE: 0,
+  };
+  private auditEvicted = 0;
 
-  constructor(private readonly store: IdentityStore = new InMemoryIdentityStore()) {}
+  /**
+   * @param maxAuditEntries optional R7 bound on the in-memory audit log. Trimming never happens while the
+   * store is pinned (active bootstrap/handoff), and every trimmed entry is counted (audit_evicted).
+   */
+  constructor(private readonly store: IdentityStore = new InMemoryIdentityStore(), private readonly maxAuditEntries: number | null = null) {}
 
   classify(o: ObservationOccurrence, activeEpoch: number | null): IdentityClassification {
     const id = observationId(o);
@@ -139,7 +148,22 @@ export class ObservationIdentityRegistry {
     }
     const frozen = Object.freeze({ ...c, related: Object.freeze([...c.related]) });
     this.log.push(Object.freeze({ occurrence: o, classification: frozen }));
+    this.counts[frozen.dedup_class]++;
+    this.trimAudit();
     return frozen;
+  }
+
+  /** Bounded audit retention; called on classify and after the owning operation unpins. */
+  trimAudit(): void {
+    if (this.maxAuditEntries === null || this.store.pinned) return;
+    while (this.log.length > this.maxAuditEntries) { this.log.shift(); this.auditEvicted++; }
+  }
+
+  get classCounts(): Readonly<Record<DedupClass, number>> {
+    return Object.freeze({ ...this.counts });
+  }
+  get auditEvictedCount(): number {
+    return this.auditEvicted;
   }
 
   get audit(): readonly { occurrence: ObservationOccurrence; classification: IdentityClassification }[] {
