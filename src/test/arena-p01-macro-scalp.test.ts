@@ -61,40 +61,33 @@ describe("ARENA v0.4 P0.1 — macro/scalp split", () => {
     expect(op.alignment).toBe("NEUTRAL_MACRO");
   });
 
-  it("H1 pullback/mixed alone does not hard-veto a valid local scalp candidate", () => {
-    // H4 UP; H1 last bars pulled back so the H1 context is no longer ALIGNED.
-    const h1c = [...up(56), 113, 112, 111.5, 111.2];
-    const H1 = series("H1", h1c);
-    const pre = operatorAnalysis({ M5: series("M5", up(40)), M15: series("M15", up(60)), H1, H4: series("H4", up(60)) }, 111.2);
-    expect(pre.h4_primary).toBe("UP");
-    expect(["PULLBACK_AGAINST_H4", "MIXED"]).toContain(pre.h1_context);
-    expect(pre.checks.context).toBe(false); // legacy flag: H1 not aligned
-    // Pick the price at the M15/H1 EMA confluence and give a CLOSED bullish trigger.
-    const price = (ema(H1, 21) as { value: number }).value;
-    const m5 = withLast(series("M5", up(40)), [120, 120.2, 118.8, 119], [118.9, 121.2, 118.7, 121]);
-    const op = operatorAnalysis({ M5: m5, M15: series("M15", up(60)), H1, H4: series("H4", up(60)) }, price);
-    if (op.checks.location && op.checks.rsi) {
-      expect(op.reason).not.toMatch(/NOT_RETURNING/);
-      expect(op.candidate).toBe("BUY");
-      expect(op.alignment).toBe("WITH_MACRO");
-      expect(op.setup_ready).toBe(true);
-    } else {
-      // Rejection may only come from LOCAL evidence or the retained RSI gate — never H1 alignment.
-      expect(op.reason).not.toMatch(/NOT_RETURNING/);
-    }
+  const range = (k: number) => Array.from({ length: k }, (_, i) => 100 + 2 * ZIG[i % 8]!);
+  const down = (k: number) => Array.from({ length: k }, (_, i) => 200 - i * 0.3 - ZIG[i % 8]!);
+  const trig = () => withLast(series("M5", up(40)), [120, 120.2, 118.8, 119], [118.9, 121.2, 118.7, 121]);
+
+  it("H1 MIXED alone does not hard-veto a valid local scalp candidate (pre-P0.1 this was H1_MIXED_NOT_RETURNING)", () => {
+    const M15 = series("M15", up(60));
+    const price = (ema(M15, 21) as { value: number }).value;
+    const s = evaluate(input({ M5: trig(), M15, H1: series("H1", range(60)), H4: series("H4", up(60)) }, price));
+    const op = s.operator!;
+    expect(op.h4_primary).toBe("UP");
+    expect(op.h1_context).toBe("MIXED");
+    expect(op.checks.context).toBe(false); // legacy flag still reports H1 not aligned
+    expect(op.candidate).toBe("BUY");
+    expect(op.alignment).toBe("WITH_MACRO");
+    expect(s.entry.state).toBe("LONG_CANDIDATE");
+    expect(s.execution.state).toBe("BLOCKED");
   });
 
-  it("H4 bearish + local BUY at support ⇒ COUNTER_MACRO (labelled, not hidden)", () => {
-    const down = (k: number) => Array.from({ length: k }, (_, i) => 200 - i * 0.3 - ZIG[i % 8]!);
-    const closed = { M5: series("M5", down(40)), M15: series("M15", down(60)), H1: series("H1", down(60)), H4: series("H4", down(60)) };
-    const probe = operatorAnalysis(closed, 0);
-    const support = probe.nearest_support ?? [...(probe.zones.H1 ?? []), ...(probe.zones.M15 ?? []), ...(probe.zones.H4 ?? [])].sort((a, b) => a.low - b.low)[0]!;
-    const op = operatorAnalysis(closed, support.high);
+  it("H4 bearish + local BUY at support with H1 pullback ⇒ COUNTER_MACRO candidate", () => {
+    const s = evaluate(input({ M5: trig(), M15: series("M15", up(60)), H1: series("H1", range(60)), H4: series("H4", down(60)) }, 100));
+    const op = s.operator!;
     expect(op.macro.macro_direction).toBe("BEARISH");
-    if (op.location === "AT_SUPPORT") {
-      expect(op.status).toBe("CARI_BUY");
-      expect(op.alignment).toBe("COUNTER_MACRO");
-    }
+    expect(op.h1_context).toBe("PULLBACK_AGAINST_H4");
+    expect(op.location).toBe("AT_SUPPORT");
+    expect(op.candidate).toBe("BUY");
+    expect(op.alignment).toBe("COUNTER_MACRO");
+    expect(compactSummary(s).alignment).toBe("COUNTER_MACRO");
   });
 
   it("no lookahead: future bars do not change analysis of the prefix; safety unchanged", () => {
