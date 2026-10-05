@@ -61,7 +61,23 @@ export function routeFor(disposition: AnomalyDisposition, delivery: BrokerEventE
  * Raw → normalize → classify ONCE → route. Only LIVE_MUTATION reaches the live sink
  * (e.g. a LiveCandleFanout). Every envelope, including rejected ones, is preserved in the audit log.
  */
+/** R7: pipeline owns anomaly/audit/staging state; bound applies only to clean, reconstructable records. */
+export interface PipelineRetention {
+  readonly maxAuditRecords: number;
+}
+export interface PipelineRetentionMetrics {
+  readonly retained: number;
+  readonly evicted_clean_total: number;
+  /** Flagged/quarantined/reconcile/rejected records are never evicted by the bound (audit tier). */
+  readonly audit_tier_retained: number;
+  readonly cumulative_by_route: Readonly<Record<FeedRoute, number>>;
+}
+
 export class BrokerFeedPipeline {
+  private evictedClean = 0;
+  private readonly routeCounts: Record<FeedRoute, number> = {
+    LIVE_MUTATION: 0, BACKFILL_HISTORY: 0, RECONCILIATION_CANDIDATE: 0, QUARANTINED: 0, REJECTED: 0,
+  };
   private readonly normalizer: BrokerNormalizer;
   private readonly classifier: AnomalyClassifier;
   private readonly log: AuditRecord[] = [];
@@ -73,6 +89,7 @@ export class BrokerFeedPipeline {
     clock: CanonicalClock,
     private readonly liveSink: (e: BrokerMarketEvent) => void,
     private readonly nonLive: NonLiveSinks = {},
+    private readonly retention: PipelineRetention | null = null,
   ) {
     this.normalizer = new BrokerNormalizer(spec, clock);
     this.classifier = new AnomalyClassifier(cfg);
@@ -96,6 +113,8 @@ export class BrokerFeedPipeline {
       canonical_seq: live ? this.seq : null,
     });
     this.log.push(record);
+    this.routeCounts[route]++;
+    this.enforceRetention();
     if (live) {
       this.seq++;
       this.liveSink(candidate);
@@ -105,6 +124,27 @@ export class BrokerFeedPipeline {
       this.nonLive.onReconcileCandidate?.(record);
     }
     return record;
+  }
+
+  private static isClean(r: AuditRecord): boolean {
+    return (r.route === "LIVE_MUTATION" || r.route === "BACKFILL_HISTORY") && r.anomalies.length === 0;
+  }
+
+  private enforceRetention(): void {
+    if (!this.retention) return;
+    let excess = this.log.length - this.retention.maxAuditRecords;
+    for (let i = 0; excess > 0 && i < this.log.length; ) {
+      if (BrokerFeedPipeline.isClean(this.log[i]!)) { this.log.splice(i, 1); this.evictedClean++; excess--; } else i++;
+    }
+  }
+
+  get retentionMetrics(): PipelineRetentionMetrics {
+    return Object.freeze({
+      retained: this.log.length,
+      evicted_clean_total: this.evictedClean,
+      audit_tier_retained: this.log.filter((r) => !BrokerFeedPipeline.isClean(r)).length,
+      cumulative_by_route: Object.freeze({ ...this.routeCounts }),
+    });
   }
 
   get audit(): readonly AuditRecord[] {
