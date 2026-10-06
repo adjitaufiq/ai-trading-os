@@ -1,0 +1,2 @@
+- M1B.9 regime engine is passive/diagnostic (authority NONE): consumes confirmed MarketStructure + injected ATR only, never computes ATR, never imports execution/risk/plan/signal, emits frozen classification + evidence strings with no direction/score/SL/TP/lot. Why: environment context ≠ decision.
+- Every threshold lives in REGIME_PARAMS and precedence in REGIME_RULES; any change bumps algorithmVersion and tests. Why: deterministic, versioned, testable.
