@@ -49,7 +49,7 @@ export class InMemoryEventStore {
       (q.to === undefined || e.createdAt <= q.to)).sort(order);
   }
 
-  getActiveEvents(symbol?: string): readonly MarketEvent[] { return this.queryEvents({ symbol, state: "ACTIVE" }); }
+  getActiveEvents(symbol?: string): readonly MarketEvent[] { return this.queryEvents(symbol === undefined ? { state: "ACTIVE" } : { symbol, state: "ACTIVE" }); }
 
   revisionCount(): number { return this.log.length; }
 

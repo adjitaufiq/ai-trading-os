@@ -78,6 +78,7 @@ export class MarketEventEngine {
       if ((d.type === "REGIME_CHANGE" || d.type === "HORIZON_CHANGE") && t && active(t)) {
         save(endEvent(this.store.getEvent(t.eventId)!, at, "RESOLVED")); resolves = t.eventId;
       }
+      if (t && active(t)) st.trackers.set(`${key}#${t.eventId}`, t); // keep older ACTIVE watch on its own lifecycle
       const e = save(createEvent({ symbol: o.symbol, type: d.type, timeframe: d.timeframe, at, context, evidence: d.evidence, subject: d.subject, resolvesEventId: resolves }));
       st.trackers.set(key, { eventId: e.eventId, createdIdx: idx, lastIdx: idx });
     }
