@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { RadarObservabilityPanel } from "./RadarObservabilityPanel";
 import type { SignalAlert, SignalAlertStore } from "@/lib/signalAlerts";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Activity, ArrowDownRight, ArrowUpRight, BrainCircuit, Check, Circle, Minus, ShieldCheck, X } from "lucide-react";
@@ -417,6 +418,7 @@ export function TechnicalSlicePanel({ runtimes, selectedSymbol, unmountedReason,
   }, [services, tickMs, journal, alerts]);
   const selected = services.find((service) => service.symbol === selectedSymbol) ?? null;
   return <section className="bg-background px-4 pb-8 sm:px-8" aria-label="Kokpit trading">
+    <RadarObservabilityPanel reader={runtimes.find((r) => r.symbol === selectedSymbol)?.reader ?? null} symbol={selectedSymbol} tickMs={tickMs} />
     <div className="mx-auto max-w-screen-2xl">{selected ? <Cockpit service={selected} explain={explain} store={journal} /> : <div className="border border-border bg-card p-4 text-sm text-muted-foreground">Menunggu pasar terpilih…</div>}</div>
   </section>;
 }
