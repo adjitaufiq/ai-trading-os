@@ -40,7 +40,7 @@ export function makeGatewayConfig(p: Partial<GatewayConfig> = {}): GatewayConfig
   const env = (import.meta as { env?: Record<string, string | undefined> }).env ?? {};
   const timeoutMs = p.timeoutMs ?? 5_000;
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new GatewayConfigError("timeoutMs must be > 0");
-  const httpBaseUrl = check(p.httpBaseUrl ?? env["VITE_GATEWAY_HTTP_URL"] ?? "http://127.0.0.1:8000", ["http:", "https:"]);
+  const httpBaseUrl = check(p.httpBaseUrl ?? (env["VITE_MT5_GATEWAY_URL"] || undefined) ?? env["VITE_GATEWAY_HTTP_URL"] ?? "http://127.0.0.1:8000", ["http:", "https:"]);
   const wsExplicit = p.wsBaseUrl ?? (env["VITE_GATEWAY_WS_URL"] || undefined);
   return Object.freeze({
     httpBaseUrl,
