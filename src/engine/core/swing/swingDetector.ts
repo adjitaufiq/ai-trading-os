@@ -58,10 +58,10 @@ export class SwingDetector {
     if (this.buf.length > window) this.buf.shift();
     if (this.buf.length < window) return [];
 
-    const pivot = this.buf[this.L];
+    const pivot = this.buf[this.L]!;
     const left = this.buf.slice(0, this.L);
     const right = this.buf.slice(this.L + 1);
-    const confirmedAt = right[right.length - 1].timestamp + TIMEFRAME_SECONDS[this.timeframe];
+    const confirmedAt = right[right.length - 1]!.timestamp + TIMEFRAME_SECONDS[this.timeframe];
     const out: SwingPoint[] = [];
 
     if (left.every((c) => pivot.high > c.high) && right.every((c) => pivot.high >= c.high)) {
