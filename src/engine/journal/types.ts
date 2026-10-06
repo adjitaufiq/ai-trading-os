@@ -1,4 +1,15 @@
 import type { FootprintSnapshot } from "../core/market/institutional-radar/types";
+import type { MarketRegimeType } from "../core/market/regime/types";
+import type { MarketApproach, TradingHorizon } from "../core/market/horizon/types";
+import type { EventReference } from "../signal/context";
+
+export interface JournalContextSnapshot {
+  readonly regime: MarketRegimeType | null;
+  readonly horizon: TradingHorizon | null;
+  readonly marketApproach: MarketApproach | null;
+  readonly footprintTags: readonly string[];
+  readonly eventReferences: readonly EventReference[];
+}
 // M6 — Trade journal & performance analytics contracts.
 // READ-ONLY analysis layer: never changes rules, params, risk, signals or history.
 
@@ -43,6 +54,8 @@ export interface JournalTrade {
   excursion?: ExcursionMetrics;
   /** M1B.8 evidence snapshot for M8 research; optional, descriptive only. */
   footprints?: FootprintSnapshot;
+  /** m2-context-v1 summary carried from the signal; descriptive only. */
+  readonly contextSnapshot?: JournalContextSnapshot;
 }
 
 export type SaveError = "DUPLICATE_TRADE_ID" | "INVALID_TRADE";

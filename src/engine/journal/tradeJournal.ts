@@ -1,6 +1,12 @@
 import { deepFreeze } from "../execution/executionSnapshot";
 import type { FootprintSnapshot } from "../core/market/institutional-radar/types";
 import type { PaperTrade } from "../execution/types";
+import { footprintTags, type MarketContextSnapshot } from "../signal/context";
+
+const toJournalContext = (m: MarketContextSnapshot) => ({
+  regime: m.regime?.regime ?? null, horizon: m.horizon?.recommendedHorizon ?? null, marketApproach: m.horizon?.marketApproach ?? null,
+  footprintTags: footprintTags(m.footprints), eventReferences: m.activeEvents.map((e) => ({ ...e })),
+});
 import type { ExcursionMetrics, JournalContext, JournalFilter, JournalTrade, SaveResult, TradeOutcome } from "./types";
 
 export const outcomeOf = (pnl: number): TradeOutcome => (pnl > 0 ? "WIN" : pnl < 0 ? "LOSS" : "BREAK_EVEN");
@@ -20,6 +26,7 @@ export function fromPaperTrade(t: PaperTrade, extra: { h1Phase: string; location
     closeReason: t.result.closeReason, durationSeconds: t.result.durationSeconds, context, decisionTrace: [...s.decisionTrace],
     openedAt: t.openedAt, closedAt: t.closedAt, ...(excursion ? { excursion } : {}),
     ...(footprints ? { footprints: { ...footprints } } : {}),
+    ...(s.marketContext ? { contextSnapshot: toJournalContext(s.marketContext) } : {}),
   };
 }
 

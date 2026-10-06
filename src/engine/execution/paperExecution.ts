@@ -42,6 +42,7 @@ export function createPaperTrade(i: CreateInput): CreateResult {
     signalSource: i.signalSource,
     decisionTrace: [...i.plan.trace.map((s) => `PLAN ${s.name}: ${s.result}`), ...i.risk.trace.map((s) => `RISK ${s.name}: ${s.result}`)],
     createdAt: i.now,
+    ...(i.plan.marketContext ? { marketContext: i.plan.marketContext } : {}),
   });
   const trade: PaperTrade = deepFreeze({
     id, state: "PENDING", snapshot, fill, contract: { ...i.contract }, accountEquity: i.accountEquity,

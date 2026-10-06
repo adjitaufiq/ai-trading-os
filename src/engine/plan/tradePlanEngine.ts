@@ -24,6 +24,7 @@ export function buildTradePlan(i: PlanInput): TradePlan {
     atrM15: i.atrM15, createdAt: i.now, policyVersion: PLAN_POLICY_VERSION,
     audit: Object.freeze({ executable: false, orderSent: false, lotCalculated: false, mode: "PLAN_ONLY" }) as TradePlan["audit"],
     trace,
+    ...(s.marketContext ? { marketContext: s.marketContext } : {}),
   } as const;
   const hold = (holdReason: HoldReason, extra: Partial<TradePlan> = {}): TradePlan =>
     Object.freeze({ ...base, status: "HOLD", holdReason, sl: null, tp: null, riskDistance: null, rewardDistance: null, rr: null, slSource: null, tpSource: null, ...extra });
