@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuditRouteImport } from './routes/audit'
+import { Route as Mt5RouteImport } from './routes/mt5'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,31 +23,40 @@ const AuditRoute = AuditRouteImport.update({
   path: '/audit',
   getParentRoute: () => rootRouteImport,
 } as any)
+const Mt5Route = Mt5RouteImport.update({
+  id: '/mt5',
+  path: '/mt5',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
+  '/mt5': typeof Mt5Route
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
+  '/mt5': typeof Mt5Route
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
+  '/mt5': typeof Mt5Route
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/audit'
+  fullPaths: '/' | '/audit' | '/mt5'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/audit'
-  id: '__root__' | '/' | '/audit'
+  to: '/' | '/audit' | '/mt5'
+  id: '__root__' | '/' | '/audit' | '/mt5'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuditRoute: typeof AuditRoute
+  Mt5Route: typeof Mt5Route
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +75,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuditRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/mt5': {
+      id: '/mt5'
+      path: '/mt5'
+      fullPath: '/mt5'
+      preLoaderRoute: typeof Mt5RouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuditRoute: AuditRoute,
+  Mt5Route: Mt5Route,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
