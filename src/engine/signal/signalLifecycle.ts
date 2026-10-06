@@ -33,8 +33,8 @@ export function createSetup(
     biasContext: biasContextLabel(input.bias),
     expiryTimestamp: m5.timestamp + P.SIGNAL_TTL_M5_BARS * P.M5_SECONDS,
     snapshotPrice: price,
-    // Observational only: captured at the creation bar, attached AFTER all decisions.
-    ...(context ? { marketContext: captureMarketContext(context, m5.timestamp) } : {}),
+    // Observational only: captured at decision time (bar close = input.now), attached AFTER all decisions.
+    ...(context ? { marketContext: captureMarketContext(context, input.now) } : {}),
   });
   return { setup, trace: ev.trace };
 }
