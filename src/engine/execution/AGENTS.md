@@ -1,0 +1,1 @@
+- M5 paper execution (src/engine/execution) opens only on M4 APPROVED, freezes snapshot (entry/SL/TP/lot/risk/trace) at creation, exits only on CLOSED candles with SL-first on same-bar conflict, and never imports broker/gateway. Why: simulation must not become an order path or rewrite decisions.
