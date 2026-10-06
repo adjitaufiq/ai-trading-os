@@ -148,7 +148,7 @@ function canonical(st: { lifecycle: MarketRuntimeSnapshot["lifecycle"]; boot: Ma
   const forming = (tf: Timeframe): Bar => ({ ...closed[tf][closed[tf].length - 1]!, status: "FORMING", closed_at: null, open_time: 2e12, close_time: 2e12 + 1, close: st.formingClose ?? 999, high: 9999, low: 0 });
   const r: MarketRuntimeReader = {
     symbol: "XAUUSD", now: () => 1e13,
-    closedBars: (tf) => closed[tf], formingBar: forming, missingIntervals: () => [],
+    closedBars: (tf) => closed[tf], formingBar: forming, missingIntervals: () => [], radarSnapshot: () => null, radarHealth: () => ({ status: "INITIALIZING", lastSuccessfulEvaluation: 0, validationMode: "SYNTHETIC" }),
     latestLiveObservation: () => (st.seq === 0 ? null : { seq: st.seq, symbol: "XAUUSD", source: "EXNESS_MT5", bid: 100, ask: 100.2, spread: 0.2, event_at: 5, observed_at: 6, ingested_at: 7, provenance: {} as never }),
     snapshot: () => ({ kind: "CANONICAL_MARKET_RUNTIME", operating_mode: "MONITOR_ONLY", execution_enabled: false, symbol: "XAUUSD", lifecycle: st.lifecycle, bootstrap_state: st.boot, active_epoch: 1, degraded_reason: st.boot === "DEGRADED" ? "history failed" : null, history_coverage_status: "PARTIAL", market_coverage_proven_complete: false, route_counts: { LIVE_MUTATION: st.seq, BACKFILL_HISTORY: 4, RECONCILIATION_CANDIDATE: 1, QUARANTINED: 0, REJECTED: 0 }, held: [], silent_ambiguous_drops: 0, stream_protocol_errors: 0, last_stream_error: null, timeframes: {} as never }),
   };

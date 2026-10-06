@@ -14,6 +14,8 @@ import { BootstrapCoordinator, type BootstrapSnapshot, type BootstrapState } fro
 import { ObservationIdentityRegistry, type ObservationOccurrence } from "../broker/identity/ObservationIdentity";
 import { CandleStore, type CandleStoreMetrics } from "../candles/CandleStore";
 import { detectMissingIntervals, type MissingInterval } from "../candles/MissingInterval";
+import { RadarRuntimeService } from "../radar/RadarRuntimeService";
+import type { RadarHealth, RadarSnapshot } from "../radar/types";
 import type { MarketDataHandlers, MarketDataStream } from "../broker/gateway/BrokerGatewayClient";
 import type {
   BridgeHealth, BridgeTick, ClientTickObservation, GatewayResult, MarketDataSubscription, TickHistoryRequest, WireHistoryResult,
@@ -83,6 +85,9 @@ export interface MarketRuntimeReader {
   brokerHistoryBars?(tf: Timeframe): readonly BrokerHistoryBar[];
   /** event_at of the first LIVE_MUTATION; canonical bars opening before it may be partial. */
   firstLiveEventAt?(): number | null;
+  /** Frozen radar-v1 read model, recomputed only on CLOSED M5 bars (authority NONE). Null until warmed up. */
+  radarSnapshot(): Readonly<RadarSnapshot> | null;
+  radarHealth(): Readonly<RadarHealth>;
   now(): number;
 }
 
@@ -118,6 +123,7 @@ export class MarketRuntime {
   private lastStreamError: string | null = null;
   private readonly maxHeld = 1000;
   readonly reader: MarketRuntimeReader;
+  private readonly radar: RadarRuntimeService;
 
   constructor(private readonly o: MarketRuntimeOptions) {
     const sym = o.binding.canonical_symbol;
@@ -127,6 +133,9 @@ export class MarketRuntime {
       this.stores[tf] = new CandleStore(sym, tf, o.maxClosedBarsPerTimeframe);
       this.stores[tf].attach(this.fanout.aggregators[tf]);
     }
+    this.radar = new RadarRuntimeService(sym, o.spec.origin === "BROKER_REPORTED" ? { mode: "REAL", provider: "EXNESS_MT5", feedId: o.binding.broker_symbol } : { mode: "SYNTHETIC", feedId: o.binding.broker_symbol });
+    // radar evaluates on CLOSED M5 only (after the store has appended it); forming emissions are ignored
+    this.fanout.aggregators.M5.onBar((b) => { if (b.status === "CLOSED") this.radar.onClosedM5(b, (tf) => this.stores[tf].closed, o.clock.now()); });
     const count = (r: AuditRecord) => { this.routeCounts[r.route]++; };
     this.pipeline = new BrokerFeedPipeline(o.spec, o.classifier, o.clock, (e) => { this.fanout.ingest(e); this.lastLive = e; if (this.firstLiveAt === null) this.firstLiveAt = e.event_at; });
     const pipe = this.pipeline;
@@ -282,6 +291,8 @@ export class MarketRuntime {
       latestLiveObservation: () => self.lastLive,
       brokerHistoryBars: (tf) => self.history[tf],
       firstLiveEventAt: () => self.firstLiveAt,
+      radarSnapshot: () => self.radar.snapshot(),
+      radarHealth: () => self.radar.health(self.o.clock.now()),
       missingIntervals(tf) {
         const c = closed(tf);
         if (c.length < 2) return Object.freeze([]);
