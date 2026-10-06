@@ -34,8 +34,8 @@ describe("clean trading cockpit", () => {
     expect(screen.getByTestId("cockpit-XAUUSD")).toBeInTheDocument();
     expect(screen.queryByTestId("cockpit-BTCUSD")).not.toBeInTheDocument();
     expect(screen.queryByText(/CANONICAL_MARKET_RUNTIME|BACKFILL_HISTORY|LIVE_MUTATION|QUARANTINED|protocol errors|state transitions/i)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "BUY simulasi" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "SELL simulasi" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "BUY simulasi" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "SELL simulasi" })).toBeDisabled();
   });
   it("switches cockpit selection without rendering both technical cards", () => {
     const runtimes = [{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }, { symbol: "BTCUSD", reader: reader("BTCUSD", "WAIT") }];
@@ -49,27 +49,29 @@ describe("clean trading cockpit", () => {
     expect(snapshot("SHORT_CANDIDATE").execution.state).toBe("BLOCKED");
     expect(snapshot("LONG_CANDIDATE").reference_plan.status).toBe("NOT_AVAILABLE");
   });
-  it("keeps both paper actions clickable and unhighlighted while HOLD", () => {
+  it("locks both paper actions and directional styling while HOLD", () => {
     render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} store={new PaperJournalStore(null)} />);
-    expect(screen.getByTestId("action-buy")).toBeEnabled();
-    expect(screen.getByTestId("action-sell")).toBeEnabled();
+    expect(screen.getByTestId("action-buy")).toBeDisabled();
+    expect(screen.getByTestId("action-sell")).toBeDisabled();
     expect(screen.getByTestId("action-buy")).toHaveAttribute("data-highlighted", "false");
-    expect(screen.getByTestId("action-disabled-reason")).toHaveTextContent(/SIMULASI — TIDAK ADA ORDER NYATA/);
+    expect(screen.getByTestId("action-sell")).toHaveAttribute("data-highlighted", "false");
+    expect(screen.getByTestId("action-disabled-reason")).toHaveTextContent(/OBSERVE ONLY/);
+    fireEvent.click(screen.getByTestId("action-buy"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
-  it("BUY ticket on HOLD uses ASK, is labelled manual, and only calls the local paper callback", () => {
+  it("HOLD cannot open or confirm a paper ticket", () => {
     const onConfirm = vi.fn();
     render(<TradeActions symbol="XAUUSD" signal="HOLD" quote={{ bid: 100, ask: 101 }} reason="TEST" confirmations={[]} onConfirm={onConfirm} />);
     fireEvent.click(screen.getByTestId("action-buy"));
-    expect(screen.getByTestId("ticket-entry")).toHaveTextContent("101.000");
-    expect(screen.getByTestId("manual-label")).toHaveTextContent("MANUAL SIMULATION — ENGINE SIGNAL: HOLD");
-    expect(screen.getByTestId("no-order-status")).toHaveTextContent("SIMULASI — TIDAK ADA ORDER NYATA");
-    fireEvent.click(screen.getByTestId("confirm-paper"));
-    expect(onConfirm).toHaveBeenCalledWith("BUY");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(onConfirm).not.toHaveBeenCalled();
   });
   it("highlights BUY on a BUY signal and shows the same-side plan", () => {
     render(<TradeActions signal="BUY" quote={{ bid: 100, ask: 101 }} plan={{ side: "BUY", sl: 98, tp1: 104, tp2: 107, rr: "TP1 1:1 · TP2 1:2" }} reason="TEST" confirmations={["H4 bullish"]} />);
     expect(screen.getByTestId("action-buy")).toHaveAttribute("data-highlighted", "true");
     expect(screen.getByTestId("action-sell")).toHaveAttribute("data-highlighted", "false");
+    expect(screen.getByTestId("action-buy")).toBeEnabled();
+    expect(screen.getByTestId("action-sell")).toBeDisabled();
     fireEvent.click(screen.getByTestId("action-buy"));
     expect(screen.getByRole("dialog")).toHaveTextContent("107.000");
     expect(screen.queryByTestId("manual-label")).not.toBeInTheDocument();
@@ -83,11 +85,19 @@ describe("clean trading cockpit", () => {
   });
   it("uses concise Indonesian labels on the main cockpit", () => {
     render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);
-    expect(screen.getByText(/Sinyal saat ini/i)).toBeInTheDocument();
+    expect(screen.getByText(/Signal State/i)).toBeInTheDocument();
     expect(screen.getByText("Rencana acuan")).toBeInTheDocument();
     expect(screen.getByText("Konfirmasi teknikal")).toBeInTheDocument();
     expect(screen.getByText("Alasan")).toBeInTheDocument();
     expect(screen.getByText("Penjelasan AI")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Jelaskan" })).toBeInTheDocument();
+  });
+  it("renders market, setup, and execution as three separate layers", () => {
+    render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);
+    expect(screen.getByTestId("layer-market-condition")).toHaveTextContent("Market Condition");
+    expect(screen.getByTestId("layer-setup-condition")).toHaveTextContent("Setup Condition");
+    expect(screen.getByTestId("layer-execution-state")).toHaveTextContent("Execution State");
+    expect(screen.getByTestId("layer-execution-state")).toHaveTextContent("NOT READY");
+    expect(screen.getByTestId("radar-state")).toHaveTextContent("NO SETUP");
   });
 });
