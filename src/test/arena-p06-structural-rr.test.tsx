@@ -107,7 +107,7 @@ describe("P0.6 actionable veto, radar, alerts", () => {
     const r = deriveRadarPlan({ state: "WAIT", reason: "NO_TRIGGER" }, { bid: 100, ask: 100.2, spread: 0.2, tick_time_ms: 1, observed_at: 1 }, ev([sw("HIGH", 105)]), o, { status: "NOT_AVAILABLE", policy_version: "reference-plan-v3-p0.6-local-swing-structural-clamp", reason: "W" });
     expect(r).toMatchObject({ mode: "RADAR", status: "AVAILABLE", economics_status: "BAD_RR", reason: BAD_RR_REASON, tp1: null, anchor_timeframe: "M15" });
     render(<RadarPlanView radar={r} signal="HOLD" entry={null} />);
-    expect(screen.getByTestId("radar-status")).toHaveTextContent("HOLD · BAD R:R — S/R TERLALU DEKAT");
+    expect(screen.getByTestId("radar-status")).toHaveTextContent("NO SETUP · BAD R:R");
     expect(screen.getByTestId("econ-badge")).toHaveTextContent("BAD R:R");
     expect(screen.getByTestId("raw-targets")).toHaveTextContent("RAW teoretis");
     expect(screen.getByTestId("sl-source")).toHaveTextContent("M15 swing high + 0.25 ATR");
