@@ -3,7 +3,7 @@
 // Deterministic, no indicators, no EMA, no signals.
 
 import type {
-  BiasAlignment, MarketBias, MarketPhase, TimeframeContext,
+  BiasAlignment, MarketBias, MarketBiasState, MarketPhase, TimeframeContext,
 } from "./types";
 import { BIAS_RULES } from "./types";
 import type { MarketStructure, StructureShiftType, TrendStructure } from "../swing/types";
@@ -17,8 +17,8 @@ export function deriveBiasFromStructure(trend: TrendStructure): MarketBias {
 
 /**
  * MSS direction helper: does the confirmed structure shift point back toward
- * the H4 macro bias? e.g. H4 BULLISH + H1 LH_LL + BULLISH_MSS = pullback
- * exhausted, structure transitioning back to the macro direction → REVERSAL.
+ * the given bias? e.g. H4 BULLISH + H1 LH_LL + BULLISH_MSS = pullback
+ * exhausted, H1 structure transitioning back to the macro direction → REVERSAL.
  */
 function mssPointsTowardBias(shift: StructureShiftType, bias: MarketBias): boolean {
   if (shift === "BULLISH_MSS") return bias === "BULLISH";
@@ -63,7 +63,7 @@ export function computeBiasState(
   h4Structure: MarketStructure,
   h1Structure: MarketStructure,
   asOf: number,
-): MarketBiasStateContract {
+): MarketBiasState {
   const h4Bias = deriveBiasFromStructure(h4Structure.trend);
   const h1Bias = deriveBiasFromStructure(h1Structure.trend);
   const h1Phase = derivePhase(h4Bias, h1Bias, h1Structure);
@@ -83,28 +83,14 @@ export function computeBiasState(
     description: describeTf(h1Bias, h1Phase, h1Structure.trend),
   };
 
-  const alignment = deriveAlignment(h4Bias, h1Bias);
-
   return {
     symbol,
     overallBias: h4Bias,
     h4,
     h1,
-    alignment,
+    alignment: deriveAlignment(h4Bias, h1Bias),
     lastUpdated: Math.max(h4Structure.lastUpdatedTimestamp, h1Structure.lastUpdatedTimestamp, asOf),
   };
 }
 
-// Local structural type (keeps the module self-contained without a circular import of ./types).
-interface MarketBiasStateContract {
-  symbol: string;
-  overallBias: MarketBias;
-  h4: TimeframeContext;
-  h1: TimeframeContext;
-  alignment: BiasAlignment;
-  lastUpdated: number;
-}
-
-// Re-export so consumers import from one place.
-export type { MarketBiasStateContract as MarketBiasState } from "./types";
 export { BIAS_RULES };
