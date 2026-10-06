@@ -31,3 +31,8 @@
 
 - [x] M1B.8 Institutional Footprint Radar + optional footprints on M2 SignalSetup / M6 JournalTrade (passive evidence)
 - [ ] M8 Optimization Laboratory (blocked: awaiting user verification of M1B.8)
+
+## Persistent engine host
+- [x] Engine host (VPS): runtime per symbol, paper snapshot + append-only journal on disk, supervisor remount, GET-only API + SSE, Windows auto-start script; dashboard Radar/Account attach with BROWSER SESSION fallback. Verified booting against live gateway (XAUUSD/BTCUSD ONLINE, radar ACTIVE in <40s).
+- [ ] Install on VPS + second tunnel for port 8090 + set VITE_ENGINE_HOST_URL (blocked: needs user on VPS).
+- [ ] TRADE/ANALYSIS technical cards still computed in the browser (re-warm from broker history on refresh); host-side technical view not yet exposed.
