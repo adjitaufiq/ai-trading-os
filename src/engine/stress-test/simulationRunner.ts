@@ -29,6 +29,9 @@ import type { AccountProfile } from "../risk/types";
 import { evaluateSetup, type EvaluatorInput } from "../signal/signalEvaluator";
 import { createSetup, isTerminal, updateSetup } from "../signal/signalLifecycle";
 import type { SignalSetup } from "../signal/types";
+import { defaultSymbolRegistry } from "../../core/broker/SymbolRegistry";
+import { isCalendarGap } from "../../core/temporal/MarketSessionResolver";
+import { profileOf } from "./assetProfiles";
 import { ContextObserver, emptyContextCounters } from "./contextObserver";
 import { buildContextReport } from "./contextAnalytics";
 import type { ContextCounters } from "./types";
@@ -57,6 +60,8 @@ interface Shared {
   streak: LossStreak;
   minEquity: number;
   ctx: ContextCounters | null;
+  calendarGaps: number;
+  lastTs: number;
 }
 
 interface OpenCtx {
@@ -77,6 +82,10 @@ function account(s: Shared): AccountProfile {
 /** Run one continuous path; stops when the shared trade target is reached. */
 function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: string }[]): void {
   const sym = s.cfg.symbol;
+  const assetClass = defaultSymbolRegistry.get(sym)?.assetClass;
+  // calendar authority for scheduled closures only (XAU weekend); 24/7 assets never get an exemption
+  const gapOpts = assetClass ? { isExpectedGap: (a: number, b: number, tf: Timeframe) => { const ok = isCalendarGap(a, b, TIMEFRAME_SECONDS[tf], assetClass); if (ok && tf === "M5") s.calendarGaps++; return ok; } } : undefined;
+  const broker = profileOf(sym)?.broker ?? E.BROKER;
   const m5: ArenaCandle[] = [];
   const htf: Record<string, ArenaCandle[]> = { M15: [], H1: [], H4: [] };
   const bucket: Record<string, RawGatewayPayload | null> = { M15: null, H1: null, H4: null };
@@ -96,11 +105,11 @@ function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: s
 
   for (const b of bars) {
     if (s.journal.getAll().length >= s.target && !open && !pending.length) return;
-    const norm = validateAndNormalize(b.raw, "M5", m5.at(-1));
+    const norm = validateAndNormalize(b.raw, "M5", m5.at(-1), gapOpts);
     if (!norm.isValid || !norm.candle) continue; // invalid/gap: never fabricated
     const c: ArenaCandle = Object.freeze({ ...norm.candle, isClosed: true });
     m5.push(c); if (m5.length > E.EMA_WINDOW_M5) m5.shift();
-    s.counters.barsProcessed++;
+    s.counters.barsProcessed++; s.lastTs = c.timestamp;
     const now = c.timestamp + 300;
 
     // aggregate HTF; a bar is emitted only once its bucket has fully closed
@@ -112,7 +121,7 @@ function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: s
         ? { ...cur, high: Math.max(cur.high!, c.high), low: Math.min(cur.low!, c.low), close: c.close, spread: c.spread }
         : { symbol: sym, timeframe: tf, time: start, open: c.open, high: c.high, low: c.low, close: c.close, volume: 0, spread: c.spread, source: "MOCK" };
       if (now % sec === 0) {
-        const n = validateAndNormalize(bucket[tf]!, tf, htf[tf]!.at(-1));
+        const n = validateAndNormalize(bucket[tf]!, tf, htf[tf]!.at(-1), gapOpts);
         if (n.isValid && n.candle) {
           const hc = Object.freeze({ ...n.candle, isClosed: true });
           htf[tf]!.push(hc); if (htf[tf]!.length > E.M15_WINDOW) htf[tf]!.shift();
@@ -200,7 +209,7 @@ function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: s
     const spreadHist = m5.slice(-E.SPREAD_HISTORY).map((x) => x.spread);
     const normalSpread = spreadHist.reduce((a, x) => a + x, 0) / spreadHist.length;
     const acct = account(s);
-    const risk = evaluateRisk(plan, acct, { symbol: sym, ...E.BROKER }, {
+    const risk = evaluateRisk(plan, acct, { symbol: sym, ...broker }, {
       nowSec: now, positions: [], exposureLimits: { maxSymbolRiskUSD: s.equity * 0.02, maxTotalRiskUSD: s.equity * 0.05 },
       spread: { current: c.spread, history: spreadHist }, quote: { ask, bid, maxSlippage: E.MAX_SLIPPAGE },
       lossStreak: s.streak, strictRiskMode: true,
@@ -209,7 +218,7 @@ function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: s
     s.counters.riskApproved++;
     const pt = createPaperTrade({
       plan, risk, marketPrice: plan.direction === "BUY" ? bid : ask, sim: { spread: c.spread, slippage: 0, maxSlippage: E.MAX_SLIPPAGE, latencyMs: 0, latencyDriftPerMs: 0 },
-      contract: { tickSize: E.BROKER.tickSize, tickValue: E.BROKER.tickValue }, accountEquity: s.equity,
+      contract: { tickSize: broker.tickSize, tickValue: broker.tickValue }, accountEquity: s.equity,
       signalSource: { bias: `H4_${bias.h4.bias}_H1_${bias.h1.phase}`, location: loc.context.priceLocation, trigger: reaction?.pattern ?? "NONE", reactionQuality: reaction?.quality ?? "NONE", emaContext: ema.context.actions.join(",") || ema.context.pricePosition },
       now,
     });
@@ -243,7 +252,7 @@ export function runStressTest(partial: Partial<StressTestConfig>): StressRunResu
     cfg, target, journal: new TradeJournal(), autopsies: [], counters, scenarioOf: new Map(), setupIds: new Set(),
     terminalRevivals: 0, riskViolations: 0, equity: cfg.initialEquity, peak: cfg.initialEquity, dayKey: -1,
     ctx: cfg.captureContext === false ? null : emptyContextCounters(),
-    dayStartEquity: cfg.initialEquity, streak: { consecutiveLosses: 0, lastLossAt: null }, minEquity: cfg.initialEquity,
+    calendarGaps: 0, lastTs: 0, dayStartEquity: cfg.initialEquity, streak: { consecutiveLosses: 0, lastLossAt: null }, minEquity: cfg.initialEquity,
   };
   const budget = cfg.maxBars ?? target * E.BAR_BUDGET_PER_TRADE;
   const seed = cfg.seed ?? 1;
@@ -255,8 +264,11 @@ export function runStressTest(partial: Partial<StressTestConfig>): StressRunResu
   } else {
     const seeds = mulberry32(seed);
     // independent price paths, but the clock keeps moving forward (time never rewinds between paths)
+    let nextTs = E.START_TS;
     for (let used = 0; used < budget && s.journal.getAll().length < target; used += E.MONTE_CARLO_PATH_BARS) {
-      runPath(s, generatePath(cfg.symbol, Math.floor(seeds() * 2 ** 31), Math.min(E.MONTE_CARLO_PATH_BARS, budget - used), undefined, E.START_TS + used * 300));
+      const path = generatePath(cfg.symbol, Math.floor(seeds() * 2 ** 31), Math.min(E.MONTE_CARLO_PATH_BARS, budget - used), undefined, nextTs);
+      runPath(s, path);
+      nextTs = (path.at(-1)?.raw.time ?? nextTs) + 300;
     }
   }
 
@@ -273,6 +285,7 @@ export function runStressTest(partial: Partial<StressTestConfig>): StressRunResu
     ...base(), metrics, health, byScenario: scenarioStats(trades, s.scenarioOf), highestImpact: dist.highestImpact,
     sampleReached: trades.length >= target,
     context: s.ctx ? buildContextReport(trades, s.ctx) : null,
+    trades, calendarGapsAccepted: s.calendarGaps,
   };
 }
 

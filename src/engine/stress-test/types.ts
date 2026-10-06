@@ -1,3 +1,4 @@
+import type { JournalTrade } from "../journal/types";
 // M7 — Automation stress test contracts.
 // MEASUREMENT ONLY: runs the existing M1B→M6.5 chain unattended on SIMULATED
 // (or supplied historical) candles. Never changes EMA/SL/RR/risk params, never
@@ -102,6 +103,10 @@ export interface StressRunResult {
   policyVersion: string;
   /** Context-aware replay output (null when captureContext=false). */
   context: ContextReport | null;
+  /** Frozen journal rows of this run (read-only copy for validation). */
+  trades?: readonly JournalTrade[];
+  /** M5 gaps accepted because the calendar declared the market closed. */
+  calendarGapsAccepted?: number;
 }
 
 export interface ContextCounters {
