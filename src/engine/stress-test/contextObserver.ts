@@ -34,7 +34,6 @@ const momentumOf = (e: EMAContext): M5MomentumObservation => (e.slope21 === "RIS
 export class ContextObserver {
   readonly events = new MarketEventEngine();
   private readonly atrHistory: number[] = [];
-  private readonly seen = new Set<string>();
   private lastRegime: string | null = null;
   current: { regime: MarketRegimeSnapshot; horizon: TradingStyleContext; footprints: InstitutionalFootprints } | null = null;
 
@@ -56,8 +55,9 @@ export class ContextObserver {
     this.lastRegime = regime.regime;
     if (footprints.sweepDetected) bump(c.footprintBars, "SWEEP");
     if (footprints.displacementPreceded) bump(c.footprintBars, "DISPLACEMENT");
+    const seen = new Set<string>(); // per-step only (bounded)
     for (const e of revs) {
-      if (e.occurrenceCount === 1 && e.createdAt === i.now && (e.state === "ACTIVE" || e.endedAt === i.now) && !this.seen.has(e.eventId) && this.seen.add(e.eventId)) bump(c.eventsCreated, e.type);
+      if (e.occurrenceCount === 1 && e.createdAt === i.now && !seen.has(e.eventId) && seen.add(e.eventId)) bump(c.eventsCreated, e.type);
       if (e.state !== "ACTIVE") bump(c.eventsEnded, `${e.type}:${e.endedReason}`);
       if (e.createdAt > i.now) c.causalityViolations++;
     }
