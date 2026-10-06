@@ -1,0 +1,1 @@
+- M4 risk engine (src/engine/risk) only evaluates a TradePlan (lot floor-to-step, budget, state, exposure, spread, slippage, cooldown) and returns a frozen MONITOR_ONLY decision; it never mutates the plan nor touches a broker. Why: risk ≠ execution, execution belongs to M5.
