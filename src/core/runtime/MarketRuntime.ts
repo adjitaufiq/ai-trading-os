@@ -16,7 +16,7 @@ import { CandleStore, type CandleStoreMetrics } from "../candles/CandleStore";
 import { detectMissingIntervals, type MissingInterval } from "../candles/MissingInterval";
 import { RadarRuntimeService } from "../radar/RadarRuntimeService";
 import type { RadarHealth, RadarSnapshot } from "../radar/types";
-import { LivePaperLoop, type VirtualAccountView } from "../paper/LivePaperLoop";
+import { LivePaperLoop, type PaperLoopState, type VirtualAccountView } from "../paper/LivePaperLoop";
 import type { JournalTrade } from "../../engine/journal/types";
 import type { MarketDataHandlers, MarketDataStream } from "../broker/gateway/BrokerGatewayClient";
 import type {
@@ -284,6 +284,11 @@ export class MarketRuntime {
   checkBoundaries(): void {
     this.fanout.checkBoundary();
   }
+
+  /** Engine-host persistence: plain-data virtual account + append-only journal export (no market state). */
+  paperState(): PaperLoopState { return this.paper.exportState(); }
+  /** Restore persisted paper state; only valid before the first CLOSED M5 reaches the paper loop. */
+  restorePaperState(s: PaperLoopState): void { this.paper.restoreState(s); }
 
   stop(): void {
     this.stream?.close();
