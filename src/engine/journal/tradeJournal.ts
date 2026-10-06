@@ -1,11 +1,12 @@
 import { deepFreeze } from "../execution/executionSnapshot";
+import type { FootprintSnapshot } from "../core/market/institutional-radar/types";
 import type { PaperTrade } from "../execution/types";
 import type { ExcursionMetrics, JournalContext, JournalFilter, JournalTrade, SaveResult, TradeOutcome } from "./types";
 
 export const outcomeOf = (pnl: number): TradeOutcome => (pnl > 0 ? "WIN" : pnl < 0 ? "LOSS" : "BREAK_EVEN");
 
 /** Map a CLOSED M5 paper trade to a journal row. Copies values; never recalculates them. */
-export function fromPaperTrade(t: PaperTrade, extra: { h1Phase: string; locationTier: string; rr: number }, excursion?: ExcursionMetrics): JournalTrade | null {
+export function fromPaperTrade(t: PaperTrade, extra: { h1Phase: string; locationTier: string; rr: number }, excursion?: ExcursionMetrics, footprints?: FootprintSnapshot): JournalTrade | null {
   if (t.state !== "CLOSED" || !t.result || t.openedAt === null || t.closedAt === null) return null;
   const s = t.snapshot;
   const context: JournalContext = {
@@ -18,6 +19,7 @@ export function fromPaperTrade(t: PaperTrade, extra: { h1Phase: string; location
     profitLossUSD: t.result.profitLossUSD, profitLossPercent: t.result.profitLossPercent, result: outcomeOf(t.result.profitLossUSD),
     closeReason: t.result.closeReason, durationSeconds: t.result.durationSeconds, context, decisionTrace: [...s.decisionTrace],
     openedAt: t.openedAt, closedAt: t.closedAt, ...(excursion ? { excursion } : {}),
+    ...(footprints ? { footprints: { ...footprints } } : {}),
   };
 }
 

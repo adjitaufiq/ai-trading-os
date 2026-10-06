@@ -1,7 +1,7 @@
 // M2 — Signal lifecycle engine & setup state machine contracts.
 // Consumes ONLY validated M1B outputs (bias M1B.4, location M1B.5, EMA M1B.6,
-// reaction M1B.7).
-import type { InstitutionalFootprints } from "../core/market/institutional-radar/types"; Never recalculates indicators. No SL/TP/lot/execution.
+// reaction M1B.7). Never recalculates indicators. No SL/TP/lot/execution.
+import type { InstitutionalFootprints } from "../core/market/institutional-radar/types";
 
 export type SignalDirection = "BUY" | "SELL" | "NONE";
 
