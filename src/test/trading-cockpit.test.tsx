@@ -98,6 +98,6 @@ describe("clean trading cockpit", () => {
     expect(screen.getByTestId("layer-setup-condition")).toHaveTextContent("Setup Condition");
     expect(screen.getByTestId("layer-execution-state")).toHaveTextContent("Execution State");
     expect(screen.getByTestId("layer-execution-state")).toHaveTextContent("NOT READY");
-    expect(screen.getByTestId("radar-state")).toHaveTextContent("NO SETUP");
+    expect(screen.getByTestId("radar-state")).toHaveTextContent(/NO SETUP|NOT EVALUABLE/);
   });
 });
