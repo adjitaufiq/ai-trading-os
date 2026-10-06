@@ -25,3 +25,6 @@
 - [x] Operator-v2 engine polish (H4 primary/H1 context, S/R zones, EMA21/50 confluence, M15/M5 RSI support, candle patterns v1, regime, trader summary)
 
 - [x] Paper/simulation trades, journal (signal transitions + paper trades), quick backtest, compact AI payload
+
+- [x] M1B.8 Institutional Footprint Radar + optional footprints on M2 SignalSetup / M6 JournalTrade (passive evidence)
+- [ ] M8 Optimization Laboratory (blocked: awaiting user verification of M1B.8)
