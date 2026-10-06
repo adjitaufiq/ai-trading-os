@@ -37,7 +37,7 @@ const ev = (id: string, createdAt: number, endedAt: number | null = null): Marke
   context: { regime: "TREND_CONTINUATION", horizon: "INTRADAY", approach: "TREND_FOLLOW", footprintTags: [] } as MarketEvent["context"],
   evidence: [], algorithmVersion: "m1b11-event-v1",
 });
-const sources = (): MarketContextSources => ({ regime: regime(), horizon: horizon(), footprints: fp(), events: [ev("XAU_SWEEP_1", T0 - 300), ev("FUTURE", T0 + 300), ev("OLD", T0 - 900, T0 - 300)] });
+const sources = (): MarketContextSources => ({ regime: regime(), horizon: horizon(), footprints: fp(), events: [ev("XAU_SWEEP_1", T0 - 300), ev("FUTURE", T0 + 600), ev("OLD", T0 - 900, T0 - 300)] });
 
 const born = (ctx?: MarketContextSources) => {
   const i = input();
@@ -57,7 +57,7 @@ describe("M2 context enrichment (m2-context-v1)", () => {
   it("2 attaches causal context with EventReference only", () => {
     const m = born(sources()).marketContext!;
     expect(m.contextVersion).toBe("m2-context-v1");
-    expect(m.capturedAt).toBe(T0);
+    expect(m.capturedAt).toBe(T0 + 300);
     expect(m.regime?.regime).toBe("TREND_CONTINUATION");
     expect(m.horizon?.recommendedHorizon).toBe("INTRADAY");
     expect(m.activeEvents).toEqual([{ eventId: "XAU_SWEEP_1", type: "LIQUIDITY_SWEEP", severity: "IMPORTANT", state: "ACTIVE", timeframe: "M5" }]);

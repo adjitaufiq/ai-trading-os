@@ -20,6 +20,8 @@ export interface StressTestConfig {
   historicalBars?: readonly RawGatewayPayload[];
   /** Hard bar budget; run stops even if sampleSize not reached. */
   maxBars?: number;
+  /** Attach M1B.8–11 observational context (m2-context-v1). Default true; never changes decisions. */
+  captureContext?: boolean;
 }
 
 export const DEFAULT_STRESS_CONFIG: StressTestConfig = {
@@ -98,9 +100,52 @@ export interface StressRunResult {
   highestImpact: string | null;
   sampleReached: boolean;
   policyVersion: string;
+  /** Context-aware replay output (null when captureContext=false). */
+  context: ContextReport | null;
 }
 
-export const STRESS_POLICY_VERSION = "stress-m7-v1";
+export interface ContextCounters {
+  observedBars: number;
+  regime: Record<string, number>;
+  horizon: Record<string, number>;
+  regimeFlips: number;
+  /** New events by type (first occurrence only). */
+  eventsCreated: Record<string, number>;
+  /** Ended events keyed TYPE:REASON. */
+  eventsEnded: Record<string, number>;
+  maxTrackers: number;
+  revisions: number;
+  /** Any sensor output stamped after the observing bar close (must stay 0). */
+  causalityViolations: number;
+  /** Bars where a footprint flag was observed. */
+  footprintBars: Record<string, number>;
+}
+
+/** Descriptive group statistics — NOT a score, never fed back into any engine. */
+export interface ContextBucket { key: string; trades: number; wins: number; losses: number; winRate: number; expectancyR: number }
+
+export interface ContextAudit {
+  contextCoverage: number;
+  eventsPer1000Bars: number;
+  regimeFlipsPer1000Bars: number;
+  noFitRate: number;
+  maxTrackers: number;
+  causalityViolations: number;
+}
+
+export interface ContextReport {
+  counters: ContextCounters;
+  byRegime: ContextBucket[];
+  byHorizon: ContextBucket[];
+  byFootprint: ContextBucket[];
+  byEvent: ContextBucket[];
+  /** LIQUIDITY_SWEEP lifecycle: resolved by REACTION_CONFIRMED vs expired. */
+  sweepImpact: { created: number; resolved: number; expired: number; tradesWithActiveSweep: number; avgOutcomeR: number };
+  audit: ContextAudit;
+  contextVersion: "m2-context-v1";
+}
+
+export const STRESS_POLICY_VERSION = "stress-m7-v2-context";
 
 /** Simulation environment constants (NOT strategy params). */
 export const STRESS_ENV = {
@@ -119,6 +164,10 @@ export const STRESS_ENV = {
   RISK_PERCENT: 1,
   MAX_DAILY_LOSS_PERCENT: 5,
   MAX_SLIPPAGE: 0.5,
+  /** Rolling M15 ATR history injected into M1B.9 (environment window, not a strategy param). */
+  ATR_HISTORY: 200,
+  /** Upper bound on live event trackers per symbol for the memory health check. */
+  MAX_EVENT_TRACKERS: 64,
 } as const;
 
 export const PHASES = [

@@ -7,17 +7,24 @@ import type { JournalTrade } from "../journal/types";
 import { PLAN_PARAMS } from "../plan/types";
 import { RISK_PARAMS } from "../risk/types";
 import { SIGNAL_PARAMS } from "../signal/types";
+import { MARKET_CONTEXT_VERSION } from "../signal/context";
+import { REGIME_PARAMS } from "../core/market/regime/types";
+import { HORIZON_PARAMS } from "../core/market/horizon/types";
+import { INSTITUTIONAL_RADAR_PARAMS } from "../core/market/institutional-radar/types";
+import { EVENT_POLICY } from "../core/market/events/eventPolicy";
+import { STRESS_ENV, type ContextCounters } from "./types";
 import { SCENARIO_PURPOSE, type HealthCheck, type PipelineCounters, type StressRunResult } from "./types";
 
 /** Serialized strategy params; compared before/after a run to prove M7 changed nothing. */
 export function snapshotParams(): string {
-  return JSON.stringify({ SWING_PARAMS, LOCATION_PARAMS, EMA_PARAMS, SIGNAL_PARAMS, PLAN_PARAMS, RISK_PARAMS, AUTOPSY_PARAMS });
+  return JSON.stringify({ SWING_PARAMS, LOCATION_PARAMS, EMA_PARAMS, SIGNAL_PARAMS, PLAN_PARAMS, RISK_PARAMS, AUTOPSY_PARAMS, REGIME_PARAMS, HORIZON_PARAMS, INSTITUTIONAL_RADAR_PARAMS, EVENT_POLICY, MARKET_CONTEXT_VERSION });
 }
 
 export interface HealthInput {
   terminalRevivals: number; riskViolations: number; minEquity: number; counters: PipelineCounters;
   trades: readonly JournalTrade[]; autopsies: readonly TradeAutopsy[];
   journalHashBefore: string; journalHashAfter: string; paramsBefore: string; paramsAfter: string;
+  ctx?: ContextCounters | null;
 }
 
 export function buildHealthChecks(h: HealthInput): HealthCheck[] {
@@ -32,6 +39,11 @@ export function buildHealthChecks(h: HealthInput): HealthCheck[] {
     c("Journal Integrity", journalOk, `${h.trades.length} rows, unique=${ids.size === h.trades.length}, frozen=${frozen}`),
     c("Autopsy Coverage", autopsyOk, `${h.autopsies.length}/${h.trades.length} trades autopsied with evidence`),
     c("Parameter Immutability", h.paramsBefore === h.paramsAfter, h.paramsBefore === h.paramsAfter ? "no strategy param changed" : "PARAM DRIFT"),
+    ...(h.ctx ? [
+      c("Context Coverage", h.trades.every((t) => !!t.contextSnapshot), `${h.trades.filter((t) => t.contextSnapshot).length}/${h.trades.length} journal rows carry m2-context-v1`),
+      c("Context Causality", h.ctx.causalityViolations === 0, `${h.ctx.causalityViolations} sensor outputs stamped after bar close`),
+      c("Event Memory Bounded", h.ctx.maxTrackers <= STRESS_ENV.MAX_EVENT_TRACKERS, `max ${h.ctx.maxTrackers} live trackers, ${h.ctx.revisions} revisions over ${h.ctx.observedBars} bars`),
+    ] : []),
   ];
 }
 
