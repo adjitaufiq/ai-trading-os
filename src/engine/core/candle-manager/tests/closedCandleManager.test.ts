@@ -1,8 +1,8 @@
 // M1B.2 — unit tests for Closed Candle Manager & Anti-Repaint Calculation Gate.
 import { describe, expect, it } from "vitest";
 
-import { validateAndNormalize } from "../normalizer/normalizer";
-import type { ArenaCandle } from "../normalizer/types";
+import { validateAndNormalize } from "../../normalizer/normalizer";
+import type { ArenaCandle } from "../../normalizer/types";
 import { ClosedCandleManager, calculationLockGate, evaluateCandleStatus } from "./closedCandleManager";
 
 function makeCandle(overrides: Partial<ArenaCandle> = {}): ArenaCandle {
