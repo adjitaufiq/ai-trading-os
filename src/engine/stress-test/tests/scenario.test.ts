@@ -1,3 +1,4 @@
+import { isCalendarGap } from "../../../core/temporal/MarketSessionResolver";
 import { describe, expect, it } from "vitest";
 import { validateAndNormalize } from "../../core/normalizer/normalizer";
 import type { ArenaCandle } from "../../core/normalizer/types";
@@ -14,10 +15,10 @@ describe("scenario generator", () => {
     expect(generatePath("XAUUSD", 3, 500)).toEqual(generatePath("XAUUSD", 3, 500));
     expect(generatePath("XAUUSD", 3, 500)).not.toEqual(generatePath("XAUUSD", 4, 500));
   });
-  it("every bar passes M1B.1 normalizer (OHLC integrity, no gaps, MOCK source)", () => {
+  it("every bar passes M1B.1 normalizer (OHLC integrity, only calendar-closure gaps, MOCK source)", () => {
     let last: ArenaCandle | undefined;
     for (const { raw } of generatePath("XAUUSD", 11, 3000)) {
-      const r = validateAndNormalize(raw, "M5", last);
+      const r = validateAndNormalize(raw, "M5", last, { isExpectedGap: (a, b) => isCalendarGap(a, b, 300, "COMMODITY") });
       expect(r.isValid).toBe(true);
       expect(r.candle!.source).toBe("MOCK");
       last = r.candle;
