@@ -1,6 +1,7 @@
 // M2 — Signal lifecycle engine & setup state machine contracts.
 // Consumes ONLY validated M1B outputs (bias M1B.4, location M1B.5, EMA M1B.6,
-// reaction M1B.7). Never recalculates indicators. No SL/TP/lot/execution.
+// reaction M1B.7).
+import type { InstitutionalFootprints } from "../core/market/institutional-radar/types"; Never recalculates indicators. No SL/TP/lot/execution.
 
 export type SignalDirection = "BUY" | "SELL" | "NONE";
 
@@ -38,6 +39,8 @@ export interface SignalSetup {
   snapshotPrice: number;
   /** Detail for EXPIRED: TTL ran out vs price chased beyond tolerance. */
   expiredBy?: "TTL" | "PRICE_CHASED";
+  /** M1B.8 passive evidence; OPTIONAL, never read by state machine or entry rules. */
+  footprints?: InstitutionalFootprints;
 }
 
 export type CheckResult = "PASS" | "FAIL" | "SKIP";

@@ -1,3 +1,4 @@
+import type { FootprintSnapshot } from "../core/market/institutional-radar/types";
 // M6 — Trade journal & performance analytics contracts.
 // READ-ONLY analysis layer: never changes rules, params, risk, signals or history.
 
@@ -40,6 +41,8 @@ export interface JournalTrade {
   openedAt: number;
   closedAt: number;
   excursion?: ExcursionMetrics;
+  /** M1B.8 evidence snapshot for M8 research; optional, descriptive only. */
+  footprints?: FootprintSnapshot;
 }
 
 export type SaveError = "DUPLICATE_TRADE_ID" | "INVALID_TRADE";
