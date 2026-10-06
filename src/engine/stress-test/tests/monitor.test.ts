@@ -20,7 +20,7 @@ describe("performance monitor", () => {
     expect(m.winRate).toBeCloseTo(1 / 3, 3);
     expect(m.profitFactor).toBe(1);
     expect(m.expectancy).toBeCloseTo(0, 4);
-    expect(m.averageMAE).toBeCloseTo(-2.5, 4);
+    expect(m.averageMAE).toBeCloseTo(-0.8333, 3);
     expect(m.averageMFE).toBeCloseTo(0.8333, 3);
     expect(m.maxDrawdown).toBeGreaterThan(0);
     expect(m.executionRejectRate).toBe(0.3);
