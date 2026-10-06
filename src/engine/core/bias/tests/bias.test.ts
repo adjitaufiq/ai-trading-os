@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MarketStructure, SwingPoint } from "../swing/types";
+import type { MarketStructure, SwingPoint } from "../types";
 import {
   computeBiasState, deriveAlignment, deriveBiasFromStructure, derivePhase,
 } from "../biasEngine";
