@@ -68,7 +68,7 @@ export const REGIME_PARAMS = {
 export const REGIME_RULES = {
   PERCENTILE: "fraction of historicalAtrList values <= m15Atr (injected; never computed here)",
   PRECEDENCE: "1 VOLATILITY_EXPANSION → 2 TRANSITION → 3 TREND_EXHAUSTION → 4 RANGE_COMPRESSION → 5 TREND_CONTINUATION; no match ⇒ TRANSITION",
-  TRANSITION: "H4 vs H1 conflict, MSS detected (structure not yet re-confirmed), or high H4 swing overlap",
+  TRANSITION: "H4 vs H1 conflict, MSS detected (structure not yet re-confirmed), or high H4 swing overlap while H4 is trending (overlap inside an H4 RANGE is expected compression)",
   EXHAUSTION: "ALIGNED and (H4 swing progression flattening or ATR COMPRESSION)",
   TEMPORAL: "swings with confirmedAt > now are ignored",
   FORBIDDEN: "no BUY/SELL, no style advice, no SL/TP/lot/risk, no scores/confidence",

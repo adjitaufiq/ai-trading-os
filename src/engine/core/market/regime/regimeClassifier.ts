@@ -69,7 +69,7 @@ export function classifyRegime(input: MarketRegimeInput): MarketRegimeSnapshot {
   const mss = h4s.shiftDetected || h1s.shiftDetected;
   if (mss) evidence.push("MSS_UNCONFIRMED");
   const overlap = swingOverlapRatio(h4s, now);
-  const highOverlap = overlap !== null && overlap >= REGIME_PARAMS.HIGH_SWING_OVERLAP_RATIO;
+  const highOverlap = h4 !== "RANGE" && overlap !== null && overlap >= REGIME_PARAMS.HIGH_SWING_OVERLAP_RATIO;
   if (highOverlap) evidence.push("H4_HIGH_SWING_OVERLAP");
   const flattening = h4Flattening(h4s, m15Atr, now);
   if (flattening) evidence.push("H4_MOMENTUM_FLATTENING");
