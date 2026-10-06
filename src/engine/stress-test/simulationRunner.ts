@@ -145,7 +145,7 @@ function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: s
       const u = updatePosition(open.trade, c, now);
       if (u.ok && u.trade.state === "CLOSED") {
         const t = u.trade;
-        const row = fromPaperTrade(t, { h1Phase: open.h1Phase, locationTier: open.tier, rr: open.plan.rr ?? 0 }, calculateExcursion(t.snapshot.direction, t.snapshot.entryPrice, open.bars));
+        const row = fromPaperTrade(t, { h1Phase: open.h1Phase, locationTier: open.tier, rr: open.plan.rr ?? 0, dataSource: s.cfg.mode === "HISTORICAL_REPLAY" ? "BACKTEST" : "SYNTHETIC" }, calculateExcursion(t.snapshot.direction, t.snapshot.entryPrice, open.bars));
         if (row && s.journal.saveTrade(row).ok) {
           s.counters.tradesClosed++;
           s.scenarioOf.set(row.tradeId, open.scenario);

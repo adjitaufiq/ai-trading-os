@@ -5,6 +5,8 @@ import type { EventReference } from "../signal/context";
 import type { AssetClass } from "../../core/broker/types";
 import type { MarketSession } from "../../core/temporal/MarketSessionResolver";
 import type { FailureCategory } from "../contracts/diagnostics";
+import type { DataSource } from "../contracts/dataSource";
+export type { DataSource };
 export type { FailureCategory };
 
 export interface JournalContextSnapshot {
@@ -70,6 +72,8 @@ export interface JournalTrade {
   /** 0 for paper execution; never undefined. */
   readonly latencyMs: number;
   readonly primaryFailureCategory?: FailureCategory;
+  /** Origin of the market data; always set by fromPaperTrade. Statistics must never mix sources. */
+  readonly dataSource?: DataSource;
 }
 
 export type SaveError = "DUPLICATE_TRADE_ID" | "INVALID_TRADE";

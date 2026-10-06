@@ -1,5 +1,6 @@
 // Radar read model (radar-v1). Authority NONE: descriptive dashboard view of M1B.8–M1B.11 state.
 // No confidence/probability/score fields exist by design.
+import type { DataSource } from "../../engine/contracts/dataSource";
 import type { AssetClass } from "../broker/types";
 import type { MarketSession } from "../temporal/MarketSessionResolver";
 import type { EventSeverity, EventState, MarketEventType } from "../../engine/core/market/events/types";
@@ -20,6 +21,8 @@ export interface RadarHealth {
 
 export interface ValidationSource {
   readonly mode: "SYNTHETIC" | "REAL";
+  /** Canonical tag: REAL ⇒ REAL_MT5, SYNTHETIC ⇒ SYNTHETIC. */
+  readonly dataSource: DataSource;
   readonly provider?: string;
   readonly feedId?: string;
   readonly evaluatedAt: number;
