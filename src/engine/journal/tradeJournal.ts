@@ -1,3 +1,4 @@
+import type { DataSource } from "../contracts/dataSource";
 import { deepFreeze } from "../execution/executionSnapshot";
 import type { FootprintSnapshot } from "../core/market/institutional-radar/types";
 import type { PaperTrade } from "../execution/types";
@@ -20,7 +21,7 @@ export function slippagePoints(direction: "BUY" | "SELL", planned: number, actua
 }
 
 /** Map a CLOSED M5 paper trade to a journal row. Copies values; never recalculates them. */
-export function fromPaperTrade(t: PaperTrade, extra: { h1Phase: string; locationTier: string; rr: number }, excursion?: ExcursionMetrics, footprints?: FootprintSnapshot, registry: SymbolRegistry = defaultSymbolRegistry): JournalTrade | null {
+export function fromPaperTrade(t: PaperTrade, extra: { h1Phase: string; locationTier: string; rr: number; dataSource?: DataSource }, excursion?: ExcursionMetrics, footprints?: FootprintSnapshot, registry: SymbolRegistry = defaultSymbolRegistry): JournalTrade | null {
   if (t.state !== "CLOSED" || !t.result || t.openedAt === null || t.closedAt === null) return null;
   const s = t.snapshot;
   const meta = registry.require(s.symbol);
@@ -42,6 +43,7 @@ export function fromPaperTrade(t: PaperTrade, extra: { h1Phase: string; location
     actualEntryPrice: t.fill.actualEntry,
     slippagePoints: slippagePoints(s.direction, t.fill.marketPrice, t.fill.actualEntry, meta.point),
     latencyMs: 0,
+    dataSource: extra.dataSource ?? "SYNTHETIC",
   };
 }
 

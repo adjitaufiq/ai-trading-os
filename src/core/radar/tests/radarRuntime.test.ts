@@ -135,3 +135,19 @@ describe("radar runtime read model", () => {
     }
   });
 });
+
+describe("live paper loop wiring (M2→M6 inside MarketRuntime)", () => {
+  it("exposes a $10k/1% virtual account tagged by data source and journals only tagged rows", async () => {
+    const x = await rig("XAUUSD");
+    const a0 = x.r.paperAccount!();
+    expect(a0).toMatchObject({ balance: 10000, equity: 10000, riskPercent: 1, openPositions: 0, realizedPnL: 0, dataSource: "SYNTHETIC" });
+    feed(x, 0, N);
+    const a = x.r.paperAccount!();
+    expect(Object.isFrozen(a)).toBe(true);
+    expect(a.lastDecision).not.toBeNull();
+    for (const t of x.r.paperTrades!()) expect(t.dataSource).toBe("SYNTHETIC");
+    expect(a.balance).toBeCloseTo(10000 + x.r.paperTrades!().reduce((s, t) => s + t.profitLossUSD, 0), 2);
+    expect(x.r.radarSnapshot()?.validationSource.dataSource).toBe("SYNTHETIC");
+    expect(x.r.snapshot().execution_enabled).toBe(false);
+  });
+});

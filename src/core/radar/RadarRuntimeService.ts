@@ -146,7 +146,7 @@ export class RadarRuntimeService {
       },
       activeEvents: this.events.store.getActiveEvents(sym).map(ref),
       recentEvents: [...this.recent],
-      validationSource: { mode: this.source.mode, ...(this.source.provider ? { provider: this.source.provider } : {}), ...(this.source.feedId ? { feedId: this.source.feedId } : {}), evaluatedAt: nowMs },
+      validationSource: { mode: this.source.mode, dataSource: this.source.mode === "REAL" ? "REAL_MT5" : "SYNTHETIC", ...(this.source.provider ? { provider: this.source.provider } : {}), ...(this.source.feedId ? { feedId: this.source.feedId } : {}), evaluatedAt: nowMs },
       algorithmVersions: { ...RADAR_ALGORITHM_VERSIONS },
       generatedAt: nowMs,
     });

@@ -16,6 +16,8 @@ import { CandleStore, type CandleStoreMetrics } from "../candles/CandleStore";
 import { detectMissingIntervals, type MissingInterval } from "../candles/MissingInterval";
 import { RadarRuntimeService } from "../radar/RadarRuntimeService";
 import type { RadarHealth, RadarSnapshot } from "../radar/types";
+import { LivePaperLoop, type VirtualAccountView } from "../paper/LivePaperLoop";
+import type { JournalTrade } from "../../engine/journal/types";
 import type { MarketDataHandlers, MarketDataStream } from "../broker/gateway/BrokerGatewayClient";
 import type {
   BridgeHealth, BridgeTick, ClientTickObservation, GatewayResult, MarketDataSubscription, TickHistoryRequest, WireHistoryResult,
@@ -88,6 +90,10 @@ export interface MarketRuntimeReader {
   /** Frozen radar-v1 read model, recomputed only on CLOSED M5 bars (authority NONE). Null until warmed up. */
   radarSnapshot(): Readonly<RadarSnapshot> | null;
   radarHealth(): Readonly<RadarHealth>;
+  /** Virtual paper account (PAPER ONLY, no broker). */
+  paperAccount?(): Readonly<VirtualAccountView>;
+  /** M6 journal rows produced by the live paper loop, tagged with dataSource. */
+  paperTrades?(): readonly Readonly<JournalTrade>[];
   now(): number;
 }
 
@@ -124,6 +130,7 @@ export class MarketRuntime {
   private readonly maxHeld = 1000;
   readonly reader: MarketRuntimeReader;
   private readonly radar: RadarRuntimeService;
+  private readonly paper: LivePaperLoop;
 
   constructor(private readonly o: MarketRuntimeOptions) {
     const sym = o.binding.canonical_symbol;
@@ -136,8 +143,11 @@ export class MarketRuntime {
     this.radar = new RadarRuntimeService(sym, o.spec.origin === "BROKER_REPORTED" ? { mode: "REAL", provider: "EXNESS_MT5", feedId: o.binding.broker_symbol } : { mode: "SYNTHETIC", feedId: o.binding.broker_symbol });
     // radar evaluates on CLOSED M5 only (after the store has appended it); forming emissions are ignored
     this.fanout.aggregators.M5.onBar((b) => { if (b.status === "CLOSED") this.radar.onClosedM5(b, (tf) => this.stores[tf].closed, o.clock.now()); });
+    this.paper = new LivePaperLoop(sym, o.spec.origin === "BROKER_REPORTED" ? "REAL_MT5" : "SYNTHETIC", o.spec);
+    // paper loop runs after the radar on the same CLOSED M5 emission; fills use the latest LIVE bid/ask
+    this.fanout.aggregators.M5.onBar((b) => { if (b.status === "CLOSED") this.paper.onClosedM5(b, (tf) => this.stores[tf].closed, this.lastLive); });
     const count = (r: AuditRecord) => { this.routeCounts[r.route]++; };
-    this.pipeline = new BrokerFeedPipeline(o.spec, o.classifier, o.clock, (e) => { this.fanout.ingest(e); this.lastLive = e; if (this.firstLiveAt === null) this.firstLiveAt = e.event_at; });
+    this.pipeline = new BrokerFeedPipeline(o.spec, o.classifier, o.clock, (e) => { this.fanout.ingest(e); this.lastLive = e; this.paper.mark(e); if (this.firstLiveAt === null) this.firstLiveAt = e.event_at; });
     const pipe = this.pipeline;
     this.boot = new BootstrapCoordinator({ process: (env, id) => { const r = pipe.process(env, id); count(r); return r; } }, new ObservationIdentityRegistry());
     this.reader = this.makeReader();
@@ -293,6 +303,8 @@ export class MarketRuntime {
       firstLiveEventAt: () => self.firstLiveAt,
       radarSnapshot: () => self.radar.snapshot(),
       radarHealth: () => self.radar.health(self.o.clock.now()),
+      paperAccount: () => self.paper.account(),
+      paperTrades: () => self.paper.trades(),
       missingIntervals(tf) {
         const c = closed(tf);
         if (c.length < 2) return Object.freeze([]);
