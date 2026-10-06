@@ -14,8 +14,8 @@ function Row({ k, v, testId }: { k: string; v: string; testId?: string }) {
 export function RadarObservabilityPanel({ reader, symbol, tickMs = 2000 }: Props) {
   const [, setTick] = useState(0);
   useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), tickMs); return () => clearInterval(t); }, [tickMs]);
-  const snap = reader?.radarSnapshot() ?? null;
-  const health = reader?.radarHealth() ?? null;
+  const snap = reader?.radarSnapshot?.() ?? null;
+  const health = reader?.radarHealth?.() ?? null;
   const acct = reader?.paperAccount?.() ?? null;
   const source = snap?.validationSource.dataSource ?? (health ? (health.validationMode === "REAL" ? "REAL_MT5" : "SYNTHETIC") : "—");
   return <section className="mx-auto mb-4 grid max-w-screen-2xl gap-3 px-4 sm:grid-cols-2 sm:px-8" aria-label="Radar observability">
