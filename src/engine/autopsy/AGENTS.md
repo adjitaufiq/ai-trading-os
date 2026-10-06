@@ -1,0 +1,1 @@
+- M6.5 autopsy (src/engine/autopsy) is read-only forensics over M6 journal rows: every category is matched only from its own evidence (missing data ⇒ UNCLASSIFIED, never guessed), thresholds live in versioned AUTOPSY_PARAMS, output is frozen and recommendations are review targets only. Why: diagnosis ≠ optimization; M7/M8 consume this, it never changes rules.
