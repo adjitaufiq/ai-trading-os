@@ -273,7 +273,7 @@ function RadarMetric({ label, value, detail, testId }: { label: string; value: s
   </div>;
 }
 
-function TraderRadarView({ snapshot, reader }: { snapshot: TradingSnapshot | null; reader: MarketRuntimeReader }) {
+function TraderRadarView({ snapshot, reader, part }: { snapshot: TradingSnapshot | null; reader: MarketRuntimeReader; part: CockpitTab }) {
   const op = snapshot?.operator ?? null;
   const radar = reader.radarSnapshot?.() ?? null;
   const radarHealth = reader.radarHealth?.() ?? null;
@@ -302,6 +302,37 @@ function TraderRadarView({ snapshot, reader }: { snapshot: TradingSnapshot | nul
   const freshness = radarHealth?.status === "STALE" || snapshot?.availability === "STALE" ? "STALE DATA" : live ? "LIVE OBSERVATION" : "WAITING LIVE DATA";
   const why = snapshot?.why.slice(0, 5) ?? [];
 
+  const lvl = (label: string, value: string) => <div><div className="text-[10px] font-semibold uppercase text-muted-foreground">{label}</div><div className="mt-0.5 font-mono text-sm font-semibold">{value}</div></div>;
+
+  if (part === "TRADE") return <section className="border border-border bg-card p-4" aria-label="Quick Status" data-testid="quick-status">
+    <h3 className="text-xs font-semibold uppercase text-muted-foreground">Status</h3>
+    <div className="mt-2 grid grid-cols-2 gap-3 text-sm">
+      <div><div className="text-xs text-muted-foreground">Execution</div><div className="mt-0.5 font-semibold" data-testid="quick-execution">{actionable ? "READY" : "NOT READY"}</div></div>
+      <div><div className="text-xs text-muted-foreground">Reason</div><div className="mt-0.5 font-semibold">{actionable ? "Valid engine state · paper only" : "Trigger missing"}</div></div>
+    </div>
+    <div className="mt-3 grid gap-2 sm:grid-cols-3" data-testid="decision-layers">
+      <RadarMetric label="Market Condition" value={`${marketTrend} · ${regime}`} detail={structure("H4")} testId="layer-market-condition" />
+      <RadarMetric label="Setup Condition" value={setupState} detail={op ? reasonCopy(op.reason) : unavailableCopy} testId="layer-setup-condition" />
+      <RadarMetric label="Execution State" value={executionState} detail={actionable ? "Valid engine state · paper only" : "Trigger missing · observe only"} testId="layer-execution-state" />
+    </div>
+  </section>;
+
+  if (part === "ANALYSIS") return <section className="space-y-3" aria-label="Radar Observability" data-testid="trader-radar-analysis">
+    <div className="border border-border bg-card p-4" data-testid="why-radar">
+      <h3 className="text-xs font-semibold uppercase text-muted-foreground">{actionable ? "Why Ready" : "Why Wait"}</h3>
+      <ul className="mt-2 grid gap-2 text-sm sm:grid-cols-2">{(why.length ? why : [{ ok: null, text: unavailableCopy }]).map((fact, index) => <li key={`${fact.text}-${index}`} className="flex gap-2"><FactIcon value={fact.ok} /><span>{technicalCopy(fact.text)}</span></li>)}</ul>
+    </div>
+    <div className="border border-border bg-card p-3" data-testid="real-market-metadata">
+      <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Radar Observability</h3>
+      <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+        <div><div className="text-muted-foreground">SOURCE</div><div className="mt-1 font-semibold">{source} · {freshness}</div></div>
+        <div><div className="text-muted-foreground">SYMBOL</div><div className="mt-1 font-semibold">{reader.symbol}</div></div>
+        <div><div className="text-muted-foreground">LAST UPDATE</div><div className="mt-1 font-mono">{formatUtc(live?.observed_at)}</div></div>
+        <div><div className="text-muted-foreground">LAST CLOSED M5</div><div className="mt-1 font-mono">{formatUtc(lastM5, false)}</div></div>
+      </div>
+    </div>
+  </section>;
+
   return <section className="space-y-3" aria-label="Trader Radar Dashboard" data-testid="trader-radar-v2">
     <div className="border border-border bg-card p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -310,44 +341,25 @@ function TraderRadarView({ snapshot, reader }: { snapshot: TradingSnapshot | nul
       </div>
       <p className="mt-2 text-sm text-muted-foreground" data-testid="radar-state-reason">{snapshot ? reasonCopy(snapshot.entry.reason) : unavailableCopy}</p>
     </div>
-
-    <div className="grid gap-2 sm:grid-cols-3" data-testid="decision-layers">
-      <RadarMetric label="Market Condition" value={`${marketTrend} · ${regime}`} detail={structure("H4")} testId="layer-market-condition" />
-      <RadarMetric label="Setup Condition" value={setupState} detail={op ? reasonCopy(op.reason) : unavailableCopy} testId="layer-setup-condition" />
-      <RadarMetric label="Execution State" value={executionState} detail={actionable ? "Valid engine state · paper only" : "Trigger missing · observe only"} testId="layer-execution-state" />
-    </div>
-
-    <div className="grid gap-3 lg:grid-cols-3">
-      <section className="space-y-2" aria-label="Market condition cards" data-testid="market-condition-group">
-        <h3 className="text-[11px] font-semibold uppercase text-muted-foreground">Market Condition</h3>
-        <RadarMetric label="Market Trend" value={marketTrend} detail={`Regime ${regime} · Structure ${structure("H4")}`} testId="market-trend-card" />
-        <div className="grid grid-cols-2 gap-2"><RadarMetric label="H4 Bias" value={trendLabel(op?.h4_primary)} detail={structure("H4")} testId="h4-bias-card" /><RadarMetric label="H1 Bias" value={trendLabel(op?.per_tf.H1.trend)} detail={contextLabel(op?.h1_context)} testId="h1-bias-card" /></div>
-      </section>
-      <section className="space-y-2" aria-label="Setup condition cards" data-testid="setup-condition-group">
-        <h3 className="text-[11px] font-semibold uppercase text-muted-foreground">Setup Condition</h3>
-        <RadarMetric label="Scalp Condition" value={actionable ? "SCALP READY" : projected ? "WAIT TRIGGER" : "NO SCALP SETUP"} detail={`M15 ${op?.scalp.M15.momentum.state ?? unavailableCopy} · M5 ${op?.scalp.M5.momentum.state ?? unavailableCopy}`} testId="scalp-condition-card" />
-        <RadarMetric label="Price Location" value={locationLabel(op?.location)} detail={zone} testId="price-location-card" />
-        <RadarMetric label="EMA Levels · M5" value={`EMA5 ${level("M5", "ema5")} · EMA21 ${level("M5", "ema21")} · EMA50 ${level("M5", "ema50")}`} detail={emaAction} testId="ema-radar-card" />
-        <RadarMetric label="Structure Radar" value={`H4 ${structure("H4")} · H1 ${structure("H1")} · M15 ${structure("M15")}`} detail="Confirmed CLOSED swings only" testId="structure-radar-card" />
-      </section>
-      <section className="space-y-2" aria-label="Trading style cards" data-testid="trading-style-group">
-        <h3 className="text-[11px] font-semibold uppercase text-muted-foreground">Trading Style</h3>
-        <RadarMetric label="Trading Style Radar" value={`${horizonItem("SCALPING")} · ${horizonItem("INTRADAY")} · ${horizonItem("SWING")}`} detail={radar ? `${radar.horizon.marketApproach}${radar.horizon.vetoReason ? ` · ${radar.horizon.vetoReason}` : ""}` : unavailableCopy} testId="trading-style-card" />
-      </section>
-    </div>
-
-    <div className="border border-border bg-card p-3" data-testid="real-market-metadata">
-      <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-        <div><div className="text-muted-foreground">DATA SOURCE</div><div className="mt-1 font-semibold">{source} · {freshness}</div></div>
-        <div><div className="text-muted-foreground">SYMBOL</div><div className="mt-1 font-semibold">{reader.symbol}</div></div>
-        <div><div className="text-muted-foreground">LAST UPDATE</div><div className="mt-1 font-mono">{formatUtc(live?.observed_at)}</div></div>
-        <div><div className="text-muted-foreground">LAST CLOSED M5</div><div className="mt-1 font-mono">{formatUtc(lastM5, false)}</div></div>
+    <div className="grid gap-3 md:grid-cols-2">
+      <RadarMetric label="Scalp Engine" value={`M15 Momentum ${op?.scalp.M15.momentum.state ?? unavailableCopy} · M5 Momentum ${op?.scalp.M5.momentum.state ?? unavailableCopy}`} detail={actionable ? "SCALP READY" : projected ? "WAIT TRIGGER" : "NO SCALP SETUP"} testId="scalp-condition-card" />
+      <RadarMetric label="Price Location" value={locationLabel(op?.location)} detail={zone} testId="price-location-card" />
+      <div className="min-w-0 border border-border bg-card p-3" data-testid="ema-radar-card">
+        <div className="text-[10px] font-semibold uppercase text-muted-foreground">EMA Radar · M5</div>
+        <div className="mt-1 text-xs text-muted-foreground">EMA ACTION</div>
+        <div className="text-sm font-semibold">{emaAction}</div>
+        <div className="mt-2 grid grid-cols-3 gap-2">{lvl("EMA5", level("M5", "ema5"))}{lvl("EMA21", level("M5", "ema21"))}{lvl("EMA50", level("M5", "ema50"))}</div>
       </div>
-    </div>
-
-    <div className="border-t border-border pt-3" data-testid="why-radar">
-      <h3 className="text-xs font-semibold uppercase text-muted-foreground">{actionable ? "Why Ready" : "Why Wait"}</h3>
-      <ul className="mt-2 grid gap-2 text-sm sm:grid-cols-2">{(why.length ? why : [{ ok: null, text: unavailableCopy }]).map((fact, index) => <li key={`${fact.text}-${index}`} className="flex gap-2"><FactIcon value={fact.ok} /><span>{technicalCopy(fact.text)}</span></li>)}</ul>
+      <div className="min-w-0 border border-border bg-card p-3" data-testid="structure-radar-card">
+        <div className="text-[10px] font-semibold uppercase text-muted-foreground">Structure Radar</div>
+        <div className="mt-2 grid grid-cols-3 gap-2">{lvl("H4", structure("H4"))}{lvl("H1", structure("H1"))}{lvl("M15", structure("M15"))}</div>
+        <div className="mt-1 text-xs text-muted-foreground">Confirmed CLOSED swings only</div>
+      </div>
+      <div className="min-w-0 border border-border bg-card p-3 md:col-span-2" data-testid="trading-style-card">
+        <div className="text-[10px] font-semibold uppercase text-muted-foreground">Trading Style</div>
+        <ul className="mt-2 grid gap-1 text-sm font-semibold sm:grid-cols-3">{(["SCALPING", "INTRADAY", "SWING"] as const).map((h) => <li key={h}>{horizonItem(h)}</li>)}</ul>
+        <div className="mt-2 text-xs text-muted-foreground">REASON: {radar ? `${radar.horizon.marketApproach}${radar.horizon.vetoReason ? ` · ${radar.horizon.vetoReason}` : ""}` : unavailableCopy}</div>
+      </div>
     </div>
   </section>;
 }
@@ -414,6 +426,8 @@ export function SignalSafetyStrip({ signal }: { signal: TradingSnapshot["signal"
   return <div className="mt-3 border border-border px-3 py-2 text-xs text-muted-foreground" data-testid="signal-safety-strip">{msg}</div>;
 }
 
+type CockpitTab = "TRADE" | "RADAR" | "ANALYSIS";
+
 function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceService; reader: MarketRuntimeReader; explain?: TechnicalSlicePanelProps["explain"]; store: PaperJournalStore }) {
   useSyncExternalStore(service.subscribe, service.getVersion, service.getVersion);
   const view = service.view();
@@ -431,10 +445,11 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
   };
   const unavailable = !snapshot || snapshot.availability === "UNAVAILABLE" || snapshot.entry.state === "NOT_EVALUABLE";
   const signalReason = unavailable ? "menunggu bukti teknikal yang valid" : technicalCopy(snapshot?.entry.reason ?? "tunggu setup valid");
-  const signalTone = signal === "BUY" ? "text-bull" : signal === "SELL" ? "text-bear" : "text-foreground";
+  const signalTone = signal === "BUY" ? "text-bull" : signal === "SELL" ? "text-bear" : "text-warn";
   const signalBorder = signal === "BUY" ? "border-bull/45" : signal === "SELL" ? "border-bear/45" : "border-border";
   const [ai, setAi] = useState<AiWhyResult | { status: "PENDING" } | null>(null);
   const [mode, setMode] = useState<CockpitMode>("SIMULASI");
+  const [tab, setTab] = useState<CockpitTab>("TRADE");
   // Last live quote seen (snapshot.quote is null on cycles without a new tick).
   const [quote, setQuote] = useState<TicketQuote | null>(null);
   useEffect(() => { if (snapshot?.quote) setQuote({ bid: snapshot.quote.bid, ask: snapshot.quote.ask }); }, [snapshot]);
@@ -458,7 +473,10 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
   const planConfirmations = snapshot?.why.slice(0, 5).map((fact) => technicalCopy(fact.text)) ?? ["Menunggu bukti teknikal yang valid"];
 
   return <article className="space-y-4" data-testid={`cockpit-${view.symbol}`}>
-    <TraderRadarView snapshot={snapshot} reader={reader} />
+    <div className="flex gap-1 border-b border-border" role="tablist" aria-label="Navigasi cockpit">
+      {(["TRADE", "RADAR", "ANALYSIS"] as const).map((t) => <button key={t} type="button" role="tab" aria-selected={tab === t} data-testid={`cockpit-tab-${t.toLowerCase()}`} onClick={() => setTab(t)} className={`-mb-px border-b-2 px-3 py-2 text-xs font-semibold ${tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`}>{t}</button>)}
+    </div>
+    <div hidden={tab !== "TRADE"} className="space-y-3" data-testid="tab-trade">
     <div className="grid gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,.75fr)]">
       <div className="space-y-3">
       <section className={`border bg-card p-4 sm:p-5 ${signalBorder}`} data-testid="main-signal-card">
@@ -469,9 +487,10 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
           </div>
         </div>
         <div className="mt-4 flex items-end gap-3">
-          {signal === "BUY" ? <ArrowUpRight className="mb-2 h-9 w-9 text-bull" /> : signal === "SELL" ? <ArrowDownRight className="mb-2 h-9 w-9 text-bear" /> : <Circle className="mb-2 h-8 w-8 text-muted-foreground" />}
+          {signal === "BUY" ? <ArrowUpRight className="mb-2 h-9 w-9 text-bull" /> : signal === "SELL" ? <ArrowDownRight className="mb-2 h-9 w-9 text-bear" /> : <Circle className="mb-2 h-8 w-8 text-warn" />}
           <div className={`text-5xl font-semibold sm:text-6xl ${signalTone}`} data-testid="cockpit-signal">{signal}</div>
         </div>
+        <div className="mt-1 text-xs font-semibold uppercase text-muted-foreground" data-testid="cockpit-signal-sub">{signal === "HOLD" ? "Waiting Technical Confirmation" : "Ready Setup"}</div>
         <p className="mt-3 max-w-2xl text-sm text-muted-foreground" data-testid="cockpit-signal-reason">{signalReason}</p>
         <SignalSafetyStrip signal={snapshot?.signal ?? null} />
       </section>
@@ -486,9 +505,14 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
       </section>
     </div>
 
+    <TraderRadarView snapshot={snapshot} reader={reader} part="TRADE" />
     <PaperPositions store={store} symbol={view.symbol} quote={quote} />
+    </div>
+    <div hidden={tab !== "RADAR"} data-testid="tab-radar"><TraderRadarView snapshot={snapshot} reader={reader} part="RADAR" /></div>
+    <div hidden={tab !== "ANALYSIS"} className="space-y-4" data-testid="tab-analysis">
+    <TraderRadarView snapshot={snapshot} reader={reader} part="ANALYSIS" />
 
-    <details className="border-t border-border pt-3" aria-label="Ringkasan engine" data-testid="operator-summary">
+    <details open className="border-t border-border pt-3" aria-label="Ringkasan engine" data-testid="operator-summary">
       <summary className="cursor-pointer text-xs font-semibold uppercase text-muted-foreground">Detail konteks engine</summary>
       {(() => {
         const o = operatorSummary(snapshot);
@@ -510,7 +534,7 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
       })()}
     </details>
 
-    <details className="border-t border-border pt-3" aria-label="Konfirmasi teknikal" data-testid="legacy-confirmations">
+    <details open className="border-t border-border pt-3" aria-label="Konfirmasi teknikal" data-testid="legacy-confirmations">
       <summary className="flex cursor-pointer items-center gap-2 text-xs font-semibold uppercase text-muted-foreground"><Activity className="h-4 w-4" /><span>Detail teknikal</span><span className="sr-only">Konfirmasi teknikal</span></summary>
       <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
         <ConfirmationLight label="Struktur H1" value={evidence?.H1.structure.summary.replace("_", "/") ?? "DATA BELUM CUKUP"} tone={h1StructureTone} testId="confirm-structure" />
@@ -532,6 +556,7 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
         <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2"><BrainCircuit className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">Penjelasan AI</h3></div><Button size="sm" variant="outline" onClick={runAi} disabled={ai?.status === "PENDING"}>Jelaskan</Button></div>
         <p className="mt-3 whitespace-pre-wrap text-sm text-muted-foreground" data-testid={`${view.symbol}-ai`}>{ai == null ? "Penjelasan ringkas opsional. Sinyal deterministik tetap menjadi acuan." : ai.status === "OK" ? ai.narrative : ai.status === "PENDING" ? "Menganalisis…" : `Penjelasan AI tidak tersedia — ${ai.reason}`}</p>
       </section>
+    </div>
     </div>
   </article>;
 }
