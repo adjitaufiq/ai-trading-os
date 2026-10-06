@@ -352,6 +352,34 @@ function TraderRadarView({ snapshot, reader }: { snapshot: TradingSnapshot | nul
   </section>;
 }
 
+/** MARKET CONTEXT SUMMARY (v2.5): market trend + H4/H1 bias as trader-readable card. Presentation mapping only — values come from existing operator/runtime fields, never derived in UI. */
+function MarketContextSummary({ snapshot }: { snapshot: TradingSnapshot | null }) {
+  const op = snapshot?.operator ?? null;
+  const toneClass = (value: string | undefined) => value === "BULLISH" ? "text-bull" : value === "BEARISH" ? "text-bear" : "text-muted-foreground";
+  const trend = trendLabel(op?.h4_primary);
+  const h4 = trendLabel(op?.h4_primary);
+  const h1 = trendLabel(op?.per_tf.H1.trend);
+  return <section className="border border-border bg-card p-4 sm:p-5" aria-label="Market Context" data-testid="market-context-summary">
+    <h3 className="text-xs font-semibold uppercase text-muted-foreground">Market Context</h3>
+    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+      <div data-testid="mc-trend">
+        <div className="text-xs font-semibold uppercase text-muted-foreground">Market Trend</div>
+        <div className={`mt-1 flex items-center gap-2 text-sm font-semibold ${toneClass(trend)}`}><span aria-hidden>●</span>{trend}</div>
+      </div>
+      <div data-testid="mc-h4">
+        <div className="text-xs font-semibold uppercase text-muted-foreground">H4</div>
+        <div className={`mt-1 flex items-center gap-2 text-sm font-semibold ${toneClass(h4)}`}><span aria-hidden>●</span>{h4}</div>
+        <div className="mt-0.5 text-xs text-muted-foreground">{structureLabel(snapshot?.evidence?.H4.structure.summary)}</div>
+      </div>
+      <div data-testid="mc-h1">
+        <div className="text-xs font-semibold uppercase text-muted-foreground">H1</div>
+        <div className={`mt-1 flex items-center gap-2 text-sm font-semibold ${toneClass(h1)}`}><span aria-hidden>●</span>{h1}</div>
+        <div className="mt-0.5 text-xs text-muted-foreground" data-testid="mc-h1-relation">{contextLabel(op?.h1_context)}</div>
+      </div>
+    </div>
+  </section>;
+}
+
 function PaperPositions({ store, symbol, quote }: { store: PaperJournalStore; symbol: string; quote: TicketQuote | null }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const open = state.positions.filter((p) => p.symbol === symbol && p.status === "OPEN");
@@ -432,6 +460,7 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
   return <article className="space-y-4" data-testid={`cockpit-${view.symbol}`}>
     <TraderRadarView snapshot={snapshot} reader={reader} />
     <div className="grid gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,.75fr)]">
+      <div className="space-y-3">
       <section className={`border bg-card p-4 sm:p-5 ${signalBorder}`} data-testid="main-signal-card">
         <div className="flex items-center justify-between gap-3">
           <span className="text-xs font-semibold uppercase text-muted-foreground">Signal State · {view.symbol}</span>
@@ -446,6 +475,9 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
         <p className="mt-3 max-w-2xl text-sm text-muted-foreground" data-testid="cockpit-signal-reason">{signalReason}</p>
         <SignalSafetyStrip signal={snapshot?.signal ?? null} />
       </section>
+
+      <MarketContextSummary snapshot={snapshot} />
+      </div>
 
       <section className="border border-border bg-card p-4 sm:p-5" aria-label="Rencana transaksi acuan" data-testid="radar-card">
         <RadarPlanView radar={snapshot?.radar_plan ?? null} signal={signal} entry={entry} />
