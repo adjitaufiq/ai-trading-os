@@ -1,0 +1,34 @@
+// Read-only HTTP routing for the engine host (transport-agnostic, pure). Static GET table only:
+// there is no write route, no generic dispatch and no order/execution surface.
+import { ENGINE_HOST_SCHEMA, type EngineEnvelope } from "./types";
+import type { EngineHost } from "./EngineHost";
+
+export interface EngineHttpResponse { readonly status: number; readonly body: string; readonly headers: Readonly<Record<string, string>> }
+
+export const ENGINE_CORS_HEADERS = Object.freeze({
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, OPTIONS",
+  "access-control-allow-headers": "content-type",
+});
+
+const json = (status: number, body: unknown): EngineHttpResponse =>
+  ({ status, body: JSON.stringify(body), headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...ENGINE_CORS_HEADERS } });
+
+export function envelope<T>(data: T, now: number): EngineEnvelope<T> {
+  return { schema: ENGINE_HOST_SCHEMA, source: "ENGINE_HOST", generated_at: now, data };
+}
+
+export function routeEngineRequest(host: Pick<EngineHost, "health" | "reader" | "symbols">, method: string, rawPath: string, now: number): EngineHttpResponse {
+  if (method === "OPTIONS") return { status: 204, body: "", headers: { ...ENGINE_CORS_HEADERS } };
+  if (method !== "GET") return json(405, { error: "METHOD_NOT_ALLOWED", detail: "engine host is read-only" });
+  const path = rawPath.split("?")[0]!.replace(/\/+$/, "");
+  if (path === "/v1/engine/health") return json(200, envelope(host.health(), now));
+  const m = /^\/v1\/engine\/([A-Z0-9._]+)\/(radar|account|journal)$/.exec(path);
+  if (!m) return json(404, { error: "NOT_FOUND" });
+  const symbol = m[1]!, view = m[2]!;
+  if (!host.symbols.includes(symbol)) return json(404, { error: "SYMBOL_NOT_HOSTED", symbol });
+  const r = host.reader(symbol);
+  if (view === "radar") return json(200, envelope({ symbol, snapshot: r?.radarSnapshot() ?? null, health: r?.radarHealth() ?? null }, now));
+  if (view === "account") return json(200, envelope({ symbol, account: r?.paperAccount?.() ?? null }, now));
+  return json(200, envelope({ symbol, trades: r?.paperTrades?.() ?? [] }, now));
+}

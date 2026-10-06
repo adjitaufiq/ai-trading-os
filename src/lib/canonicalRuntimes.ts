@@ -86,6 +86,8 @@ export function mountCanonicalRuntime(o: {
   now?: () => number;
   onChange: (m: MountedRuntime) => void;
   create?: typeof createApplicationMarketRuntime;
+  /** Called once per created runtime, before start() (engine host restores persisted paper state here). */
+  onRuntime?: (rt: MarketRuntime) => void;
 }): () => void {
   let stopped = false;
   let rt: MarketRuntime | null = null;
@@ -105,6 +107,7 @@ export function mountCanonicalRuntime(o: {
       config: o.config, wsFactory: o.wsFactory, binding: { broker_symbol: o.symbol, canonical_symbol: o.symbol },
       spec: r.spec, classifier: RUNTIME_CLASSIFIER, maxClosedBarsPerTimeframe: RUNTIME_POLICY.max_closed_bars_per_timeframe,
     });
+    try { o.onRuntime?.(rt); } catch (e) { o.onChange({ symbol: o.symbol, reader: null, status: `RUNTIME_HOOK_FAILED: ${(e as Error).message}` }); rt.stop(); rt = null; retry = setTimeout(attempt, RUNTIME_POLICY.retry_ms); return; }
     o.onChange({ symbol: o.symbol, reader: rt.reader, status: `MOUNTED offset 0 (measured diff ${r.offset.observed_diff_ms}ms)` });
     boundary = setInterval(() => rt?.checkBoundaries(), RUNTIME_POLICY.boundary_check_ms);
     const to = now();
