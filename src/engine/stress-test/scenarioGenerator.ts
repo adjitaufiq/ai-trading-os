@@ -61,9 +61,9 @@ export function generateSegment(symbol: string, scenario: MarketScenario, bars: 
 }
 
 /** Path of consecutive segments; scenario order drawn from the PRNG. */
-export function generatePath(symbol: string, seed: number, totalBars: number, scenarios: readonly MarketScenario[] = ALL_SCENARIOS): GeneratedBar[] {
+export function generatePath(symbol: string, seed: number, totalBars: number, scenarios: readonly MarketScenario[] = ALL_SCENARIOS, startTs: number = E.START_TS): GeneratedBar[] {
   const rnd = mulberry32(seed);
-  const st: SegmentState = { price: E.BASE_PRICE, ts: E.START_TS, i: 0 };
+  const st: SegmentState = { price: E.BASE_PRICE, ts: startTs, i: 0 };
   const out: GeneratedBar[] = [];
   while (out.length < totalBars) {
     const sc = scenarios[Math.floor(rnd() * scenarios.length)]!;

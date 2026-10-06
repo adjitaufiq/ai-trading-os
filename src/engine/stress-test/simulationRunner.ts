@@ -246,8 +246,9 @@ export function runStressTest(partial: Partial<StressTestConfig>): StressRunResu
     runPath(s, generatePath(cfg.symbol, seed, budget));
   } else {
     const seeds = mulberry32(seed);
+    // independent price paths, but the clock keeps moving forward (time never rewinds between paths)
     for (let used = 0; used < budget && s.journal.getAll().length < target; used += E.MONTE_CARLO_PATH_BARS) {
-      runPath(s, generatePath(cfg.symbol, Math.floor(seeds() * 2 ** 31), Math.min(E.MONTE_CARLO_PATH_BARS, budget - used)));
+      runPath(s, generatePath(cfg.symbol, Math.floor(seeds() * 2 ** 31), Math.min(E.MONTE_CARLO_PATH_BARS, budget - used), undefined, E.START_TS + used * 300));
     }
   }
 
