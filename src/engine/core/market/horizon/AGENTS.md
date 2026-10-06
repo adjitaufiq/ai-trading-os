@@ -1,0 +1,2 @@
+- M1B.10 horizon classifier is passive context (authority NONE): consumes only M1B.9 snapshot, confirmed M15 structure, injected M5 momentum sign and optional M1B.8 footprints (tags only); never imports signal/plan/risk/execution, never emits BUY/SELL/SL/TP/lot/score. Why: horizon compatibility ≠ decision.
+- Precedence lives in HORIZON_RULES and thresholds in HORIZON_PARAMS; any change bumps algorithmVersion and tests. Why: deterministic, versioned, testable.
