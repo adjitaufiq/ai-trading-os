@@ -13,6 +13,11 @@ function resolveSource(raw: string | undefined): FeedSource {
   return "MOCK";
 }
 
+export interface NormalizeOptions {
+  /** Calendar authority: true when a gap is a scheduled market closure (e.g. XAU weekend). Absent ⇒ every gap rejected. */
+  isExpectedGap?: (lastTs: number, nextTs: number, timeframe: Timeframe) => boolean;
+}
+
 /**
  * Validate and normalize a raw gateway payload into an ArenaCandle.
  *
@@ -27,6 +32,7 @@ export function validateAndNormalize(
   raw: RawGatewayPayload,
   timeframe: Timeframe,
   lastCandle?: ArenaCandle,
+  opts?: NormalizeOptions,
 ): NormalizeResult {
   const open = raw.open ?? raw.o;
   const high = raw.high ?? raw.h;
@@ -61,7 +67,7 @@ export function validateAndNormalize(
     // RULE C — gap detection (never silently filled)
     const expected = TIMEFRAME_SECONDS[timeframe];
     const delta = raw.time - lastCandle.timestamp;
-    if (delta > expected) {
+    if (delta > expected && !opts?.isExpectedGap?.(lastCandle.timestamp, raw.time, timeframe)) {
       return {
         isValid: false,
         errorCode: "GAP_DETECTED",
