@@ -265,7 +265,7 @@ export function RadarPlanView({ radar, signal, entry }: { radar: RadarPlan | nul
   </div>;
 }
 
-function RadarMetric({ label, value, detail, testId }: { label: string; value: string; detail?: string; testId: string }) {
+function RadarMetric({ label, value, detail, testId }: { label: string; value: string; detail?: string | undefined; testId: string }) {
   return <div className="min-w-0 border border-border bg-card p-3" data-testid={testId}>
     <div className="text-[10px] font-semibold uppercase text-muted-foreground">{label}</div>
     <div className="mt-1 text-sm font-semibold text-foreground">{value}</div>
@@ -275,7 +275,7 @@ function RadarMetric({ label, value, detail, testId }: { label: string; value: s
 
 function TraderRadarView({ snapshot, reader }: { snapshot: TradingSnapshot | null; reader: MarketRuntimeReader }) {
   const op = snapshot?.operator ?? null;
-  const radar = reader.radarSnapshot();
+  const radar = reader.radarSnapshot?.() ?? null;
   const live = reader.latestLiveObservation();
   const signal = cockpitSignal(snapshot);
   const actionable = signal === "BUY" || signal === "SELL";
