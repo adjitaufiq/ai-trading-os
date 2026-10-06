@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { RadarObservabilityPanel } from "./RadarObservabilityPanel";
 import type { SignalAlert, SignalAlertStore } from "@/lib/signalAlerts";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Activity, ArrowDownRight, ArrowUpRight, BrainCircuit, Check, Circle, Minus, ShieldCheck, X } from "lucide-react";
+import { Activity, ArrowDownRight, ArrowUpRight, BrainCircuit, Check, Circle, Minus, Radar, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LiveClock } from "@/core/temporal/CanonicalClock";
 import { TechnicalSliceService } from "@/core/technical/TechnicalSliceService";
@@ -62,6 +62,25 @@ export function referenceEntry(snapshot: TradingSnapshot | null): number | null 
   if (signal === "BUY") return snapshot?.quote?.ask ?? null;
   if (signal === "SELL") return snapshot?.quote?.bid ?? null;
   return null;
+}
+
+export type TradeProjection = {
+  readonly direction: "BUY" | "SELL" | null;
+  readonly actionable: boolean;
+  readonly headline: "BUY READY" | "SELL READY" | "BUY BIAS" | "SELL BIAS" | "HOLD";
+  readonly status: "READY SETUP" | "WAIT TRIGGER" | "WAIT CONFIRMATION";
+};
+
+/** One presentation projection shared by Signal State and Rencana Acuan. */
+export function tradeProjection(snapshot: TradingSnapshot | null): TradeProjection {
+  const signal = cockpitSignal(snapshot);
+  if (signal === "BUY" || signal === "SELL") return { direction: signal, actionable: true, headline: `${signal} READY`, status: "READY SETUP" };
+  const direction = snapshot?.radar_plan?.side ?? (snapshot?.operator?.status === "CARI_BUY" ? "BUY" : snapshot?.operator?.status === "CARI_SELL" ? "SELL" : null);
+  if (direction) {
+    const status = snapshot?.radar_plan?.status === "WAITING_FOR_AREA" ? "WAIT CONFIRMATION" : "WAIT TRIGGER";
+    return { direction, actionable: false, headline: `${direction} BIAS`, status };
+  }
+  return { direction: null, actionable: false, headline: "HOLD", status: "WAIT CONFIRMATION" };
 }
 
 /** Trader-language read of the operator-v2 evidence. Pure presentation mapping; never derives a signal. */
@@ -225,15 +244,15 @@ export function TradeActions({ symbol = "", signal, quote = null, plan = null, p
 const radarReason = (r: string) => ({ NO_LOCAL_ENTRY_ZONE: "Belum ada area support/resistance atau EMA21/50 lokal yang valid", PRICE_BELOW_BUY_ZONE: "Harga sudah di bawah area BUY", PRICE_ABOVE_SELL_ZONE: "Harga sudah di atas area SELL" } as Record<string, string>)[r] ?? technicalCopy(r);
 
 /** Radar-first plan card: RADAR (dynamic projection) vs SIGNAL (READY) vs no direction. Presentation of engine output only. */
-export function RadarPlanView({ radar, signal, entry }: { radar: RadarPlan | null; signal: CockpitSignal; entry: number | null }) {
+export function RadarPlanView({ radar, signal, entry, projection }: { radar: RadarPlan | null; signal: CockpitSignal; entry: number | null; projection?: TradeProjection }) {
   const mode = radar?.mode ?? "NONE";
   const ready = mode === "SIGNAL";
-  const side = radar?.side ?? null;
-  const sideTone = ready && signal !== "HOLD" ? (side === "BUY" ? "text-bull" : side === "SELL" ? "text-bear" : "text-muted-foreground") : "text-foreground";
+  const side = projection?.direction ?? radar?.side ?? null;
+  const sideTone = side === "BUY" ? "text-bull" : side === "SELL" ? "text-bear" : "text-muted-foreground";
   const ok = radar?.status === "AVAILABLE";
   const val = (x: number | null | undefined) => (ok ? n(x) : "—");
   const badRr = ok && radar?.economics_status === "BAD_RR";
-  const status = badRr ? "NO SETUP · BAD R:R" : ready ? (ok ? `${side} READY · PAPER ONLY` : "READY · LEVEL DATA NOT AVAILABLE")
+  const status = badRr ? "NO SETUP · BAD R:R" : projection ? projection.status : ready ? (ok ? `${side} READY · PAPER ONLY` : "READY · LEVEL DATA NOT AVAILABLE")
     : mode === "RADAR" ? (radar?.status === "WAITING_FOR_AREA" ? "WAIT CONFIRMATION" : "WAIT TRIGGER") : "NO SETUP";
   const refEntry = ready ? (radar?.reference_entry ?? entry) : radar?.reference_entry ?? null;
   return <div data-testid="radar-plan" data-mode={mode}>
@@ -243,7 +262,7 @@ export function RadarPlanView({ radar, signal, entry }: { radar: RadarPlan | nul
       {ok && radar?.economics_status ? <span data-testid="econ-badge" className={`border px-1.5 py-0.5 text-[10px] font-semibold ${badRr ? "border-bear text-bear" : "border-border text-foreground"}`}>{econLabel(radar.economics_status)}</span> : null}
     </div>
     <div className="mt-3 flex items-baseline justify-between gap-2">
-      <span className={`text-2xl font-semibold ${sideTone}`} data-testid="radar-side">{side ? (ready && signal !== "HOLD" ? side : `${side} BIAS`) : "NO DIRECTION"}</span>
+      <span className={`text-2xl font-semibold ${sideTone}`} data-testid="radar-side">{projection?.headline ?? (side ? (ready && signal !== "HOLD" ? side : `${side} BIAS`) : "NO DIRECTION")}</span>
       <span className="text-right text-xs font-semibold" data-testid="radar-status">{status}</span>
     </div>
     {mode === "RADAR" ? <p className="mt-1 text-[11px] font-semibold text-muted-foreground" data-testid="radar-projection-label">PROYEKSI — BELUM SIGNAL ENTRY</p> : null}
@@ -434,6 +453,7 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
   const snapshot = view.current;
   const evidence = snapshot?.evidence;
   const signal = cockpitSignal(snapshot);
+  const projection = tradeProjection(snapshot);
   const entry = referenceEntry(snapshot);
   const plan: DisplayPlan = snapshot?.reference_plan.status === "AVAILABLE" ? { side: snapshot.reference_plan.side, sl: snapshot.reference_plan.sl, tp1: snapshot.reference_plan.tp1, tp2: snapshot.reference_plan.tp2, rr: rrText(snapshot.reference_plan), econ: snapshot.reference_plan.economics_status } : null;
   // Ticket preview: same plan builder rebased to the actual click price (what paper open will freeze).
@@ -445,7 +465,7 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
   };
   const unavailable = !snapshot || snapshot.availability === "UNAVAILABLE" || snapshot.entry.state === "NOT_EVALUABLE";
   const signalReason = unavailable ? "menunggu bukti teknikal yang valid" : technicalCopy(snapshot?.entry.reason ?? "tunggu setup valid");
-  const signalTone = signal === "BUY" ? "text-bull" : signal === "SELL" ? "text-bear" : "text-warn";
+  const signalTone = projection.direction === "BUY" ? "text-bull" : projection.direction === "SELL" ? "text-bear" : "text-warn";
   const signalBorder = signal === "BUY" ? "border-bull/45" : signal === "SELL" ? "border-bear/45" : "border-border";
   const [ai, setAi] = useState<AiWhyResult | { status: "PENDING" } | null>(null);
   const [mode, setMode] = useState<CockpitMode>("SIMULASI");
@@ -472,13 +492,15 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
   const location = snr ? `S ${n(snr.nearest_support?.price)} · R ${n(snr.nearest_resistance?.price)}` : "DATA BELUM CUKUP";
   const planConfirmations = snapshot?.why.slice(0, 5).map((fact) => technicalCopy(fact.text)) ?? ["Menunggu bukti teknikal yang valid"];
 
-  return <article className="space-y-4" data-testid={`cockpit-${view.symbol}`}>
-    <div className="flex gap-1 border-b border-border" role="tablist" aria-label="Navigasi cockpit">
-      {(["TRADE", "RADAR", "ANALYSIS"] as const).map((t) => <button key={t} type="button" role="tab" aria-selected={tab === t} data-testid={`cockpit-tab-${t.toLowerCase()}`} onClick={() => setTab(t)} className={`-mb-px border-b-2 px-3 py-2 text-xs font-semibold ${tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`}>{t}</button>)}
-    </div>
+  const tabIcon = { TRADE: ShieldCheck, RADAR: Radar, ANALYSIS: BrainCircuit } as const;
+  return <article className="space-y-4 pb-20 md:pb-0" data-testid={`cockpit-${view.symbol}`}>
+    <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-3 border-t border-border bg-card/95 px-2 pb-[env(safe-area-inset-bottom)] shadow-2xl backdrop-blur md:static md:flex md:border-b md:border-t-0 md:bg-transparent md:px-0 md:shadow-none md:backdrop-blur-none" role="tablist" aria-label="Navigasi utama" data-testid="cockpit-bottom-nav">
+      {(["TRADE", "RADAR", "ANALYSIS"] as const).map((t) => {
+        const Icon = tabIcon[t];
+        return <Button key={t} type="button" role="tab" aria-selected={tab === t} data-testid={`cockpit-tab-${t.toLowerCase()}`} onClick={() => setTab(t)} variant="ghost" className={`h-16 rounded-none border-b-2 px-2 text-[11px] font-semibold md:h-10 md:flex-row md:px-4 ${tab === t ? "border-primary bg-muted/40 text-foreground" : "border-transparent text-muted-foreground"}`}><Icon className="h-4 w-4" />{t}</Button>;
+      })}
+    </nav>
     <div hidden={tab !== "TRADE"} className="space-y-3" data-testid="tab-trade">
-    <div className="grid gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,.75fr)]">
-      <div className="space-y-3">
       <section className={`border bg-card p-4 sm:p-5 ${signalBorder}`} data-testid="main-signal-card">
         <div className="flex items-center justify-between gap-3">
           <span className="text-xs font-semibold uppercase text-muted-foreground">Signal State · {view.symbol}</span>
@@ -487,24 +509,20 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
           </div>
         </div>
         <div className="mt-4 flex items-end gap-3">
-          {signal === "BUY" ? <ArrowUpRight className="mb-2 h-9 w-9 text-bull" /> : signal === "SELL" ? <ArrowDownRight className="mb-2 h-9 w-9 text-bear" /> : <Circle className="mb-2 h-8 w-8 text-warn" />}
-          <div className={`text-5xl font-semibold sm:text-6xl ${signalTone}`} data-testid="cockpit-signal">{signal}</div>
+          {projection.direction === "BUY" ? <ArrowUpRight className="mb-2 h-9 w-9 text-bull" /> : projection.direction === "SELL" ? <ArrowDownRight className="mb-2 h-9 w-9 text-bear" /> : <Circle className="mb-2 h-8 w-8 text-warn" />}
+          <div className={`text-4xl font-semibold sm:text-6xl ${signalTone}`} data-testid="cockpit-signal" data-engine-signal={signal}>{projection.headline}</div>
         </div>
-        <div className="mt-1 text-xs font-semibold uppercase text-muted-foreground" data-testid="cockpit-signal-sub">{signal === "HOLD" ? "Waiting Technical Confirmation" : "Ready Setup"}</div>
+        <div className="mt-1 text-xs font-semibold uppercase text-muted-foreground" data-testid="cockpit-signal-sub">{projection.status}</div>
         <p className="mt-3 max-w-2xl text-sm text-muted-foreground" data-testid="cockpit-signal-reason">{signalReason}</p>
         <SignalSafetyStrip signal={snapshot?.signal ?? null} />
       </section>
 
       <MarketContextSummary snapshot={snapshot} />
-      </div>
-
       <section className="border border-border bg-card p-4 sm:p-5" aria-label="Rencana transaksi acuan" data-testid="radar-card">
-        <RadarPlanView radar={snapshot?.radar_plan ?? null} signal={signal} entry={entry} />
+        <RadarPlanView radar={snapshot?.radar_plan ?? null} signal={signal} entry={entry} projection={projection} />
         <TradeActions symbol={view.symbol} signal={signal} quote={quote} plan={plan} planFor={ticketPlan} reason={signalReason} confirmations={planConfirmations} mode={mode}
           onConfirm={(side) => { if (quote) store.open({ symbol: view.symbol, side, quote, now: uiClock.now(), snapshot }); }} />
       </section>
-    </div>
-
     <TraderRadarView snapshot={snapshot} reader={reader} part="TRADE" />
     <PaperPositions store={store} symbol={view.symbol} quote={quote} />
     </div>
@@ -584,7 +602,7 @@ export function TechnicalSlicePanel({ runtimes, selectedSymbol, unmountedReason,
     return () => clearInterval(timer);
   }, [services, tickMs, journal, alerts]);
   const selected = services.find((service) => service.symbol === selectedSymbol) ?? null;
-  return <section className="bg-background px-4 pb-8 sm:px-8" aria-label="Kokpit trading">
+  return <section className="bg-background px-4 pb-24 sm:px-8 md:pb-8" aria-label="Kokpit trading">
     <RadarObservabilityPanel reader={runtimes.find((r) => r.symbol === selectedSymbol)?.reader ?? null} symbol={selectedSymbol} tickMs={tickMs} />
     <div className="mx-auto max-w-screen-2xl">{selected ? (() => { const runtime = runtimes.find((r) => r.symbol === selectedSymbol); return runtime?.reader ? <Cockpit service={selected} reader={runtime.reader} explain={explain} store={journal} /> : <div className="border border-border bg-card p-4 text-sm text-muted-foreground">Menunggu pasar terpilih…</div>; })() : <div className="border border-border bg-card p-4 text-sm text-muted-foreground">Menunggu pasar terpilih…</div>}</div>
   </section>;
