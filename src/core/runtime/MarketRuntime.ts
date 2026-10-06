@@ -142,7 +142,9 @@ export class MarketRuntime {
     }
     this.radar = new RadarRuntimeService(sym, o.spec.origin === "BROKER_REPORTED" ? { mode: "REAL", provider: "EXNESS_MT5", feedId: o.binding.broker_symbol } : { mode: "SYNTHETIC", feedId: o.binding.broker_symbol });
     // radar evaluates on CLOSED M5 only (after the store has appended it); forming emissions are ignored
-    this.fanout.aggregators.M5.onBar((b) => { if (b.status === "CLOSED") this.radar.onClosedM5(b, (tf) => this.stores[tf].closed, o.clock.now()); });
+    // Radar evidence = broker CLOSED history (strictly older than the first live closed bar) + canonical live CLOSED bars,
+    // so it warms up from history instead of waiting hours for live M15 bars. History never enters CandleStore/fanout.
+    this.fanout.aggregators.M5.onBar((b) => { if (b.status === "CLOSED") this.radar.onClosedM5(b, (tf) => this.radarEvidence(tf), o.clock.now()); });
     this.paper = new LivePaperLoop(sym, o.spec.origin === "BROKER_REPORTED" ? "REAL_MT5" : "SYNTHETIC", o.spec);
     // paper loop runs after the radar on the same CLOSED M5 emission; fills use the latest LIVE bid/ask
     this.fanout.aggregators.M5.onBar((b) => { if (b.status === "CLOSED") this.paper.onClosedM5(b, (tf) => this.stores[tf].closed, this.lastLive); });
@@ -253,7 +255,29 @@ export class MarketRuntime {
       out.push(Object.freeze({ provenance: "BROKER_BACKFILL_BAR", timeframe: tf, open_time: b.open_time, close_time, available_at: now, open: b.open, high: b.high, low: b.low, close: b.close }));
     }
     this.history[tf] = Object.freeze(out.slice(-this.o.maxClosedBarsPerTimeframe));
+    // Bootstrap: evaluate the radar once on the latest broker CLOSED M5 so it leaves INITIALIZING without waiting for a live close.
+    // onClosedM5 ignores closes already evaluated, so later live bars proceed normally.
+    if (tf === "M5") {
+      const last = this.history.M5.at(-1);
+      if (last) this.radar.onClosedM5(this.historyToBar(last), (t) => this.radarEvidence(t), now);
+    }
     return this.history[tf].length;
+  }
+
+  private historyToBar(h: BrokerHistoryBar): Bar {
+    return Object.freeze<Bar>({
+      symbol: this.o.binding.canonical_symbol, timeframe: h.timeframe, source: "EXNESS_MT5", open_time: h.open_time, close_time: h.close_time,
+      status: "CLOSED", closed_at: h.close_time, effective_at: h.close_time, available_at: h.available_at,
+      open: h.open, high: h.high, low: h.low, close: h.close, tick_count: 0, revision: 0,
+    });
+  }
+
+  /** Read-only merged CLOSED evidence for the radar: history older than the first live closed bar, then live closed bars. */
+  private radarEvidence(tf: Timeframe): readonly Bar[] {
+    const live = this.stores[tf].closed;
+    const cut = live.length ? live[0]!.open_time : Infinity;
+    const hist = this.history[tf].filter((h) => h.open_time < cut).map((h) => this.historyToBar(h));
+    return hist.length ? [...hist, ...live] : live;
   }
 
   /** Time-driven closure through the canonical clock only. */
