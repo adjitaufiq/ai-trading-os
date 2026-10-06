@@ -460,6 +460,7 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
   return <article className="space-y-4" data-testid={`cockpit-${view.symbol}`}>
     <TraderRadarView snapshot={snapshot} reader={reader} />
     <div className="grid gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,.75fr)]">
+      <div className="space-y-3">
       <section className={`border bg-card p-4 sm:p-5 ${signalBorder}`} data-testid="main-signal-card">
         <div className="flex items-center justify-between gap-3">
           <span className="text-xs font-semibold uppercase text-muted-foreground">Signal State · {view.symbol}</span>
