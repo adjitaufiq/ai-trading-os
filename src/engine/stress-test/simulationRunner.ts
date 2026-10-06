@@ -201,7 +201,7 @@ function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: s
     if (risk.decision !== "APPROVED") { for (const r of risk.reasons.length ? risk.reasons : [risk.decision]) bump(s.counters.riskBlocked, r); continue; }
     s.counters.riskApproved++;
     const pt = createPaperTrade({
-      plan, risk, marketPrice: bid, sim: { spread: c.spread, slippage: 0, maxSlippage: E.MAX_SLIPPAGE, latencyMs: 0, latencyDriftPerMs: 0 },
+      plan, risk, marketPrice: plan.direction === "BUY" ? bid : ask, sim: { spread: c.spread, slippage: 0, maxSlippage: E.MAX_SLIPPAGE, latencyMs: 0, latencyDriftPerMs: 0 },
       contract: { tickSize: E.BROKER.tickSize, tickValue: E.BROKER.tickValue }, accountEquity: s.equity,
       signalSource: { bias: `H4_${bias.h4.bias}_H1_${bias.h1.phase}`, location: loc.context.priceLocation, trigger: reaction?.pattern ?? "NONE", reactionQuality: reaction?.quality ?? "NONE", emaContext: ema.context.actions.join(",") || ema.context.pricePosition },
       now,
