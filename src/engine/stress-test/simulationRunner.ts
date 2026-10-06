@@ -146,7 +146,7 @@ function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: s
     if (s.journal.getAll().length >= s.target) continue;
 
     // ---- analysis (closed data only, as of `now`)
-    const m15 = htf.M15!;
+    const m15 = htf["M15"]!;
     if (m5.length < 2 || m15.length < 15) continue;
     const swings = (tf: SwingTimeframe) => det[tf].getSwings().slice(-E.SWING_WINDOW);
     let m15S = buildStructure(sym, "M15", swings("M15"), now);
@@ -169,7 +169,7 @@ function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: s
     if (ev.kind === "NO_SETUP") bump(s.counters.noSetup, ev.reason);
 
     if (setup) {
-      setup = updateSetup(setup, { m5: c, m15: m15.at(-1), price: c.close, m15Atr: atr, m15StructureShift: m15S.structureShift, emaContext: ema.context, evaluation: ev, now }).setup;
+      setup = updateSetup(setup, { m5: c, m15: m15.at(-1)!, price: c.close, m15Atr: atr, m15StructureShift: m15S.structureShift, emaContext: ema.context, evaluation: ev, now }).setup;
       if (setup.state === "INVALIDATED") s.counters.setupsInvalidated++;
       if (setup.state === "EXPIRED") s.counters.setupsExpired++;
       if (isTerminal(setup)) setup = null;
@@ -222,7 +222,7 @@ export function runStressTest(partial: Partial<StressTestConfig>): StressRunResu
   const cfg: StressTestConfig = { ...DEFAULT_STRESS_CONFIG, ...partial };
   const counters = emptyCounters();
   const base = (error?: StressRunResult["error"]): StressRunResult => ({
-    ok: !error, error, config: cfg, dataLabel: cfg.mode === "HISTORICAL_REPLAY" ? "HISTORICAL_REPLAY" : "SIMULATION_SYNTHETIC",
+    ok: !error, ...(error ? { error } : {}), config: cfg, dataLabel: cfg.mode === "HISTORICAL_REPLAY" ? "HISTORICAL_REPLAY" : "SIMULATION_SYNTHETIC",
     metrics: computeStressMetrics([], [], counters, cfg.initialEquity), counters, health: [], byScenario: [], highestImpact: null,
     sampleReached: false, policyVersion: STRESS_POLICY_VERSION,
   });
