@@ -168,14 +168,12 @@ function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: s
     s.counters.evaluations++;
     if (ev.kind === "NO_SETUP") bump(s.counters.noSetup, ev.reason);
 
-    if (setup && !isTerminal(setup)) {
-      const was = setup.state;
+    if (setup) {
       setup = updateSetup(setup, { m5: c, m15: m15.at(-1), price: c.close, m15Atr: atr, m15StructureShift: m15S.structureShift, emaContext: ema.context, evaluation: ev, now }).setup;
       if (setup.state === "INVALIDATED") s.counters.setupsInvalidated++;
       if (setup.state === "EXPIRED") s.counters.setupsExpired++;
-      if (isTerminal(setup) || (was === "READY" && setup.state === "READY")) { if (isTerminal(setup)) setup = null; else continue; }
-    } else setup = null;
-
+      if (isTerminal(setup)) setup = null;
+    }
     if (!setup && reaction) {
       const cr = createSetup(ev, input, reaction, c, c.close);
       if (cr) {
@@ -205,7 +203,7 @@ function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: s
     const pt = createPaperTrade({
       plan, risk, marketPrice: bid, sim: { spread: c.spread, slippage: 0, maxSlippage: E.MAX_SLIPPAGE, latencyMs: 0, latencyDriftPerMs: 0 },
       contract: { tickSize: E.BROKER.tickSize, tickValue: E.BROKER.tickValue }, accountEquity: s.equity,
-      signalSource: { bias: `${bias.overallBias}_${input.bias.h4.bias}`.startsWith("") ? `H4_${bias.h4.bias}_H1_${bias.h1.phase}` : "", location: loc.context.priceLocation, trigger: reaction?.pattern ?? "NONE", reactionQuality: reaction?.quality ?? "NONE", emaContext: ema.context.actions.join(",") || ema.context.pricePosition },
+      signalSource: { bias: `H4_${bias.h4.bias}_H1_${bias.h1.phase}`, location: loc.context.priceLocation, trigger: reaction?.pattern ?? "NONE", reactionQuality: reaction?.quality ?? "NONE", emaContext: ema.context.actions.join(",") || ema.context.pricePosition },
       now,
     });
     if (pt.state === "REJECTED") { bump(s.counters.paperRejected, pt.reason); continue; }
