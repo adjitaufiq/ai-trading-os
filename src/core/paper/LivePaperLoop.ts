@@ -63,7 +63,7 @@ export class LivePaperLoop {
   readonly journal = new TradeJournal();
   private setup: SignalSetup | null = null;
   private open: Open | null = null;
-  private balance = VIRTUAL_ACCOUNT_DEFAULTS.initialBalance;
+  private balance: number = VIRTUAL_ACCOUNT_DEFAULTS.initialBalance;
   private peak = this.balance;
   private dayKey = -1;
   private dayStart = this.balance;
