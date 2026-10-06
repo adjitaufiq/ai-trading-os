@@ -6,7 +6,7 @@ export function jt(o: Partial<JournalTrade> & { ctx?: Partial<JournalTrade["cont
   const pnl = rest.profitLossUSD ?? 20;
   n += 1;
   return {
-    tradeId: `XAUUSD_BUY_${String(n).padStart(3, "0")}`, symbol: "XAUUSD", direction: "BUY", executionMode: "PAPER",
+    tradeId: `XAUUSD_BUY_${String(n).padStart(3, "0")}`, symbol: "XAUUSD", direction: "BUY", executionMode: "PAPER", assetClass: "COMMODITY", session: "LONDON", plannedEntryPrice: 2650, actualEntryPrice: 2650, slippagePoints: 0, latencyMs: 0,
     entryPrice: 2650, exitPrice: 2656, stopLoss: 2645, takeProfit: 2656, lot: 0.1, riskUSD: 50,
     profitLossUSD: pnl, profitLossPercent: pnl / 100, result: pnl > 0 ? "WIN" : pnl < 0 ? "LOSS" : "BREAK_EVEN",
     closeReason: pnl > 0 ? "TP_HIT" : "SL_HIT", durationSeconds: 600,

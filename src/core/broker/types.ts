@@ -55,6 +55,14 @@ export interface SymbolSpecification {
   readonly broker_utc_offset_ms: number;
 }
 
+export type AssetClass = "CRYPTO" | "COMMODITY" | "FOREX" | "INDEX" | "STOCK";
+
+export interface SymbolMetadata extends SymbolSpecification {
+  readonly assetClass: AssetClass;
+  readonly minLot?: number;
+  readonly maxLot?: number;
+}
+
 export type ConnectionStatus = "NOT_CONNECTED" | "CONNECTING" | "CONNECTED" | "DISCONNECTED" | "RECONNECTING";
 export interface BrokerConnectionState {
   readonly mode: "SIMULATION" | "REAL";

@@ -8,13 +8,22 @@ const toJournalContext = (m: MarketContextSnapshot) => ({
   footprintTags: footprintTags(m.footprints), eventReferences: m.activeEvents.map((e) => ({ ...e })),
 });
 import type { ExcursionMetrics, JournalContext, JournalFilter, JournalTrade, SaveResult, TradeOutcome } from "./types";
+import { defaultSymbolRegistry, type SymbolRegistry } from "../../core/broker/SymbolRegistry";
+import { resolveMarketSession } from "../../core/temporal/MarketSessionResolver";
 
 export const outcomeOf = (pnl: number): TradeOutcome => (pnl > 0 ? "WIN" : pnl < 0 ? "LOSS" : "BREAK_EVEN");
 
+/** BUY: (actual − planned)/point; SELL: (planned − actual)/point. Positive = adverse. */
+export function slippagePoints(direction: "BUY" | "SELL", planned: number, actual: number, point: number): number {
+  const raw = (direction === "BUY" ? actual - planned : planned - actual) / point;
+  return Math.round(raw * 1e6) / 1e6;
+}
+
 /** Map a CLOSED M5 paper trade to a journal row. Copies values; never recalculates them. */
-export function fromPaperTrade(t: PaperTrade, extra: { h1Phase: string; locationTier: string; rr: number }, excursion?: ExcursionMetrics, footprints?: FootprintSnapshot): JournalTrade | null {
+export function fromPaperTrade(t: PaperTrade, extra: { h1Phase: string; locationTier: string; rr: number }, excursion?: ExcursionMetrics, footprints?: FootprintSnapshot, registry: SymbolRegistry = defaultSymbolRegistry): JournalTrade | null {
   if (t.state !== "CLOSED" || !t.result || t.openedAt === null || t.closedAt === null) return null;
   const s = t.snapshot;
+  const meta = registry.require(s.symbol);
   const context: JournalContext = {
     bias: s.signalSource.bias, h1Phase: extra.h1Phase, priceLocation: s.signalSource.location, locationTier: extra.locationTier,
     triggerPattern: s.signalSource.trigger, reactionQuality: s.signalSource.reactionQuality, emaContext: s.signalSource.emaContext, rr: extra.rr,
@@ -27,6 +36,12 @@ export function fromPaperTrade(t: PaperTrade, extra: { h1Phase: string; location
     openedAt: t.openedAt, closedAt: t.closedAt, ...(excursion ? { excursion } : {}),
     ...(footprints ? { footprints: { ...footprints } } : {}),
     ...(s.marketContext ? { contextSnapshot: toJournalContext(s.marketContext) } : {}),
+    assetClass: meta.assetClass,
+    session: resolveMarketSession(t.openedAt * 1000, meta.assetClass),
+    plannedEntryPrice: t.fill.marketPrice,
+    actualEntryPrice: t.fill.actualEntry,
+    slippagePoints: slippagePoints(s.direction, t.fill.marketPrice, t.fill.actualEntry, meta.point),
+    latencyMs: 0,
   };
 }
 

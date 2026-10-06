@@ -4,7 +4,7 @@ import type { AutopsyMarketData } from "../types";
 export function loss(o: Partial<JournalTrade> & { ctx?: Partial<JournalTrade["context"]> } = {}): JournalTrade {
   const { ctx, ...rest } = o;
   return {
-    tradeId: "XAUUSD_BUY_501", symbol: "XAUUSD", direction: "BUY", executionMode: "PAPER",
+    tradeId: "XAUUSD_BUY_501", symbol: "XAUUSD", direction: "BUY", executionMode: "PAPER", assetClass: "COMMODITY", session: "LONDON", plannedEntryPrice: 2650, actualEntryPrice: 2650, slippagePoints: 0, latencyMs: 0,
     entryPrice: 2650, exitPrice: 2647, stopLoss: 2647, takeProfit: 2656, lot: 0.1, riskUSD: 30,
     profitLossUSD: -30, profitLossPercent: -0.3, result: "LOSS", closeReason: "SL_HIT", durationSeconds: 1800,
     context: { bias: "H4_BULLISH", h1Phase: "PULLBACK", priceLocation: "AT_SUPPORT", locationTier: "TIER_1", triggerPattern: "BULLISH_REJECTION_WICK", reactionQuality: "STRONG", emaContext: "EMA21_RETEST", rr: 2, ...ctx },

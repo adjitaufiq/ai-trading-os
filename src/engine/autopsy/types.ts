@@ -1,16 +1,8 @@
 // M6.5 — Trade autopsy contracts. READ-ONLY forensic layer over M6 journal rows.
 // Never modifies trades, SL/TP, parameters or signals; never optimizes.
 
-export type FailureCategory =
-  | "LIQUIDITY_SWEEP"
-  | "WRONG_LOCATION"
-  | "BIAS_CONFLICT"
-  | "VOLATILITY_FAILURE"
-  | "TRIGGER_FAILURE"
-  | "EXECUTION_FAILURE"
-  | "NO_FAILURE"
-  /** Loss where no rule matched or evidence was missing. Added so unknowns are never forced into a category. */
-  | "UNCLASSIFIED";
+import type { FailureCategory } from "../contracts/diagnostics";
+export type { FailureCategory };
 
 export type ConfidenceLevel = "LOW" | "MEDIUM" | "HIGH";
 
