@@ -100,4 +100,23 @@ describe("clean trading cockpit", () => {
     expect(screen.getByTestId("layer-execution-state")).toHaveTextContent("NOT READY");
     expect(screen.getByTestId("radar-state")).toHaveTextContent(/NO SETUP|NOT EVALUABLE/);
   });
+  it("renders market context summary directly between signal and trade plan", () => {
+    render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);
+    const summary = screen.getByTestId("market-context-summary");
+    expect(summary).toHaveTextContent("Market Trend");
+    expect(summary).toHaveTextContent("H4");
+    expect(summary).toHaveTextContent("H1");
+    expect(summary).toHaveTextContent(/WAITING MARKET DATA/);
+    const signal = screen.getByTestId("main-signal-card");
+    const plan = screen.getByTestId("radar-card");
+    expect(signal.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(summary.compareDocumentPosition(plan) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+  it("keeps HOLD neutral and paper actions disabled around the new market context card", () => {
+    render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);
+    expect(screen.getByTestId("cockpit-signal")).toHaveTextContent("HOLD");
+    expect(screen.getByTestId("action-buy")).toBeDisabled();
+    expect(screen.getByTestId("action-sell")).toBeDisabled();
+    expect(screen.getByTestId("mc-trend")).not.toHaveTextContent(/BUY|SELL/);
+  });
 });
