@@ -13,14 +13,15 @@ export function deriveSymbolHealth(i: {
 }, p = ENGINE_HEALTH_POLICY): SymbolEngineHealth {
   const r = i.reader;
   if (!r) {
-    const failing = !/^RESOLVING_SPEC$/.test(i.mount_status);
-    return Object.freeze({ symbol: i.symbol, state: failing && i.restarts > 0 ? "OFFLINE" : failing && i.mount_status !== "INIT" ? "OFFLINE" : "STARTING", last_update_at: null, latency_ms: null, error: failing && i.mount_status !== "INIT" ? i.mount_status : null, radar_status: "NOT_MOUNTED", mount_status: i.mount_status, restarts: i.restarts });
+    // INIT / RESOLVING_SPEC = still starting; any other unmounted status is a real failure reason from the mount.
+    const starting = i.mount_status === "INIT" || i.mount_status === "RESOLVING_SPEC";
+    return Object.freeze({ symbol: i.symbol, state: starting ? "STARTING" : "OFFLINE", last_update_at: null, latency_ms: null, error: starting ? null : i.mount_status, radar_status: "NOT_MOUNTED", mount_status: i.mount_status, restarts: i.restarts });
   }
   const snap = r.snapshot();
   const live = r.latestLiveObservation();
   const radar = r.radarHealth();
-  const last = live ? live.received_at : null;
-  const latency = live ? live.received_at - live.event_at : null;
+  const last = live ? live.observed_at : null;
+  const latency = live ? live.observed_at - live.event_at : null;
   let state: EngineState;
   let error: string | null = null;
   if (snap.lifecycle === "STOPPED") { state = "OFFLINE"; error = snap.degraded_reason ?? "RUNTIME_STOPPED"; }

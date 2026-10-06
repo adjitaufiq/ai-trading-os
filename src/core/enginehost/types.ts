@@ -13,7 +13,7 @@ export interface SymbolEngineHealth {
   readonly state: EngineState;
   /** Wall time of the latest LIVE_MUTATION observation received by this runtime (null = none yet). */
   readonly last_update_at: number | null;
-  /** bridge_received_at − source_event_at of the latest LIVE observation, ms (null = unknown). */
+  /** observed_at − event_at of the latest LIVE observation, ms (null = unknown). */
   readonly latency_ms: number | null;
   readonly error: string | null;
   readonly radar_status: RadarHealth["status"] | "NOT_MOUNTED";
