@@ -528,6 +528,7 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
     </div>
     <div hidden={tab !== "RADAR"} data-testid="tab-radar"><TraderRadarView snapshot={snapshot} reader={reader} part="RADAR" /></div>
     <div hidden={tab !== "ANALYSIS"} className="space-y-4" data-testid="tab-analysis">
+    <RadarObservabilityPanel reader={reader} symbol={view.symbol} />
     <TraderRadarView snapshot={snapshot} reader={reader} part="ANALYSIS" />
 
     <details open className="border-t border-border pt-3" aria-label="Ringkasan engine" data-testid="operator-summary">
@@ -603,7 +604,6 @@ export function TechnicalSlicePanel({ runtimes, selectedSymbol, unmountedReason,
   }, [services, tickMs, journal, alerts]);
   const selected = services.find((service) => service.symbol === selectedSymbol) ?? null;
   return <section className="bg-background px-4 pb-24 sm:px-8 md:pb-8" aria-label="Kokpit trading">
-    <RadarObservabilityPanel reader={runtimes.find((r) => r.symbol === selectedSymbol)?.reader ?? null} symbol={selectedSymbol} tickMs={tickMs} />
     <div className="mx-auto max-w-screen-2xl">{selected ? (() => { const runtime = runtimes.find((r) => r.symbol === selectedSymbol); return runtime?.reader ? <Cockpit service={selected} reader={runtime.reader} explain={explain} store={journal} /> : <div className="border border-border bg-card p-4 text-sm text-muted-foreground">Menunggu pasar terpilih…</div>; })() : <div className="border border-border bg-card p-4 text-sm text-muted-foreground">Menunggu pasar terpilih…</div>}</div>
   </section>;
 }
