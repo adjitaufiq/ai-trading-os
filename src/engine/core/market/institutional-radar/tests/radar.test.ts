@@ -67,12 +67,12 @@ describe("M1B.8 displacement", () => {
 describe("M1B.8 FVG", () => {
   it("Test 4 lifecycle ACTIVE → MITIGATED", () => {
     const base = [c(0, 99, 100, 98, 99.5), c(1, 100, 104, 100, 103.5), c(2, 103.5, 105, 103, 104.5)];
-    expect(trackFVGs(base)[0]).toMatchObject({ direction: "BULLISH", top: 103, bottom: 100, status: "ACTIVE" });
-    expect(trackFVGs([...base, c(3, 104, 104.2, 99, 101)])[0].status).toBe("MITIGATED");
+    expect(trackFVGs(base)[0]!).toMatchObject({ direction: "BULLISH", top: 103, bottom: 100, status: "ACTIVE" });
+    expect(trackFVGs([...base, c(3, 104, 104.2, 99, 101)])[0]!.status).toBe("MITIGATED");
   });
   it("close beyond far edge before mitigation ⇒ INVALIDATED", () => {
     const base = [c(0, 99, 100, 98, 99.5), c(1, 100, 104, 100, 103.5), c(2, 103.5, 105, 103, 104.5)];
-    expect(trackFVGs([...base, c(3, 104, 104.2, 97, 98)])[0].status).toBe("INVALIDATED");
+    expect(trackFVGs([...base, c(3, 104, 104.2, 97, 98)])[0]!.status).toBe("INVALIDATED");
   });
   it("bearish FVG detected", () => {
     const z = trackFVGs([c(0, 105, 106, 104, 104.5), c(1, 104, 104, 100, 100.5), c(2, 100.5, 101, 99, 99.5)]);
@@ -92,7 +92,7 @@ describe("M1B.8 strict order block", () => {
   it("close below OB.low invalidates; inside reported only when ACTIVE", () => {
     const s = st(90, 101); const cs = [c(0, 100, 100.5, 99, 99.2), c(1, 99.2, 103, 99.1, 102.8), c(2, 102, 102.2, 99.5, 100)];
     expect(scanInstitutionalFootprints({ candles: cs, structure: s, atr14M15: 1.5 }).insideOrderBlock).toBe(true);
-    expect(detectOrderBlocks([...cs, c(3, 100, 100.1, 97, 98)], s, 1.5)[0].status).toBe("INVALIDATED");
+    expect(detectOrderBlocks([...cs, c(3, 100, 100.1, 97, 98)], s, 1.5)[0]!.status).toBe("INVALIDATED");
   });
 });
 

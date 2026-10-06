@@ -16,14 +16,14 @@ export function displacementOf(c: ArenaCandle, s: MarketStructure, atr: number):
 export function detectOrderBlocks(candles: readonly ArenaCandle[], s: MarketStructure, atr: number): OrderBlockZone[] {
   const obs: OrderBlockZone[] = [];
   for (let i = 0; i < candles.length; i++) {
-    const c = candles[i];
+    const c = candles[i]!;
     for (const ob of obs) {
       if (ob.status !== "ACTIVE" || ob.createdAt >= c.timestamp) continue;
       if (ob.direction === "BULLISH" ? c.close < ob.low : c.close > ob.high) ob.status = "INVALIDATED";
     }
     if (i === 0) continue;
     const d = displacementOf(c, s, atr);
-    const prev = candles[i - 1];
+    const prev = candles[i - 1]!;
     if (d === "BULLISH" && prev.close < prev.open)
       obs.push({ id: `${c.symbol}_${c.timeframe}_OB_BULLISH_${prev.timestamp}`, direction: "BULLISH", high: prev.high, low: prev.low, createdAt: c.timestamp, status: "ACTIVE" });
     else if (d === "BEARISH" && prev.close > prev.open)

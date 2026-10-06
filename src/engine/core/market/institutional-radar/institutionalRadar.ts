@@ -15,7 +15,7 @@ export function scanInstitutionalFootprints(input: InstitutionalRadarInput): Ins
   let sweepDetected = false, sweepDirection: FootprintDirection | null = null, sweepWickDistance = 0, sweepAgeBars = -1;
   const lo = s.lastConfirmedLow, hi = s.lastConfirmedHigh;
   for (let age = 0; age <= P.SWEEP_TTL_BARS && age < candles.length; age++) {
-    const c = candles[candles.length - 1 - age];
+    const c = candles[candles.length - 1 - age]!;
     if (lo && c.timestamp > lo.timestamp && c.low < lo.price && c.close > lo.price) {
       sweepDetected = true; sweepDirection = "BULLISH"; sweepWickDistance = lo.price - c.low; sweepAgeBars = age; break;
     }
@@ -26,8 +26,8 @@ export function scanInstitutionalFootprints(input: InstitutionalRadarInput): Ins
 
   let displacementPreceded = false, displacementMagnitude = 0;
   for (let i = candles.length - 1; i >= 0; i--) {
-    if (displacementOf(candles[i], s, atr)) {
-      displacementPreceded = true; displacementMagnitude = Math.abs(candles[i].close - candles[i].open) / atr; break;
+    const d = candles[i]!; if (displacementOf(d, s, atr)) {
+      displacementPreceded = true; displacementMagnitude = Math.abs(d.close - d.open) / atr; break;
     }
   }
 
