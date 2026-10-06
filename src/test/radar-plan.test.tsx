@@ -94,9 +94,9 @@ describe("radar card UI", () => {
     expect(screen.getByTestId("plan-sl")).toHaveTextContent("89.000");
     expect(screen.queryByText(/SIGNAL PLAN|SIAP/)).not.toBeInTheDocument();
   });
-  it("no direction ⇒ BELUM ADA ARAH and no targets", () => {
+  it("no direction ⇒ NO SETUP and no targets", () => {
     render(<RadarPlanView radar={null} signal="HOLD" entry={null} />);
-    expect(screen.getByTestId("radar-status")).toHaveTextContent("BELUM ADA ARAH");
+    expect(screen.getByTestId("radar-status")).toHaveTextContent("NO SETUP");
     expect(screen.getByTestId("plan-tp1")).toHaveTextContent("—");
   });
   it("old H4/H1 EMA5 vs EMA21 cards absent from the main cockpit", () => {
