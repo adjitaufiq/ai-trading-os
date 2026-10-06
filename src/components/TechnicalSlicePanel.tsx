@@ -276,6 +276,7 @@ function RadarMetric({ label, value, detail, testId }: { label: string; value: s
 function TraderRadarView({ snapshot, reader }: { snapshot: TradingSnapshot | null; reader: MarketRuntimeReader }) {
   const op = snapshot?.operator ?? null;
   const radar = reader.radarSnapshot?.() ?? null;
+  const radarHealth = reader.radarHealth?.() ?? null;
   const live = reader.latestLiveObservation();
   const signal = cockpitSignal(snapshot);
   const actionable = signal === "BUY" || signal === "SELL";
@@ -298,6 +299,7 @@ function TraderRadarView({ snapshot, reader }: { snapshot: TradingSnapshot | nul
   const horizonItem = (name: "SCALPING" | "INTRADAY" | "SWING") => `${name} ${horizons.includes(name) ? "✓ AVAILABLE" : "✕ NOT SUITABLE"}`;
   const lastM5 = snapshot?.evidence?.M5.last_closed_available_at ?? reader.closedBars("M5").at(-1)?.close_time ?? null;
   const source = radar?.validationSource.dataSource ?? (live?.source === "EXNESS_MT5" ? "REAL_MT5" : unavailableCopy);
+  const freshness = radarHealth?.status === "STALE" || snapshot?.availability === "STALE" ? "STALE DATA" : live ? "LIVE OBSERVATION" : "WAITING LIVE DATA";
   const why = snapshot?.why.slice(0, 5) ?? [];
 
   return <section className="space-y-3" aria-label="Trader Radar Dashboard" data-testid="trader-radar-v2">
@@ -315,20 +317,28 @@ function TraderRadarView({ snapshot, reader }: { snapshot: TradingSnapshot | nul
       <RadarMetric label="Execution State" value={executionState} detail={actionable ? "Valid engine state · paper only" : "Trigger missing · observe only"} testId="layer-execution-state" />
     </div>
 
-    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-      <RadarMetric label="Market Trend" value={marketTrend} detail={`Regime ${regime} · Structure ${structure("H4")}`} testId="market-trend-card" />
-      <RadarMetric label="H4 Bias" value={trendLabel(op?.h4_primary)} detail={structure("H4")} testId="h4-bias-card" />
-      <RadarMetric label="H1 Bias" value={trendLabel(op?.per_tf.H1.trend)} detail={contextLabel(op?.h1_context)} testId="h1-bias-card" />
-      <RadarMetric label="Scalp Condition" value={actionable ? "SCALP READY" : projected ? "WAIT TRIGGER" : "NO SCALP SETUP"} detail={`M15 ${op?.scalp.M15.momentum.state ?? unavailableCopy} · M5 ${op?.scalp.M5.momentum.state ?? unavailableCopy}`} testId="scalp-condition-card" />
-      <RadarMetric label="Price Location" value={locationLabel(op?.location)} detail={zone} testId="price-location-card" />
-      <RadarMetric label="EMA Levels · M5" value={`EMA5 ${level("M5", "ema5")} · EMA21 ${level("M5", "ema21")} · EMA50 ${level("M5", "ema50")}`} detail={emaAction} testId="ema-radar-card" />
-      <RadarMetric label="Structure Radar" value={`H4 ${structure("H4")} · H1 ${structure("H1")} · M15 ${structure("M15")}`} detail="Confirmed CLOSED swings only" testId="structure-radar-card" />
-      <RadarMetric label="Trading Style Radar" value={`${horizonItem("SCALPING")} · ${horizonItem("INTRADAY")} · ${horizonItem("SWING")}`} detail={radar ? `${radar.horizon.marketApproach}${radar.horizon.vetoReason ? ` · ${radar.horizon.vetoReason}` : ""}` : unavailableCopy} testId="trading-style-card" />
+    <div className="grid gap-3 lg:grid-cols-3">
+      <section className="space-y-2" aria-label="Market condition cards" data-testid="market-condition-group">
+        <h3 className="text-[11px] font-semibold uppercase text-muted-foreground">Market Condition</h3>
+        <RadarMetric label="Market Trend" value={marketTrend} detail={`Regime ${regime} · Structure ${structure("H4")}`} testId="market-trend-card" />
+        <div className="grid grid-cols-2 gap-2"><RadarMetric label="H4 Bias" value={trendLabel(op?.h4_primary)} detail={structure("H4")} testId="h4-bias-card" /><RadarMetric label="H1 Bias" value={trendLabel(op?.per_tf.H1.trend)} detail={contextLabel(op?.h1_context)} testId="h1-bias-card" /></div>
+      </section>
+      <section className="space-y-2" aria-label="Setup condition cards" data-testid="setup-condition-group">
+        <h3 className="text-[11px] font-semibold uppercase text-muted-foreground">Setup Condition</h3>
+        <RadarMetric label="Scalp Condition" value={actionable ? "SCALP READY" : projected ? "WAIT TRIGGER" : "NO SCALP SETUP"} detail={`M15 ${op?.scalp.M15.momentum.state ?? unavailableCopy} · M5 ${op?.scalp.M5.momentum.state ?? unavailableCopy}`} testId="scalp-condition-card" />
+        <RadarMetric label="Price Location" value={locationLabel(op?.location)} detail={zone} testId="price-location-card" />
+        <RadarMetric label="EMA Levels · M5" value={`EMA5 ${level("M5", "ema5")} · EMA21 ${level("M5", "ema21")} · EMA50 ${level("M5", "ema50")}`} detail={emaAction} testId="ema-radar-card" />
+        <RadarMetric label="Structure Radar" value={`H4 ${structure("H4")} · H1 ${structure("H1")} · M15 ${structure("M15")}`} detail="Confirmed CLOSED swings only" testId="structure-radar-card" />
+      </section>
+      <section className="space-y-2" aria-label="Trading style cards" data-testid="trading-style-group">
+        <h3 className="text-[11px] font-semibold uppercase text-muted-foreground">Trading Style</h3>
+        <RadarMetric label="Trading Style Radar" value={`${horizonItem("SCALPING")} · ${horizonItem("INTRADAY")} · ${horizonItem("SWING")}`} detail={radar ? `${radar.horizon.marketApproach}${radar.horizon.vetoReason ? ` · ${radar.horizon.vetoReason}` : ""}` : unavailableCopy} testId="trading-style-card" />
+      </section>
     </div>
 
     <div className="border border-border bg-card p-3" data-testid="real-market-metadata">
       <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-        <div><div className="text-muted-foreground">DATA SOURCE</div><div className="mt-1 font-semibold">{source}</div></div>
+        <div><div className="text-muted-foreground">DATA SOURCE</div><div className="mt-1 font-semibold">{source} · {freshness}</div></div>
         <div><div className="text-muted-foreground">SYMBOL</div><div className="mt-1 font-semibold">{reader.symbol}</div></div>
         <div><div className="text-muted-foreground">LAST UPDATE</div><div className="mt-1 font-mono">{formatUtc(live?.observed_at)}</div></div>
         <div><div className="text-muted-foreground">LAST CLOSED M5</div><div className="mt-1 font-mono">{formatUtc(lastM5, false)}</div></div>
