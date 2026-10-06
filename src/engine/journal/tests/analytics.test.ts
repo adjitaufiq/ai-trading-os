@@ -26,7 +26,10 @@ describe("setup analytics", () => {
     expect(analyzeByBias(data()).find((g) => g.key === "H4_BULLISH | PULLBACK")).toMatchObject({ trades: 3, totalR: 1 });
   });
   it("best / worst is descriptive and respects min sample", () => {
-    const { best, worst } = bestAndWorst(analyzeBySetup(data()).byLocationTrigger);
+    const all = analyzeBySetup(data()).byLocationTrigger;
+    expect(bestAndWorst(all).best!.key).toBe("MID_RANGE + BULLISH_REJECTION_WICK"); // 1 trade, 100%
+    const { best } = bestAndWorst(all, 2);
+    const { worst } = bestAndWorst(all);
     expect(best!.key).toBe("AT_SUPPORT + BULLISH_REJECTION_WICK");
     expect(worst!.key).toBe("MID_RANGE + BULLISH_ENGULFING");
     expect(bestAndWorst(analyzeBySetup(data()).byLocation, 10).best).toBeNull();

@@ -1,0 +1,1 @@
+- M6 journal (src/engine/journal) is a read-only, append-only analysis layer: unique tradeId, stored rows deep-frozen, analytics are descriptive and never change rules, params, risk or signals. Why: memory layer ≠ optimizer; history must not be rewritten.
