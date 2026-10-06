@@ -1,6 +1,6 @@
 import { RISK_PARAMS as P, type BrokerSymbolInfo, type PositionSizeResult } from "./types";
 
-const decimals = (step: number) => { const s = String(step); return s.includes(".") ? s.split(".")[1].length : 0; };
+const decimals = (step: number) => { const s = String(step); return s.includes(".") ? (s.split(".")[1] ?? "").length : 0; };
 
 /** Always FLOOR to volumeStep; never round. */
 export function floorToStep(lot: number, step: number): number {

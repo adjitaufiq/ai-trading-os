@@ -29,7 +29,7 @@ export function evaluateRisk(plan: TradePlan, account: AccountProfile, broker: B
   const state = deriveAccountState(account);
   const out = (decision: RiskCheckResult["decision"], extra: Partial<RiskCheckResult> = {}): RiskCheckResult =>
     Object.freeze({ decision, reasons, positionSize: null, accountState: state, reality: null, trace, policyVersion: RISK_POLICY_VERSION, audit: AUDIT, ...extra });
-  const block = (r: BlockReason, name: string, detail?: string) => { reasons.push(r); trace.push({ name, result: "FAIL", detail }); return out("BLOCKED"); };
+  const block = (r: BlockReason, name: string, detail?: string) => { reasons.push(r); trace.push(detail === undefined ? { name, result: "FAIL" } : { name, result: "FAIL", detail }); return out("BLOCKED"); };
 
   // 1. TradePlan valid
   const slDist = plan.riskDistance ?? (plan.sl !== null ? Math.abs(plan.entry - plan.sl) : NaN);
