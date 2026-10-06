@@ -29,7 +29,7 @@ import type { AccountProfile } from "../risk/types";
 import { evaluateSetup, type EvaluatorInput } from "../signal/signalEvaluator";
 import { createSetup, isTerminal, updateSetup } from "../signal/signalLifecycle";
 import type { SignalSetup } from "../signal/types";
-import { defaultSymbolRegistry } from "../../core/broker/SymbolRegistry";
+import { defaultSymbolRegistry } from "../contracts/symbols";
 import { isCalendarGap } from "../../core/temporal/MarketSessionResolver";
 import { profileOf } from "./assetProfiles";
 import { ContextObserver, emptyContextCounters } from "./contextObserver";
@@ -83,9 +83,9 @@ function account(s: Shared): AccountProfile {
 function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: string }[]): void {
   const sym = s.cfg.symbol;
   const assetClass = defaultSymbolRegistry.get(sym)?.assetClass;
-  // calendar authority for scheduled closures only (XAU weekend); 24/7 assets never get an exemption
+  // calendar authority for scheduled closures (XAU weekend); 24/7 assets never get an exemption
   const gapOpts = assetClass ? { isExpectedGap: (a: number, b: number, tf: Timeframe) => { const ok = isCalendarGap(a, b, TIMEFRAME_SECONDS[tf], assetClass); if (ok && tf === "M5") s.calendarGaps++; return ok; } } : undefined;
-  const broker = profileOf(sym)?.broker ?? E.BROKER;
+  const spec = profileOf(sym)?.contract ?? E.BROKER;
   const m5: ArenaCandle[] = [];
   const htf: Record<string, ArenaCandle[]> = { M15: [], H1: [], H4: [] };
   const bucket: Record<string, RawGatewayPayload | null> = { M15: null, H1: null, H4: null };
@@ -209,7 +209,7 @@ function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: s
     const spreadHist = m5.slice(-E.SPREAD_HISTORY).map((x) => x.spread);
     const normalSpread = spreadHist.reduce((a, x) => a + x, 0) / spreadHist.length;
     const acct = account(s);
-    const risk = evaluateRisk(plan, acct, { symbol: sym, ...broker }, {
+    const risk = evaluateRisk(plan, acct, { symbol: sym, ...spec }, {
       nowSec: now, positions: [], exposureLimits: { maxSymbolRiskUSD: s.equity * 0.02, maxTotalRiskUSD: s.equity * 0.05 },
       spread: { current: c.spread, history: spreadHist }, quote: { ask, bid, maxSlippage: E.MAX_SLIPPAGE },
       lossStreak: s.streak, strictRiskMode: true,
@@ -218,7 +218,7 @@ function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: s
     s.counters.riskApproved++;
     const pt = createPaperTrade({
       plan, risk, marketPrice: plan.direction === "BUY" ? bid : ask, sim: { spread: c.spread, slippage: 0, maxSlippage: E.MAX_SLIPPAGE, latencyMs: 0, latencyDriftPerMs: 0 },
-      contract: { tickSize: broker.tickSize, tickValue: broker.tickValue }, accountEquity: s.equity,
+      contract: { tickSize: spec.tickSize, tickValue: spec.tickValue }, accountEquity: s.equity,
       signalSource: { bias: `H4_${bias.h4.bias}_H1_${bias.h1.phase}`, location: loc.context.priceLocation, trigger: reaction?.pattern ?? "NONE", reactionQuality: reaction?.quality ?? "NONE", emaContext: ema.context.actions.join(",") || ema.context.pricePosition },
       now,
     });
