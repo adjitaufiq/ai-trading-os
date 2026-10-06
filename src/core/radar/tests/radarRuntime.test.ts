@@ -101,6 +101,7 @@ describe("radar runtime read model", () => {
     const x = await rig("XAUUSD");
     feed(x, 0, N);
     const s = x.r.radarSnapshot()!;
+    if (process.env.RADAR_DUMP) console.log("DUMP", JSON.stringify({ regime: s.regime, horizon: s.horizon, fp: s.footprints, active: s.activeEvents.length, recent: s.recentEvents.length, session: s.session }));
     expect(s.schemaVersion).toBe("radar-v1");
     expect(s.algorithmVersions).toEqual(RADAR_ALGORITHM_VERSIONS);
     expect(s).toMatchObject({ symbol: "XAUUSD", assetClass: "COMMODITY", validationSource: { mode: "SYNTHETIC" } });
