@@ -1,0 +1,2 @@
+- BrokerGatewayClient receives its WebSocket constructor by injection (wsFactory); src/ never constructs a socket itself. Why: intentional DI boundary that keeps the frozen 3.0A "no WebSocket( in src" invariant and lets tests drive the stream deterministically.
+- BrokerGatewayClient accepts the non-3.0B-1 capability "MARKET_DATA.TICK" only on LIVE /v1/stream frames (counted via streamCapabilityAliasCount); REST validation stays exact. Why: real gateway dialect, contract debt to fix on the gateway side.
