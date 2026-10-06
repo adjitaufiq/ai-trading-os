@@ -42,3 +42,15 @@ export function resolveMarketSession(timestampMs: number, assetClass: AssetClass
   const h = new Date(timestampMs).getUTCHours();
   return calendar.sessions(assetClass).find((w) => h >= w.fromHourUtc && h < w.toHourUtc)?.session ?? "OVERNIGHT";
 }
+
+/**
+ * Scheduled-closure gap test (timestamps in epoch SECONDS, bar open times).
+ * Expected iff the missing span [lastTs+tf, nextTs) contains a MARKET_CLOSED step and fewer than one bar of open time.
+ */
+export function isCalendarGap(lastTs: number, nextTs: number, tfSeconds: number, assetClass: AssetClass, calendar: MarketCalendarProvider = DEFAULT_MARKET_CALENDAR, stepSeconds = 300): boolean {
+  let closed = 0, open = 0;
+  for (let t = lastTs + tfSeconds; t < nextTs; t += stepSeconds) {
+    if (calendar.isClosed(t * 1000, assetClass)) closed++; else open++;
+  }
+  return closed > 0 && open * stepSeconds < tfSeconds;
+}
