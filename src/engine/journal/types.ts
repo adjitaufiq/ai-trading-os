@@ -2,6 +2,10 @@ import type { FootprintSnapshot } from "../core/market/institutional-radar/types
 import type { MarketRegimeType } from "../core/market/regime/types";
 import type { MarketApproach, TradingHorizon } from "../core/market/horizon/types";
 import type { EventReference } from "../signal/context";
+import type { AssetClass } from "../../core/broker/types";
+import type { MarketSession } from "../../core/temporal/MarketSessionResolver";
+import type { FailureCategory } from "../contracts/diagnostics";
+export type { FailureCategory };
 
 export interface JournalContextSnapshot {
   readonly regime: MarketRegimeType | null;
@@ -56,6 +60,16 @@ export interface JournalTrade {
   footprints?: FootprintSnapshot;
   /** m2-context-v1 summary carried from the signal; descriptive only. */
   readonly contextSnapshot?: JournalContextSnapshot;
+  readonly assetClass: AssetClass;
+  /** Session at openedAt. */
+  readonly session: MarketSession;
+  readonly plannedEntryPrice: number;
+  readonly actualEntryPrice: number;
+  /** Positive = adverse fill, negative = price improvement. */
+  readonly slippagePoints: number;
+  /** 0 for paper execution; never undefined. */
+  readonly latencyMs: number;
+  readonly primaryFailureCategory?: FailureCategory;
 }
 
 export type SaveError = "DUPLICATE_TRADE_ID" | "INVALID_TRADE";
