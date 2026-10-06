@@ -20,7 +20,7 @@
 
 ## Frontend presentation
 - [x] Trader Radar Dashboard v2.1 — presentation-only HOLD visual guard, separated Market/Setup/Execution layers, trader-readable runtime cards, and distinct real-feed timestamps.
-- [ ] Trader Radar v2.1 final guardrails — explicit projection-only architecture, unchanged backend enums, grouped card contract, stale-data labeling, live REAL_MT5 and mobile verification.
+- [x] Trader Radar v2.1 final guardrails — explicit projection-only architecture, unchanged backend enums, grouped card contract, stale-data labeling, live REAL_MT5 and mobile verification.
 - [x] Localize all user-facing main dashboard and trading cockpit copy to concise Bahasa Indonesia; keep core states, contracts, and calculations unchanged.
 - [x] Deterministic reference plan v1 — H1 RSI gate, confirmed H1 swing ± 0.25× ATR14(M15), TP1 1R, TP2 2R; read-only MONITOR_ONLY.
 
