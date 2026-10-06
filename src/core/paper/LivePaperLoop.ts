@@ -54,6 +54,23 @@ export interface VirtualAccountView {
 
 interface Open { trade: PaperTrade; plan: TradePlan; bars: ArenaCandle[]; h1Phase: string; tier: string }
 
+export const PAPER_STATE_VERSION = "paper-state-v1" as const;
+/** Persisted virtual-account state (engine host). Plain JSON; setup/open are opaque engine data. */
+export interface PaperLoopState {
+  readonly version: typeof PAPER_STATE_VERSION;
+  readonly symbol: string;
+  readonly dataSource: DataSource;
+  readonly balance: number; readonly peak: number; readonly dayKey: number; readonly dayStart: number;
+  readonly streak: LossStreak;
+  readonly lastClose: number | null;
+  readonly decision: string | null;
+  readonly spreads: readonly number[];
+  readonly after: readonly { readonly tradeId: string; readonly balance: number }[];
+  readonly setup: unknown;
+  readonly open: unknown;
+  readonly journal: readonly unknown[];
+}
+
 const toArena = (b: Bar, i: number, spread: number): ArenaCandle => Object.freeze({
   id: `${b.symbol}_${b.timeframe}_${b.open_time / 1000}`, symbol: b.symbol, timeframe: b.timeframe, timestamp: b.open_time / 1000,
   open: b.open, high: b.high, low: b.low, close: b.close, volume: b.tick_count, spread, source: "MT5", isClosed: true, sequence: i + 1,
@@ -89,6 +106,29 @@ export class LivePaperLoop {
   }
 
   trades(): readonly Readonly<JournalTrade>[] { return this.journal.getAll(); }
+
+  /** Plain-data snapshot of the virtual account for host persistence. Journal rows are exported verbatim (append-only). */
+  exportState(): PaperLoopState {
+    return structuredClone({
+      version: PAPER_STATE_VERSION, symbol: this.symbol, dataSource: this.dataSource,
+      balance: this.balance, peak: this.peak, dayKey: this.dayKey, dayStart: this.dayStart, streak: this.streak,
+      lastClose: Number.isFinite(this.lastClose) ? this.lastClose : null, decision: this.decision,
+      spreads: [...this.spreads], after: [...this.after], setup: this.setup, open: this.open,
+      journal: this.journal.getAll().map((r) => ({ ...r })),
+    }) as PaperLoopState;
+  }
+
+  /** Restores a persisted state once, before any CLOSED bar is processed. Never mixes data sources or symbols. */
+  restoreState(s: PaperLoopState): void {
+    if (s.version !== PAPER_STATE_VERSION) throw new Error(`paper state version ${String(s.version)} unsupported`);
+    if (s.symbol !== this.symbol || s.dataSource !== this.dataSource) throw new Error("paper state symbol/dataSource mismatch");
+    if (Number.isFinite(this.lastClose) || this.journal.size > 0) throw new Error("paper state can only be restored on a fresh loop");
+    for (const row of s.journal) { const r = this.journal.saveTrade(row as JournalTrade); if (!r.ok) throw new Error(`journal restore ${r.error}`); }
+    this.balance = s.balance; this.peak = s.peak; this.dayKey = s.dayKey; this.dayStart = s.dayStart; this.streak = s.streak;
+    this.lastClose = s.lastClose ?? -Infinity; this.decision = s.decision;
+    this.spreads.push(...s.spreads); this.after.push(...s.after);
+    this.setup = s.setup as SignalSetup | null; this.open = s.open as Open | null;
+  }
 
   /** Mark-to-market only (no state transition); exits still happen only on CLOSED bars. */
   mark(live: BrokerMarketEvent | null): void { if (live) this.lastMark = this.open?.trade.snapshot.direction === "SELL" ? live.ask : live.bid; }
