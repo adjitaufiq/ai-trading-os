@@ -4,6 +4,9 @@
 
 export type MarketBias = "BULLISH" | "BEARISH" | "NEUTRAL";
 
+// Re-exported swing contracts so downstream/test files can import everything from here.
+export type { MarketStructure, StructureShiftType, SwingPoint, SwingTimeframe, TrendStructure } from "../swing/types";
+
 export type MarketPhase = "CONTINUATION" | "PULLBACK" | "REVERSAL" | "RANGE";
 
 export type BiasAlignment = "ALIGNED" | "COUNTER_TREND" | "MIXED";
