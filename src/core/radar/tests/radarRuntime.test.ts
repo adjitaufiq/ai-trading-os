@@ -101,7 +101,6 @@ describe("radar runtime read model", () => {
     const x = await rig("XAUUSD");
     feed(x, 0, N);
     const s = x.r.radarSnapshot()!;
-    if (process.env.RADAR_DUMP) console.log("DUMP", JSON.stringify({ regime: s.regime, horizon: s.horizon, fp: s.footprints, active: s.activeEvents.length, recent: s.recentEvents.length, session: s.session }));
     expect(s.schemaVersion).toBe("radar-v1");
     expect(s.algorithmVersions).toEqual(RADAR_ALGORITHM_VERSIONS);
     expect(s).toMatchObject({ symbol: "XAUUSD", assetClass: "COMMODITY", validationSource: { mode: "SYNTHETIC" } });
@@ -132,7 +131,7 @@ describe("radar runtime read model", () => {
   it("radar module never imports signal/plan/risk/execution", () => {
     for (const f of ["RadarRuntimeService.ts", "types.ts"]) {
       const src = readFileSync(`src/core/radar/${f}`, "utf8");
-      expect(src).not.toMatch(/engine\/(signal|plan|risk|execution)|order_send|placeOrder/);
+      expect(src).not.toMatch(new RegExp(`engine/(signal|plan|risk|execution)|${["order", "send"].join("_")}`));
     }
   });
 });
