@@ -10,7 +10,7 @@ describe("lifecycle", () => {
     const r = updatePosition(t, candle({ high: 2008.5 }), T + 300);
     expect(r.ok && r.trade.state).toBe("CLOSED");
     expect(r.trade.result).toMatchObject({ closeReason: "TP_HIT", exit: 2008, durationSeconds: 300 });
-    expect(r.trade.result!.profitLossUSD).toBeCloseTo(152); // (2008−2000.3)/0.01×1×0.2
+    expect(r.trade.result!.profitLossUSD).toBeCloseTo(154); // (2008−2000.3)/0.01×1×0.2
   });
   it("OPEN → SL_HIT", () => {
     const r = updatePosition(openTrade(), candle({ low: 1994 }), T + 300);
