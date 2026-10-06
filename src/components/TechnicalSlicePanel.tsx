@@ -476,6 +476,9 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
         <SignalSafetyStrip signal={snapshot?.signal ?? null} />
       </section>
 
+      <MarketContextSummary snapshot={snapshot} />
+      </div>
+
       <section className="border border-border bg-card p-4 sm:p-5" aria-label="Rencana transaksi acuan" data-testid="radar-card">
         <RadarPlanView radar={snapshot?.radar_plan ?? null} signal={signal} entry={entry} />
         <TradeActions symbol={view.symbol} signal={signal} quote={quote} plan={plan} planFor={ticketPlan} reason={signalReason} confirmations={planConfirmations} mode={mode}
