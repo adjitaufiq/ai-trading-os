@@ -121,9 +121,9 @@ describe("M2 context enrichment (m2-context-v1)", () => {
       for (const i of imports) expect(i).not.toMatch(/broker|execution|risk|order|plan\//);
       if (f !== "context.ts" && f !== "types.ts") expect(src.replace(/marketContext: captureMarketContext/, "")).not.toMatch(/marketContext/);
     }
-    for (const f of ["plan/tradePlanEngine.ts", "risk"].filter((x) => x.endsWith(".ts"))) {
-      const src = readFileSync(join(dir, "..", f), "utf8");
-      expect(src.match(/marketContext/g)?.length).toBe(2); // forwarded only, never branched on
-    }
+    const planSrc = readFileSync(join(dir, "..", "plan/tradePlanEngine.ts"), "utf8");
+    expect(planSrc.split("\n").filter((l) => l.includes("marketContext"))).toEqual(["    ...(s.marketContext ? { marketContext: s.marketContext } : {}),"]);
+    for (const m of ["risk", "plan"]) for (const f of readdirSync(join(dir, "..", m)).filter((x) => x.endsWith(".ts") && x !== "types.ts" && x !== "tradePlanEngine.ts"))
+      expect(readFileSync(join(dir, "..", m, f), "utf8")).not.toMatch(/marketContext/);
   });
 });
