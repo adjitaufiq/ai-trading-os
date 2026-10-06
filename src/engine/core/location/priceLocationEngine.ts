@@ -13,11 +13,11 @@ export function computeAtr(candles: readonly ArenaCandle[], period: number = P.A
   if (closed.length < period + 1) return null;
   const trs: number[] = [];
   for (let i = 1; i < closed.length; i++) {
-    const c = closed[i], prev = closed[i - 1].close;
+    const c = closed[i]!, prev = closed[i - 1]!.close;
     trs.push(Math.max(c.high - c.low, Math.abs(c.high - prev), Math.abs(c.low - prev)));
   }
   let atr = trs.slice(0, period).reduce((a, b) => a + b, 0) / period;
-  for (let i = period; i < trs.length; i++) atr = (atr * (period - 1) + trs[i]) / period;
+  for (let i = period; i < trs.length; i++) atr = (atr * (period - 1) + trs[i]!) / period;
   return atr;
 }
 
@@ -56,7 +56,7 @@ export function classifyPriceLocation(input: LocationInput): LocationResult {
   if (atr === null || atr <= 0) return { ok: false, reason: "INSUFFICIENT_ATR_HISTORY" };
 
   const closed = m15Candles.filter((c) => c.isClosed);
-  const lastClose = closed[closed.length - 1].close;
+  const lastClose = closed[closed.length - 1]!.close;
   const rangeLow = Math.min(sup, res), rangeHigh = Math.max(sup, res);
   const rangePosition = classifyRangePosition(price, rangeLow, rangeHigh);
   const biasNote = bias ? ` | bias ${bias.overallBias}/${bias.alignment}` : "";

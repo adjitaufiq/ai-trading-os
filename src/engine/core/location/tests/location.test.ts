@@ -12,7 +12,7 @@ function candles(n = 20, runningExtreme?: number): ArenaCandle[] {
       open: 2660, high: 2662, low: 2658, close: 2660, volume: 0, spread: 0, source: "MT5", isClosed: true, sequence: i + 1 });
   }
   if (runningExtreme !== undefined)
-    out.push({ ...out[n - 1], id: "run", timestamp: T0 + n * 900, high: runningExtreme, low: 2600, isClosed: false, sequence: n + 1 });
+    out.push({ ...out[n - 1]!, id: "run", timestamp: T0 + n * 900, high: runningExtreme, low: 2600, isClosed: false, sequence: n + 1 });
   return out;
 }
 function sw(type: "HIGH" | "LOW", price: number, confirmedAt = T0): SwingPoint {
