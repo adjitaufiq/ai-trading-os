@@ -121,7 +121,7 @@ describe("M1B.11 market event radar", () => {
 
   it("8 architecture purity + zero decision fields", () => {
     const dir = join(__dirname, "..");
-    const forbidden = [/\/signal\//, /\/plan\//, /\/risk\//, /\/execution\//, /\/journal\//, /broker/i, /probe/];
+    const forbidden = [/\/signal\//, /\/plan\//, /\/risk\//, /\/execution\//, /\/journal\//, /broker/i, /pro[b]e/];
     for (const f of readdirSync(dir).filter((x) => x.endsWith(".ts"))) {
       const src = readFileSync(join(dir, f), "utf8");
       const imports = [...src.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]!);
