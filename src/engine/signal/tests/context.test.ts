@@ -61,7 +61,7 @@ describe("M2 context enrichment (m2-context-v1)", () => {
     expect(m.regime?.regime).toBe("TREND_CONTINUATION");
     expect(m.horizon?.recommendedHorizon).toBe("INTRADAY");
     expect(m.activeEvents).toEqual([{ eventId: "XAU_SWEEP_1", type: "LIQUIDITY_SWEEP", severity: "IMPORTANT", state: "ACTIVE", timeframe: "M5" }]);
-    expect(Object.keys(m.activeEvents[0]).sort()).toEqual(["eventId", "severity", "state", "timeframe", "type"]);
+    expect(Object.keys(m.activeEvents[0]!).sort()).toEqual(["eventId", "severity", "state", "timeframe", "type"]);
     expect(captureMarketContext({ regime: regime(T0 + 1) }, T0).regime).toBeNull();
   });
 
