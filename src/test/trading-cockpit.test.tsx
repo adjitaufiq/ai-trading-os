@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { TechnicalSlicePanel, TradeActions, cockpitSignal, referenceEntry } from "@/components/TechnicalSlicePanel";
+import { TechnicalSlicePanel, TradeActions, cockpitSignal, referenceEntry, tradeProjection } from "@/components/TechnicalSlicePanel";
 import { PaperJournalStore } from "@/lib/paperJournal";
 import type { TradingSnapshot } from "@/core/technical/tradingState";
 
@@ -100,6 +100,16 @@ describe("clean trading cockpit", () => {
     expect(screen.getByTestId("tab-radar")).toHaveAttribute("hidden");
     expect(screen.getByTestId("tab-analysis")).toHaveAttribute("hidden");
     expect(screen.getByTestId("tab-radar")).not.toHaveTextContent("simulasi");
+    expect(screen.getByTestId("cockpit-bottom-nav")).toHaveClass("fixed", "bottom-0");
+  });
+  it("switches the mobile bottom navigation without mixing tab content", () => {
+    render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);
+    fireEvent.click(screen.getByTestId("cockpit-tab-radar"));
+    expect(screen.getByTestId("tab-radar")).not.toHaveAttribute("hidden");
+    expect(screen.getByTestId("tab-trade")).toHaveAttribute("hidden");
+    fireEvent.click(screen.getByTestId("cockpit-tab-analysis"));
+    expect(screen.getByTestId("tab-analysis")).not.toHaveAttribute("hidden");
+    expect(screen.getByTestId("operator-summary")).toHaveAttribute("open");
   });
   it("renders market, setup, and execution as three separate layers", () => {
     render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);
@@ -127,5 +137,18 @@ describe("clean trading cockpit", () => {
     expect(screen.getByTestId("action-buy")).toBeDisabled();
     expect(screen.getByTestId("action-sell")).toBeDisabled();
     expect(screen.getByTestId("mc-trend")).not.toHaveTextContent(/BUY|SELL/);
+  });
+  it("keeps Signal State, Market Context, and Trade Plan in one ordered lifecycle", () => {
+    render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);
+    const signal = screen.getByTestId("main-signal-card");
+    const context = screen.getByTestId("market-context-summary");
+    const plan = screen.getByTestId("radar-card");
+    expect(signal.compareDocumentPosition(context) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(context.compareDocumentPosition(plan) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+  it("uses one authoritative projection mapping for signal and plan", () => {
+    expect(tradeProjection(snapshot("LONG_CANDIDATE"))).toMatchObject({ headline: "BUY READY", status: "READY SETUP", actionable: true });
+    expect(tradeProjection(snapshot("SHORT_CANDIDATE"))).toMatchObject({ headline: "SELL READY", status: "READY SETUP", actionable: true });
+    expect(tradeProjection(snapshot("WAIT"))).toMatchObject({ headline: "HOLD", status: "WAIT CONFIRMATION", actionable: false });
   });
 });

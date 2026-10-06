@@ -4,7 +4,7 @@ import { render, screen } from "@testing-library/react";
 import { RADAR_PLAN_POLICY_VERSION, deriveRadarPlan, planInvariantHolds, type TradingSnapshot } from "@/core/technical/tradingState";
 import { PaperJournalStore, openPaper } from "@/lib/paperJournal";
 import { compactSummary, engineSignalOf } from "@/lib/tradeSummary";
-import { RadarPlanView, TechnicalSlicePanel } from "@/components/TechnicalSlicePanel";
+import { RadarPlanView, TechnicalSlicePanel, tradeProjection } from "@/components/TechnicalSlicePanel";
 import { EXECUTION_ENABLED, OPERATING_MODE } from "@/core/contracts";
 
 const NA = { status: "INSUFFICIENT_HISTORY" };
@@ -87,8 +87,12 @@ describe("manual early paper trades freeze a rebased plan", () => {
 describe("radar card UI", () => {
   it("RADAR shows dynamic projection label, never 'signal ready'", () => {
     const s = snap(op("CARI_BUY", [zone(97, 99, "SUPPORT")]), q(104.9, 105.1));
-    render(<RadarPlanView radar={s.radar_plan!} signal="HOLD" entry={null} />);
+    const projection = tradeProjection(s);
+    render(<RadarPlanView radar={s.radar_plan!} signal="HOLD" entry={null} projection={projection} />);
     expect(screen.getByTestId("radar-badge")).toHaveTextContent("RADAR DINAMIS");
+    expect(projection).toMatchObject({ headline: "BUY BIAS", status: "WAIT TRIGGER", actionable: false });
+    expect(screen.getByTestId("radar-side")).toHaveTextContent("BUY BIAS");
+    expect(screen.getByTestId("radar-status")).toHaveTextContent("WAIT TRIGGER");
     expect(screen.getByTestId("radar-projection-label")).toHaveTextContent("PROYEKSI — BELUM SIGNAL ENTRY");
     expect(screen.getByTestId("radar-note")).toHaveTextContent("Proyeksi dapat berubah sampai signal READY.");
     expect(screen.getByTestId("plan-sl")).toHaveTextContent("89.000");
