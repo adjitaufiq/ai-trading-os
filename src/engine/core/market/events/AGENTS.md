@@ -1,0 +1,3 @@
+- M1B.11 event radar (src/engine/core/market/events) is an observer (authority NONE): consumes CLOSED-bar observations of M1B.8/9/10 outputs, factual SNR touches and injected M1B.7 reaction facts; never imports signal/plan/risk/execution/broker/journal and never emits BUY/SELL/entry/SL/TP/lot/score. Why: event ≠ signal.
+- Storage is an in-memory append-only revision log with deterministic exportSnapshot(asOf); ended events are immutable; a DB/cloud move is a storage adapter, not an event-logic change. Why: replayable evidence, M6 stays journal owner.
+- Every type's cooldown/expiry/severity lives in EVENT_POLICY and behaviour in EVENT_RULES; changes bump EVENT_ALGORITHM_VERSION and tests. Why: deterministic, versioned lifecycle.
