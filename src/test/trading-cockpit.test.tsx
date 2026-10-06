@@ -90,7 +90,16 @@ describe("clean trading cockpit", () => {
     expect(screen.getByText("Konfirmasi teknikal")).toBeInTheDocument();
     expect(screen.getByText("Alasan")).toBeInTheDocument();
     expect(screen.getByText("Penjelasan AI")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("cockpit-tab-analysis"));
     expect(screen.getByRole("button", { name: "Jelaskan" })).toBeInTheDocument();
+  });
+  it("defaults to TRADE tab with RADAR and ANALYSIS hidden", () => {
+    render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);
+    expect(screen.getByTestId("cockpit-tab-trade")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("tab-trade")).not.toHaveAttribute("hidden");
+    expect(screen.getByTestId("tab-radar")).toHaveAttribute("hidden");
+    expect(screen.getByTestId("tab-analysis")).toHaveAttribute("hidden");
+    expect(screen.getByTestId("tab-radar")).not.toHaveTextContent("simulasi");
   });
   it("renders market, setup, and execution as three separate layers", () => {
     render(<TechnicalSlicePanel runtimes={[{ symbol: "XAUUSD", reader: reader("XAUUSD", "WAIT") }]} selectedSymbol="XAUUSD" tickMs={60_000} />);
