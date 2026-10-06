@@ -29,6 +29,9 @@ import type { AccountProfile } from "../risk/types";
 import { evaluateSetup, type EvaluatorInput } from "../signal/signalEvaluator";
 import { createSetup, isTerminal, updateSetup } from "../signal/signalLifecycle";
 import type { SignalSetup } from "../signal/types";
+import { ContextObserver, emptyContextCounters } from "./contextObserver";
+import { buildContextReport } from "./contextAnalytics";
+import type { ContextCounters } from "./types";
 import { bump, computeStressMetrics, emptyCounters, scenarioStats } from "./performanceMonitor";
 import { generatePath, mulberry32 } from "./scenarioGenerator";
 import { buildHealthChecks, snapshotParams } from "./stressReport";
@@ -53,6 +56,7 @@ interface Shared {
   dayStartEquity: number;
   streak: LossStreak;
   minEquity: number;
+  ctx: ContextCounters | null;
 }
 
 interface OpenCtx {
@@ -77,6 +81,7 @@ function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: s
   const htf: Record<string, ArenaCandle[]> = { M15: [], H1: [], H4: [] };
   const bucket: Record<string, RawGatewayPayload | null> = { M15: null, H1: null, H4: null };
   const det: Record<SwingTimeframe, SwingDetector> = { M15: new SwingDetector(sym, "M15"), H1: new SwingDetector(sym, "H1"), H4: new SwingDetector(sym, "H4") };
+  const observer = s.ctx ? new ContextObserver(s.ctx) : null;
   let setup: SignalSetup | null = null;
   let open: OpenCtx | null = null;
   const pending: { row: JournalTrade; ctx: OpenCtx; future: ArenaCandle[] }[] = [];
@@ -165,6 +170,8 @@ function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: s
       m5CandleClosed: true, dataStale: false, now,
     };
     const ev = evaluateSetup(input);
+    // passive context sensors (M1B.8–11): observe only, never fed to evaluate/update/plan/risk
+    observer?.observe({ symbol: sym, now, m15, m15Structure: m15S, h4Structure: buildStructure(sym, "H4", swings("H4"), now), h1Structure: buildStructure(sym, "H1", swings("H1"), now), atr, ema: ema.context, price: loc.context, reactionConfirmed: !!reaction?.isValid });
     s.counters.evaluations++;
     if (ev.kind === "NO_SETUP") bump(s.counters.noSetup, ev.reason);
 
@@ -175,7 +182,7 @@ function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: s
       if (isTerminal(setup)) setup = null;
     }
     if (!setup && reaction) {
-      const cr = createSetup(ev, input, reaction, c, c.close);
+      const cr = createSetup(ev, input, reaction, c, c.close, observer?.sources(sym));
       if (cr) {
         if (s.setupIds.has(cr.setup.id)) s.terminalRevivals++;
         s.setupIds.add(cr.setup.id); s.counters.setupsCreated++; setup = cr.setup;
@@ -224,7 +231,7 @@ export function runStressTest(partial: Partial<StressTestConfig>): StressRunResu
   const base = (error?: StressRunResult["error"]): StressRunResult => ({
     ok: !error, ...(error ? { error } : {}), config: cfg, dataLabel: cfg.mode === "HISTORICAL_REPLAY" ? "HISTORICAL_REPLAY" : "SIMULATION_SYNTHETIC",
     metrics: computeStressMetrics([], [], counters, cfg.initialEquity), counters, health: [], byScenario: [], highestImpact: null,
-    sampleReached: false, policyVersion: STRESS_POLICY_VERSION,
+    sampleReached: false, policyVersion: STRESS_POLICY_VERSION, context: null,
   });
   if (!cfg.disableHumanApproval) return base("HUMAN_APPROVAL_NOT_AUTOMATABLE");
   if (!(cfg.sampleSize > 0 && cfg.maxTrades > 0 && cfg.initialEquity > 0)) return base("INVALID_CONFIG");
@@ -235,6 +242,7 @@ export function runStressTest(partial: Partial<StressTestConfig>): StressRunResu
   const s: Shared = {
     cfg, target, journal: new TradeJournal(), autopsies: [], counters, scenarioOf: new Map(), setupIds: new Set(),
     terminalRevivals: 0, riskViolations: 0, equity: cfg.initialEquity, peak: cfg.initialEquity, dayKey: -1,
+    ctx: cfg.captureContext === false ? null : emptyContextCounters(),
     dayStartEquity: cfg.initialEquity, streak: { consecutiveLosses: 0, lastLossAt: null }, minEquity: cfg.initialEquity,
   };
   const budget = cfg.maxBars ?? target * E.BAR_BUDGET_PER_TRADE;
@@ -259,11 +267,12 @@ export function runStressTest(partial: Partial<StressTestConfig>): StressRunResu
   const health = buildHealthChecks({
     terminalRevivals: s.terminalRevivals, riskViolations: s.riskViolations, minEquity: s.minEquity,
     counters, trades, autopsies: s.autopsies, journalHashBefore: journalHash, journalHashAfter: JSON.stringify(s.journal.getAll()),
-    paramsBefore, paramsAfter: snapshotParams(),
+    paramsBefore, paramsAfter: snapshotParams(), ctx: s.ctx,
   });
   return {
     ...base(), metrics, health, byScenario: scenarioStats(trades, s.scenarioOf), highestImpact: dist.highestImpact,
     sampleReached: trades.length >= target,
+    context: s.ctx ? buildContextReport(trades, s.ctx) : null,
   };
 }
 
