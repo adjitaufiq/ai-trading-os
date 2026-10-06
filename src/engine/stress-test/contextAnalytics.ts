@@ -64,7 +64,7 @@ export function generateContextReport(r: ContextReport, environment: string, sam
     "", "EVENT IMPACT", ...rows(r.byEvent), `Trades with active sweep: ${s.tradesWithActiveSweep}, avg ${s.avgOutcomeR}R`,
     "", "CRITICAL AUDIT",
     `1 Context coverage: ${pct(a.contextCoverage)}`,
-    "2 Decision contamination: verified by isolation replay (context on/off ⇒ identical journal)",
+    "2 Decision contamination: checked by isolation replay test (context on/off ⇒ identical metrics and counters)",
     `3 Event noise: ${a.eventsPer1000Bars} new events / 1000 bars, max trackers ${a.maxTrackers}`,
     `4 Regime stability: ${a.regimeFlipsPer1000Bars} flips / 1000 bars`,
     `5 Horizon NO_FIT rate: ${pct(a.noFitRate)}`,
