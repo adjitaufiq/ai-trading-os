@@ -526,9 +526,8 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
     <TraderRadarView snapshot={snapshot} reader={reader} part="TRADE" />
     <PaperPositions store={store} symbol={view.symbol} quote={quote} />
     </div>
-    <div hidden={tab !== "RADAR"} data-testid="tab-radar"><TraderRadarView snapshot={snapshot} reader={reader} part="RADAR" /></div>
+    <div hidden={tab !== "RADAR"} className="space-y-4" data-testid="tab-radar"><RadarObservabilityPanel reader={reader} symbol={view.symbol} /><TraderRadarView snapshot={snapshot} reader={reader} part="RADAR" /></div>
     <div hidden={tab !== "ANALYSIS"} className="space-y-4" data-testid="tab-analysis">
-    <RadarObservabilityPanel reader={reader} symbol={view.symbol} />
     <TraderRadarView snapshot={snapshot} reader={reader} part="ANALYSIS" />
 
     <details open className="border-t border-border pt-3" aria-label="Ringkasan engine" data-testid="operator-summary">
