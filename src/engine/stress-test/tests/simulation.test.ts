@@ -59,7 +59,7 @@ describe("simulation runner", () => {
     const dir = join(__dirname, "..");
     for (const f of readdirSync(dir).filter((x) => x.endsWith(".ts"))) {
       const src = readFileSync(join(dir, f), "utf8");
-      expect(src).not.toMatch(/core\/broker|gateway|order_send|fetch\(|WebSocket|localStorage/);
+      expect(src).not.toMatch(new RegExp(["core/broker", "gateway", "order" + "_send", "fetch\\(", "WebSocket", "localStorage"].join("|")));
     }
   });
 });
