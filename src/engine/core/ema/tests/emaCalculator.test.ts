@@ -17,7 +17,7 @@ describe("M1B.6 EMA calculator", () => {
     expect(r[4]).toBe(12);
     expect(r[5]).toBeCloseTo(13, 10);
     expect(r[9]).toBeCloseTo(manual(closes, 5), 10);
-    expect(r[9]).toBeCloseTo(17.00274348, 6);
+    expect(r[9]).toBeCloseTo(17, 10) // linear +1 series: lag (p-1)/2 = 2;
   });
 
   it("EMA21 accuracy", () => {
