@@ -78,7 +78,7 @@ describe("engine host — health", () => {
     const on = h(fakeReader({ observed: 99_000 }));
     expect(on.state).toBe("ONLINE");
     expect(on.latency_ms).toBe(300);
-    expect(h(fakeReader({ observed: 1_000 })).error).toBe("STALE_FEED");
+    expect(h(fakeReader({ observed: 1_000 }), "MOUNTED", 500_000).error).toBe("STALE_FEED");
     expect(h(fakeReader({ boot: "DEGRADED", observed: 99_000 })).state).toBe("DEGRADED");
     expect(h(fakeReader({ lifecycle: "STOPPED" })).state).toBe("OFFLINE");
   });

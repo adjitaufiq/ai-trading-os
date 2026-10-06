@@ -8,7 +8,8 @@ import type { PaperPersistence } from "./persistence";
 import type { EngineHostHealth, SymbolEngineHealth } from "./types";
 
 /** Documented supervisor policy (operator configuration). */
-export const ENGINE_SUPERVISOR_POLICY = Object.freeze({
+export interface SupervisorPolicy { readonly tick_ms: number; readonly remount_after_ms: number; readonly backoff_min_ms: number; readonly backoff_max_ms: number }
+export const ENGINE_SUPERVISOR_POLICY: SupervisorPolicy = Object.freeze({
   tick_ms: 5_000,
   /** Remount a runtime that has been OFFLINE/DEGRADED continuously for this long. */
   remount_after_ms: 180_000,
@@ -42,7 +43,7 @@ export class EngineHost {
     persistence: PaperPersistence;
     now: () => number;
     log?: (msg: string) => void;
-    policy?: typeof ENGINE_SUPERVISOR_POLICY;
+    policy?: SupervisorPolicy;
   }) {
     this.startedAt = o.now();
     for (const symbol of o.symbols) this.slots.set(symbol, { symbol, stop: null, rt: null, reader: null, status: "INIT", restarts: 0, unhealthySince: null, nextRemountAt: 0, backoff: this.policy.backoff_min_ms, persistError: null });
