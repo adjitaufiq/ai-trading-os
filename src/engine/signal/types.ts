@@ -2,6 +2,7 @@
 // Consumes ONLY validated M1B outputs (bias M1B.4, location M1B.5, EMA M1B.6,
 // reaction M1B.7). Never recalculates indicators. No SL/TP/lot/execution.
 import type { InstitutionalFootprints } from "../core/market/institutional-radar/types";
+import type { MarketContextSnapshot } from "./context";
 
 export type SignalDirection = "BUY" | "SELL" | "NONE";
 
@@ -41,6 +42,8 @@ export interface SignalSetup {
   expiredBy?: "TTL" | "PRICE_CHASED";
   /** M1B.8 passive evidence; OPTIONAL, never read by state machine or entry rules. */
   footprints?: InstitutionalFootprints;
+  /** m2-context-v1 observational envelope (M1B.8–11); OPTIONAL, never read by lifecycle. */
+  readonly marketContext?: MarketContextSnapshot;
 }
 
 export type CheckResult = "PASS" | "FAIL" | "SKIP";

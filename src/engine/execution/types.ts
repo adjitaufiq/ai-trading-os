@@ -8,6 +8,8 @@ export type RejectReason = "RISK_NOT_APPROVED" | "INVALID_PLAN" | "INVALID_MARKE
 export type ExecutionErrorCode = "IMMUTABLE_TRADE_ERROR" | "INVALID_TRANSITION" | "CANDLE_NOT_CLOSED";
 export type TradeEventType = "TRADE_CREATED" | "TRADE_OPENED" | "TRADE_PARTIAL" | "TRADE_CLOSED" | "TRADE_REJECTED";
 
+import type { MarketContextSnapshot } from "../signal/context";
+
 export interface SignalSource {
   bias: string;
   location: string;
@@ -29,6 +31,8 @@ export interface TradeSnapshot {
   readonly decisionTrace: readonly string[];
   readonly createdAt: number;
   readonly executionMode: "PAPER";
+  /** Forwarded from TradePlan.marketContext; audit metadata only. */
+  readonly marketContext?: MarketContextSnapshot;
 }
 
 export interface FillSimulation {

@@ -1,0 +1,1 @@
+- SignalSetup.marketContext (m2-context-v1, signal/context.ts) is an observational envelope captured causally at setup creation from M1B.8–11 (deep-frozen copy, EventReference only, never full events); evaluator/lifecycle/M3/M4 never branch on it, M3/M5 forward it verbatim and M6 stores a JournalContextSnapshot summary. Why: footprint/regime/horizon/event ≠ signal.

@@ -1,3 +1,4 @@
+import type { MarketContextSnapshot } from "../signal/context";
 import type { SignalSource, TradeDirection, TradeSnapshot } from "./types";
 
 export function deepFreeze<T>(o: T): T {
@@ -11,6 +12,7 @@ export function deepFreeze<T>(o: T): T {
 export interface SnapshotInput {
   tradeId: string; symbol: string; direction: TradeDirection; entryPrice: number; stopLoss: number;
   takeProfit: number; lot: number; riskUSD: number; signalSource: SignalSource; decisionTrace: string[]; createdAt: number;
+  marketContext?: MarketContextSnapshot;
 }
 
 /** Immutable decision context. Copies inputs so callers cannot mutate it afterwards. */

@@ -2,6 +2,7 @@
 // Converts a READY SignalSetup (M2) + confirmed M15 structure (M1B.3) into an
 // objective TradePlan. No lot sizing, no broker access, no execution, no
 // running candles, no new swings, no H1/H4 for scalp SL, SL never moved for RR.
+import type { MarketContextSnapshot } from "../signal/context";
 
 export type PlanStatus = "PLANNED" | "HOLD";
 
@@ -46,6 +47,8 @@ export interface TradePlan {
   /** Audit semantics: plan is a reference object, never an order. */
   audit: { executable: false; orderSent: false; lotCalculated: false; mode: "PLAN_ONLY" };
   trace: PlanCheck[];
+  /** Forwarded verbatim from SignalSetup.marketContext; audit metadata, never read. */
+  marketContext?: MarketContextSnapshot;
 }
 
 export const PLAN_POLICY_VERSION = "plan-m3-v1";

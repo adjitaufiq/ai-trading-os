@@ -12,6 +12,7 @@ import {
   type SetupEvaluation,
   type SignalSetup,
 } from "./types";
+import { captureMarketContext, type MarketContextSources } from "./context";
 
 const TERMINAL = new Set(["INVALIDATED", "EXPIRED"]);
 export const isTerminal = (s: SignalSetup) => TERMINAL.has(s.state);
@@ -19,6 +20,7 @@ export const isTerminal = (s: SignalSetup) => TERMINAL.has(s.state);
 /** Creates a setup only from REACTION_CONFIRMED/READY on a CLOSED M5 candle. */
 export function createSetup(
   ev: SetupEvaluation, input: EvaluatorInput, reaction: ReactionResult, m5: ArenaCandle, price: number,
+  context?: MarketContextSources,
 ): { setup: SignalSetup; trace: DecisionTrace } | null {
   if (ev.kind !== "CANDIDATE" || (ev.state !== "READY" && ev.state !== "REACTION_CONFIRMED")) return null;
   if (!m5.isClosed || m5.timeframe !== "M5" || reaction.candleTimestamp !== m5.timestamp) return null;
@@ -31,6 +33,8 @@ export function createSetup(
     biasContext: biasContextLabel(input.bias),
     expiryTimestamp: m5.timestamp + P.SIGNAL_TTL_M5_BARS * P.M5_SECONDS,
     snapshotPrice: price,
+    // Observational only: captured at the creation bar, attached AFTER all decisions.
+    ...(context ? { marketContext: captureMarketContext(context, m5.timestamp) } : {}),
   });
   return { setup, trace: ev.trace };
 }
