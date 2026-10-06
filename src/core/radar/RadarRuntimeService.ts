@@ -107,7 +107,7 @@ export class RadarRuntimeService {
     for (const e of revs) { this.recent.push(ref(e)); if (this.recent.length > RADAR_RECENT_EVENTS_MAX) this.recent.shift(); }
 
     const fvgs = trackFVGs(m15);
-    const obs = detectOrderBlocks(m15, m15S, atr).filter((o) => (o as { status?: string }).status !== "INVALIDATED");
+    const obs = detectOrderBlocks(m15, m15S, atr).filter((o) => o.status === "ACTIVE");
     const activeFVGs = fvgs.filter((f) => f.status === "ACTIVE").length;
     const tags: RadarFootprintTag[] = [];
     if (footprints.sweepDetected) tags.push("LIQUIDITY_SWEEP");
