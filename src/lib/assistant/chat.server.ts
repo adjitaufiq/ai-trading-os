@@ -7,7 +7,7 @@ import { buildLiveContext } from "./context.server";
 import { withLovableAiGatewayRunIdHeader } from "./gateway.server";
 import { selectLlmAdapter } from "./llm/gateway.server";
 import { buildMemoryContext } from "../memory/context.server";
-import { briefingInstructions, isBriefingRequest } from "./briefing";
+import { briefingInstructions, extractPrice, isBriefingRequest } from "./briefing";
 
 function json(status: number, error: string) {
   return new Response(JSON.stringify({ error }), { status, headers: { "Content-Type": "application/json" } });
@@ -78,7 +78,7 @@ export async function handleAssistantChat(request: Request): Promise<Response> {
   const sel = adapter.create(request);
   const result = streamText({
     model: sel.model,
-    instructions: instructions(scope, thread.topic, live) + (briefing ? `\n\n${briefingInstructions(scope)}` : ""),
+    instructions: instructions(scope, thread.topic, live) + (briefing ? `\n\n${briefingInstructions(scope, extractPrice(liveCtx))}` : ""),
     messages: await convertToModelMessages(messages),
     abortSignal: request.signal,
     ...(sel.providerOptions ? { providerOptions: sel.providerOptions } : {}),
