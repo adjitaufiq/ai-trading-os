@@ -130,6 +130,36 @@ export type Database = {
         }
         Relationships: []
       }
+      engine_access_audit: {
+        Row: {
+          action: string
+          actor_id: string | null
+          actor_role: string
+          created_at: string
+          detail: Json
+          id: string
+          scope: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          actor_role: string
+          created_at?: string
+          detail?: Json
+          id?: string
+          scope: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          actor_role?: string
+          created_at?: string
+          detail?: Json
+          id?: string
+          scope?: string
+        }
+        Relationships: []
+      }
       engine_memory: {
         Row: {
           active_events: string[]
@@ -364,6 +394,10 @@ export type Database = {
         Returns: boolean
       }
       is_engine_operator: { Args: { _user_id: string }; Returns: boolean }
+      log_engine_access: {
+        Args: { _detail?: Json; _scope: string }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "admin" | "operator" | "user"
