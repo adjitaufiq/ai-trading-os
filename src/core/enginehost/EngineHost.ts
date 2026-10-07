@@ -5,7 +5,9 @@ import type { MarketRuntime, MarketRuntimeReader } from "../runtime/MarketRuntim
 import type { MountedRuntime } from "../../lib/canonicalRuntimes";
 import { deriveSymbolHealth } from "./health";
 import type { PaperPersistence } from "./persistence";
-import type { EngineHostHealth, SymbolEngineHealth } from "./types";
+import type { EngineHostHealth, EngineSymbolBundle, SymbolEngineHealth } from "./types";
+import { TechnicalSliceService } from "../technical/TechnicalSliceService";
+import { LiveClock } from "../temporal/CanonicalClock";
 
 /** Documented supervisor policy (operator configuration). */
 export interface SupervisorPolicy { readonly tick_ms: number; readonly remount_after_ms: number; readonly backoff_min_ms: number; readonly backoff_max_ms: number }
@@ -16,6 +18,8 @@ export const ENGINE_SUPERVISOR_POLICY: SupervisorPolicy = Object.freeze({
   backoff_min_ms: 30_000,
   backoff_max_ms: 600_000,
 });
+/** Technical slice evaluation cadence on the host (same as the former browser cockpit tick). */
+export const ENGINE_SLICE_TICK_MS = 2_000;
 
 export type MountFn = (o: { symbol: string; onChange: (m: MountedRuntime) => void; onRuntime: (rt: MarketRuntime) => void }) => () => void;
 
@@ -30,11 +34,13 @@ interface Slot {
   nextRemountAt: number;
   backoff: number;
   persistError: string | null;
+  slice: TechnicalSliceService | null;
 }
 
 export class EngineHost {
   private readonly slots = new Map<string, Slot>();
   private timer: ReturnType<typeof setInterval> | null = null;
+  private sliceTimer: ReturnType<typeof setInterval> | null = null;
   readonly startedAt: number;
 
   constructor(private readonly o: {
@@ -46,7 +52,7 @@ export class EngineHost {
     policy?: SupervisorPolicy;
   }) {
     this.startedAt = o.now();
-    for (const symbol of o.symbols) this.slots.set(symbol, { symbol, stop: null, rt: null, reader: null, status: "INIT", restarts: 0, unhealthySince: null, nextRemountAt: 0, backoff: this.policy.backoff_min_ms, persistError: null });
+    for (const symbol of o.symbols) this.slots.set(symbol, { symbol, stop: null, rt: null, reader: null, status: "INIT", restarts: 0, unhealthySince: null, nextRemountAt: 0, backoff: this.policy.backoff_min_ms, persistError: null, slice: null });
   }
 
   private get policy() { return this.o.policy ?? ENGINE_SUPERVISOR_POLICY; }
@@ -55,19 +61,32 @@ export class EngineHost {
   start(): void {
     for (const s of this.slots.values()) this.mountSlot(s);
     this.timer = setInterval(() => this.tick(), this.policy.tick_ms);
+    this.sliceTimer = setInterval(() => this.tickSlices(), ENGINE_SLICE_TICK_MS);
+  }
+
+  /** One technical evaluation per mounted symbol (the ONLY technical evaluation when a dashboard is attached). */
+  tickSlices(): void {
+    for (const s of this.slots.values()) {
+      if (!s.slice) continue;
+      try { s.slice.tick(); } catch (e) { this.log(`${s.symbol} slice tick failed: ${(e as Error).message}`); }
+    }
   }
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+    if (this.sliceTimer) clearInterval(this.sliceTimer);
+    this.timer = null; this.sliceTimer = null;
     for (const s of this.slots.values()) { this.persistSlot(s); s.stop?.(); s.stop = null; }
   }
 
   private mountSlot(s: Slot): void {
-    s.rt = null; s.reader = null; s.status = "INIT";
+    s.rt = null; s.reader = null; s.slice = null; s.status = "INIT";
     s.stop = this.o.mount({
       symbol: s.symbol,
-      onChange: (m) => { s.reader = m.reader; s.status = m.status; },
+      onChange: (m) => {
+        if (m.reader !== s.reader) s.slice = m.reader ? new TechnicalSliceService(m.reader, s.symbol, new LiveClock(this.o.now)) : null;
+        s.reader = m.reader; s.status = m.status;
+      },
       onRuntime: (rt) => {
         // restore BEFORE start(): the paper loop has not seen any CLOSED bar yet
         const ds = rt.paperState().dataSource;
@@ -120,5 +139,30 @@ export class EngineHost {
   }
 
   reader(symbol: string): MarketRuntimeReader | null { return this.slots.get(symbol)?.reader ?? null; }
+
+  /** Complete per-symbol read model for the dashboard (view layer only). */
+  bundle(symbol: string, now: number): EngineSymbolBundle | null {
+    const s = this.slots.get(symbol);
+    if (!s) return null;
+    const r = s.reader;
+    const live = r?.latestLiveObservation() ?? null;
+    return Object.freeze({
+      symbol, source: "ENGINE_HOST" as const, timestamp: now,
+      health: this.symbolHealth(s, now),
+      slice: s.slice?.view() ?? null,
+      radar: Object.freeze({ snapshot: r?.radarSnapshot() ?? null, health: r?.radarHealth() ?? null }),
+      account: r?.paperAccount?.() ?? null,
+      trades: r?.paperTrades?.() ?? [],
+      live: live ? Object.freeze({ source: live.source, bid: live.bid, ask: live.ask, event_at: live.event_at, observed_at: live.observed_at }) : null,
+      last_m5_close: r?.closedBars("M5").at(-1)?.close_time ?? null,
+    });
+  }
+
+  /** Change key for SSE dedup (slice version + radar evaluation + account). */
+  bundleKey(symbol: string): string {
+    const s = this.slots.get(symbol);
+    const a = s?.reader?.paperAccount?.();
+    return `${s?.slice?.getVersion() ?? -1}:${s?.reader?.radarSnapshot()?.generatedAt ?? -1}:${a?.balance ?? ""}:${a?.openPositions ?? ""}:${s?.status ?? ""}`;
+  }
   get symbols(): readonly string[] { return [...this.slots.keys()]; }
 }

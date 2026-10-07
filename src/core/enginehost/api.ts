@@ -18,14 +18,17 @@ export function envelope<T>(data: T, now: number): EngineEnvelope<T> {
   return { schema: ENGINE_HOST_SCHEMA, source: "ENGINE_HOST", generated_at: now, data };
 }
 
-export function routeEngineRequest(host: Pick<EngineHost, "health" | "reader" | "symbols">, method: string, rawPath: string, now: number): EngineHttpResponse {
+type HostView = Pick<EngineHost, "health" | "reader" | "symbols"> & Partial<Pick<EngineHost, "bundle" | "bundleKey">>;
+
+export function routeEngineRequest(host: HostView, method: string, rawPath: string, now: number): EngineHttpResponse {
   if (method === "OPTIONS") return { status: 204, body: "", headers: { ...ENGINE_CORS_HEADERS } };
   if (method !== "GET") return json(405, { error: "METHOD_NOT_ALLOWED", detail: "engine host is read-only" });
   const path = rawPath.split("?")[0]!.replace(/\/+$/, "");
   if (path === "/v1/engine/health") return json(200, envelope(host.health(), now));
   if (path === "/v1/engine/account") return json(200, envelope({ accounts: host.symbols.map((symbol) => ({ symbol, account: host.reader(symbol)?.paperAccount?.() ?? null })) }, now));
   if (path === "/v1/engine/journal") return json(200, envelope({ trades: host.symbols.flatMap((symbol) => host.reader(symbol)?.paperTrades?.() ?? []) }, now));
-  const m = /^\/v1\/engine\/([A-Z0-9._]+)\/(radar|market-context|account|journal)$/.exec(path);
+  if (path === "/v1/engine/snapshot") return json(200, envelope({ bundles: host.symbols.map((symbol) => host.bundle?.(symbol, now) ?? null).filter(Boolean) }, now));
+  const m = /^\/v1\/engine\/([A-Z0-9._]+)\/(radar|market-context|account|journal|snapshot)$/.exec(path);
   if (!m) return json(404, { error: "NOT_FOUND" });
   const symbol = m[1]!, view = m[2]!;
   if (!host.symbols.includes(symbol)) return json(404, { error: "SYMBOL_NOT_HOSTED", symbol });
@@ -35,18 +38,19 @@ export function routeEngineRequest(host: Pick<EngineHost, "health" | "reader" | 
     const snap = r?.radarSnapshot() ?? null;
     return json(200, envelope({ symbol, report: snap?.intelligence ?? null, evaluated_bar_close: snap?.lastEvaluatedBarTime ?? null, radar_status: r?.radarHealth().status ?? "NOT_MOUNTED" }, now));
   }
+  if (view === "snapshot") return json(200, envelope({ symbol, bundle: host.bundle?.(symbol, now) ?? null }, now));
   if (view === "account") return json(200, envelope({ symbol, account: r?.paperAccount?.() ?? null }, now));
   return json(200, envelope({ symbol, trades: r?.paperTrades?.() ?? [] }, now));
 }
 
-export type EngineEventType = "HEALTH_UPDATE" | "MARKET_CONTEXT_UPDATE" | "RADAR_UPDATE";
+export type EngineEventType = "HEALTH_UPDATE" | "MARKET_CONTEXT_UPDATE" | "RADAR_UPDATE" | "SNAPSHOT_UPDATE";
 export interface EngineEvent { readonly type: EngineEventType; readonly symbol: string | null; readonly timestamp: string; readonly data: unknown }
 
 /**
  * SSE frame builder for GET /v1/engine/events (pure; `seen` tracks the last emitted radar evaluation per symbol).
  * Emits HEALTH_UPDATE every call and RADAR_UPDATE + MARKET_CONTEXT_UPDATE only when a new CLOSED-bar evaluation exists.
  */
-export function buildEngineEvents(host: Pick<EngineHost, "health" | "reader" | "symbols">, now: number, seen: Map<string, number>): EngineEvent[] {
+export function buildEngineEvents(host: HostView, now: number, seen: Map<string, number>, seenBundle: Map<string, string> = new Map()): EngineEvent[] {
   const ts = new Date(now).toISOString();
   const out: EngineEvent[] = [{ type: "HEALTH_UPDATE", symbol: null, timestamp: ts, data: host.health() }];
   for (const symbol of host.symbols) {
@@ -55,6 +59,15 @@ export function buildEngineEvents(host: Pick<EngineHost, "health" | "reader" | "
     seen.set(symbol, snap.generatedAt);
     out.push({ type: "RADAR_UPDATE", symbol, timestamp: ts, data: snap });
     if (snap.intelligence) out.push({ type: "MARKET_CONTEXT_UPDATE", symbol, timestamp: ts, data: snap.intelligence });
+  }
+  // Full per-symbol bundle (dashboard store input) only when something changed.
+  if (host.bundle && host.bundleKey) for (const symbol of host.symbols) {
+    const key = host.bundleKey(symbol);
+    if (seenBundle.get(symbol) === key) continue;
+    const b = host.bundle(symbol, now);
+    if (!b) continue;
+    seenBundle.set(symbol, key);
+    out.push({ type: "SNAPSHOT_UPDATE", symbol, timestamp: ts, data: b });
   }
   return out;
 }

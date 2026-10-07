@@ -1,11 +1,8 @@
-// Read-only RADAR OBSERVABILITY + virtual paper account.
-// Source priority: persistent ENGINE HOST (VPS) when it reports a usable state; otherwise the in-browser runtime,
-// explicitly labelled BROWSER SESSION (resets on refresh). The two sources are never mixed in one view.
-import { useEffect, useState } from "react";
-import type { MarketRuntimeReader } from "@/core/runtime/MarketRuntime";
-import { useEngineHost, type EngineHostView } from "@/hooks/use-engine-host";
+// Read-only RADAR OBSERVABILITY + virtual paper account. Renders ONE RuntimeFacts object: either the persistent
+// ENGINE HOST (VPS) or the BROWSER SESSION (resets on refresh). It never polls and never mixes sources.
+import type { RuntimeFacts } from "@/lib/cockpitSource";
 
-interface Props { readonly reader: MarketRuntimeReader | null; readonly symbol: string; readonly tickMs?: number; readonly engine?: EngineHostView }
+interface Props { readonly facts: RuntimeFacts | null; readonly symbol: string; readonly fallbackReason?: string | null }
 
 const fmtTime = (ms: number | null | undefined) => (ms && ms > 0 ? new Date(ms).toISOString().replace("T", " ").slice(0, 19) + " UTC" : "—");
 const usd = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -14,26 +11,23 @@ function Row({ k, v, testId }: { k: string; v: string; testId?: string }) {
   return <div className="flex justify-between gap-3 border-b border-border/50 py-1 text-xs"><span className="text-muted-foreground">{k}</span><span className="text-right font-mono text-foreground" data-testid={testId}>{v}</span></div>;
 }
 
-export function RadarObservabilityPanel({ reader, symbol, tickMs = 2000, engine }: Props) {
-  const [, setTick] = useState(0);
-  useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), tickMs); return () => clearInterval(t); }, [tickMs]);
-  const polled = useEngineHost(symbol, 5_000, engine ? null : undefined);
-  const eng = engine ?? polled;
-  const host = eng.attached;
-  const snap = host ? eng.radar?.snapshot ?? null : reader?.radarSnapshot?.() ?? null;
-  const health = host ? eng.radar?.health ?? null : reader?.radarHealth?.() ?? null;
-  const acct = host ? eng.account : reader?.paperAccount?.() ?? null;
+export function RadarObservabilityPanel({ facts, symbol, fallbackReason }: Props) {
+  const host = facts?.source === "ENGINE_HOST";
+  const snap = facts?.radar ?? null;
+  const health = facts?.radarHealth ?? null;
+  const acct = facts?.account ?? null;
+  const eh = facts?.engineHealth ?? null;
   const source = snap?.validationSource.dataSource ?? (health ? (health.validationMode === "REAL" ? "REAL_MT5" : "SYNTHETIC") : "—");
   const engineLabel = host
-    ? `ENGINE HOST VPS (LIVE) · ${eng.symbolHealth?.state ?? "?"}`
-    : `BROWSER SESSION (EPHEMERAL)${eng.configured ? ` (engine host: ${eng.error ?? eng.symbolHealth?.state ?? "menghubungkan"})` : ""}`;
+    ? `ENGINE HOST VPS (LIVE) · ${eh?.state ?? "?"}`
+    : `BROWSER SESSION (EPHEMERAL)${fallbackReason ? ` · ENGINE HOST OFFLINE (${fallbackReason})` : ""}`;
   return <section className="mx-auto mb-4 grid max-w-screen-2xl gap-3 px-4 sm:grid-cols-2 sm:px-8" aria-label="Radar observability">
     <div className="border border-border bg-card p-3">
       <h2 className="mb-2 text-xs font-semibold tracking-widest text-muted-foreground">RADAR OBSERVABILITY</h2>
       <Row k="Engine" v={engineLabel} testId="engine-source" />
-      {host && <Row k="Engine update" v={`${fmtTime(eng.symbolHealth?.last_update_at)}${eng.symbolHealth?.latency_ms != null ? ` · ${eng.symbolHealth.latency_ms} ms` : ""}`} />}
-      {host && eng.symbolHealth?.clock && <Row k="Broker clock" v={eng.symbolHealth.clock.status === "UNKNOWN" ? "—" : `${eng.symbolHealth.clock.status} · drift ${eng.symbolHealth.clock.clock_drift_ms} ms`} testId="engine-clock" />}
-      {host && eng.symbolHealth?.error && <Row k="Engine error" v={eng.symbolHealth.error} />}
+      {host && <Row k="Engine update" v={`${fmtTime(eh?.last_update_at)}${eh?.latency_ms != null ? ` · ${eh.latency_ms} ms` : ""}`} />}
+      {host && eh?.clock && <Row k="Broker clock" v={eh.clock.status === "UNKNOWN" ? "—" : `${eh.clock.status} · drift ${eh.clock.clock_drift_ms} ms`} testId="engine-clock" />}
+      {host && eh?.error && <Row k="Engine error" v={eh.error} />}
       {!host && <p className="mb-2 text-xs text-warn" data-testid="ephemeral-warning">Warning: refresh browser akan me-reset runtime state.</p>}
       <Row k="Symbol" v={symbol} />
       <Row k="Data Source" v={source} testId="radar-source" />

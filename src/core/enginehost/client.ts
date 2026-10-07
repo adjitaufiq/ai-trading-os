@@ -2,7 +2,7 @@
 // error result (never substituted data). The dashboard decides attach vs browser-session from these results only.
 import type { RadarHealth, RadarSnapshot } from "../radar/types";
 import type { VirtualAccountView } from "../paper/LivePaperLoop";
-import { ENGINE_HOST_SCHEMA, type EngineEnvelope, type EngineHostHealth } from "./types";
+import { ENGINE_HOST_SCHEMA, type EngineEnvelope, type EngineHostHealth, type EngineSymbolBundle } from "./types";
 
 export type EngineResult<T> = { readonly ok: true; readonly envelope: EngineEnvelope<T> } | { readonly ok: false; readonly error: string };
 
@@ -26,6 +26,11 @@ export function isEngineHostHealth(x: unknown): x is EngineHostHealth {
     const o = s as Record<string, unknown> | null;
     return !!o && typeof o["symbol"] === "string" && STATES.has(o["state"] as string);
   });
+}
+
+export function isBundle(x: unknown): x is EngineSymbolBundle {
+  const b = x as Record<string, unknown> | null;
+  return !!b && b["source"] === "ENGINE_HOST" && typeof b["symbol"] === "string" && typeof b["timestamp"] === "number" && "slice" in b && "radar" in b;
 }
 
 export class EngineHostClient {
@@ -57,6 +62,11 @@ export class EngineHostClient {
     return this.get<{ symbol: string; snapshot: Readonly<RadarSnapshot> | null; health: Readonly<RadarHealth> | null }>(
       `/v1/engine/${encodeURIComponent(symbol)}/radar`, (d) => (d as { symbol?: unknown })?.symbol === symbol);
   }
+  /** All hosted symbols' bundles in one GET (refresh recovery). */
+  snapshots() {
+    return this.get<{ bundles: readonly EngineSymbolBundle[] }>("/v1/engine/snapshot", (d) => Array.isArray((d as { bundles?: unknown })?.bundles) && ((d as { bundles: unknown[] }).bundles).every(isBundle));
+  }
+  get eventsUrl(): string { return `${this.base}/v1/engine/events`; }
   account(symbol: string) {
     return this.get<{ symbol: string; account: Readonly<VirtualAccountView> | null }>(
       `/v1/engine/${encodeURIComponent(symbol)}/account`, (d) => (d as { symbol?: unknown })?.symbol === symbol);
