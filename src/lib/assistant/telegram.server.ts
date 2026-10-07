@@ -29,9 +29,9 @@ async function adminContext(scope: string): Promise<string> {
 async function ask(scope: string, prompt: string, tier: "fast" | "medium"): Promise<string | null> {
   const adapter = selectLlmAdapter();
   if (!adapter) return null;
-  const sel = adapter.create(new Request("http://internal/telegram"), tier);
-  const live = await adminContext(scope);
   try {
+    const sel = adapter.create(new Request("http://internal/telegram"), tier);
+    const live = await adminContext(scope).catch((e) => { console.error("[telegram-ai] context failed", e); return "LIVE_CONTEXT: UNAVAILABLE"; });
     const r = await generateText({
       model: sel.model, system: analystInstructions(scope, "TELEGRAM", live), prompt,
       ...(sel.providerOptions ? { providerOptions: sel.providerOptions } : {}),
