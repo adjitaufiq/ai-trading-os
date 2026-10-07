@@ -44,3 +44,24 @@ export interface EngineEnvelope<T> {
 
 export type EngineAccountView = Readonly<VirtualAccountView> | null;
 export type EngineJournalView = readonly Readonly<JournalTrade>[];
+
+/** UI ownership tag (Phase 2.1). Every payload a dashboard view renders carries exactly one; mixing is an error. */
+export type UiDataSource = "ENGINE_HOST" | "BROWSER_SESSION";
+
+/** Minimal live-quote facts a view needs (no raw evidence objects cross the wire). */
+export interface LiveQuoteFacts { readonly source: string; readonly bid: number; readonly ask: number; readonly event_at: number }
+
+/** One symbol's complete read model as served by the engine host (GET /v1/engine/:symbol/snapshot, SSE SNAPSHOT_UPDATE). */
+export interface EngineSymbolBundle {
+  readonly symbol: string;
+  readonly source: "ENGINE_HOST";
+  readonly timestamp: number;
+  readonly health: SymbolEngineHealth | null;
+  /** Technical slice view (SliceView) computed on the VPS; null until the runtime is mounted. */
+  readonly slice: Readonly<import("../technical/TechnicalSliceService").SliceView> | null;
+  readonly radar: EngineRadarView;
+  readonly account: EngineAccountView;
+  readonly trades: EngineJournalView;
+  readonly live: LiveQuoteFacts | null;
+  readonly last_m5_close: number | null;
+}
