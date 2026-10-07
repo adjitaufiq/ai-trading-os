@@ -83,7 +83,7 @@ export function composeAlert(ev: AlertEvent, why: string | null): string {
 }
 
 /** Operator chats: env TELEGRAM_CHAT_ID plus explicit fallback so alerts/Q&A keep working if the env var is unreadable at runtime. */
-export const OPERATOR_CHAT_IDS = ["6393450326"];
+export const OPERATOR_CHAT_IDS: [string, ...string[]] = ["6393450326"];
 export function operatorChatId(): string {
   const env = process.env["TELEGRAM_CHAT_ID"]?.trim();
   return env || OPERATOR_CHAT_IDS[0];
