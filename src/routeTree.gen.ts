@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as Mt5RouteImport } from './routes/mt5'
+import { Route as ApiAssistantChatRouteImport } from './routes/api/assistant-chat'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +29,44 @@ const Mt5Route = Mt5RouteImport.update({
   path: '/mt5',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAssistantChatRoute = ApiAssistantChatRouteImport.update({
+  id: '/api/assistant-chat',
+  path: '/api/assistant-chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
   '/mt5': typeof Mt5Route
+  '/api/assistant-chat': typeof ApiAssistantChatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
   '/mt5': typeof Mt5Route
+  '/api/assistant-chat': typeof ApiAssistantChatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
   '/mt5': typeof Mt5Route
+  '/api/assistant-chat': typeof ApiAssistantChatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/audit' | '/mt5'
+  fullPaths: '/' | '/audit' | '/mt5' | '/api/assistant-chat'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/audit' | '/mt5'
-  id: '__root__' | '/' | '/audit' | '/mt5'
+  to: '/' | '/audit' | '/mt5' | '/api/assistant-chat'
+  id: '__root__' | '/' | '/audit' | '/mt5' | '/api/assistant-chat'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuditRoute: typeof AuditRoute
   Mt5Route: typeof Mt5Route
+  ApiAssistantChatRoute: typeof ApiAssistantChatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +92,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof Mt5RouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/assistant-chat': {
+      id: '/api/assistant-chat'
+      path: '/api/assistant-chat'
+      fullPath: '/api/assistant-chat'
+      preLoaderRoute: typeof ApiAssistantChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuditRoute: AuditRoute,
   Mt5Route: Mt5Route,
+  ApiAssistantChatRoute: ApiAssistantChatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
