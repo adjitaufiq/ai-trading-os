@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createHash, timingSafeEqual } from "crypto";
-import { answerQuestion, sendTelegramMessage } from "@/lib/assistant/telegram.server";
+import { answerQuestion, isOperatorChat, sendTelegramMessage } from "@/lib/assistant/telegram.server";
 
 const derive = (k: string) => createHash("sha256").update(`telegram-webhook:${k}`).digest("base64url");
 const safeEqual = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
