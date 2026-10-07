@@ -195,7 +195,7 @@ export class LivePaperLoop {
           this.after.push({ tradeId: row.tradeId, balance: r2(this.balance) });
           this.streak = row.result === "LOSS" ? { consecutiveLosses: this.streak.consecutiveLosses + 1, lastLossAt: row.closedAt } : { consecutiveLosses: 0, lastLossAt: this.streak.lastLossAt };
           this.decision = `CLOSED ${row.result} ${row.closeReason}`;
-          this.emit({ type: "EXIT", stage: "PAPER", signalId: o.plan.setupId ?? null, direction: t.snapshot.direction, at: bar.close_time, reason: `${row.result} ${row.closeReason ?? ""}`.trim(), entry: t.snapshot.entryPrice, stopLoss: t.snapshot.stopLoss, takeProfit: t.snapshot.takeProfit });
+          this.emit({ type: "EXIT", stage: "PAPER", signalId: o.plan.signalId ?? null, direction: t.snapshot.direction, at: bar.close_time, reason: `${row.result} ${row.closeReason ?? ""}`.trim(), entry: t.snapshot.entryPrice, stopLoss: t.snapshot.stopLoss, takeProfit: t.snapshot.takeProfit });
         }
         this.open = null; this.lastMark = null;
       }

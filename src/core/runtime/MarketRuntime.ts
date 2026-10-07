@@ -146,7 +146,7 @@ export class MarketRuntime {
     // so it warms up from history instead of waiting hours for live M15 bars. History never enters CandleStore/fanout.
     this.fanout.aggregators.M5.onBar((b) => { if (b.status === "CLOSED") this.radar.onClosedM5(b, (tf) => this.radarEvidence(tf), o.clock.now()); });
     this.paper = new LivePaperLoop(sym, o.spec.origin === "BROKER_REPORTED" ? "REAL_MT5" : "SYNTHETIC", o.spec);
-    // paper loop runs after the radar on the same CLOSED M5 emission; fills use the latest LIVE bid/ask
+    // paper loop runs after the radar on the same CLOSED M5 emission over the SAME merged evidence (broker CLOSED history + live CLOSED); fills use the latest LIVE bid/ask
     this.fanout.aggregators.M5.onBar((b) => { if (b.status === "CLOSED") this.paper.onClosedM5(b, (tf) => this.radarEvidence(tf), this.lastLive); });
     const count = (r: AuditRecord) => { this.routeCounts[r.route]++; };
     this.pipeline = new BrokerFeedPipeline(o.spec, o.classifier, o.clock, (e) => { this.fanout.ingest(e); this.lastLive = e; this.paper.mark(e); if (this.firstLiveAt === null) this.firstLiveAt = e.event_at; });
