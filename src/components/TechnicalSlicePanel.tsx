@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { RadarObservabilityPanel } from "./RadarObservabilityPanel";
+import { useEngineHost } from "@/hooks/use-engine-host";
 import type { SignalAlert, SignalAlertStore } from "@/lib/signalAlerts";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Activity, ArrowDownRight, ArrowUpRight, BrainCircuit, Check, Circle, Minus, Radar, ShieldCheck, X } from "lucide-react";
@@ -384,7 +385,7 @@ function TraderRadarView({ snapshot, reader, part }: { snapshot: TradingSnapshot
 }
 
 /** MARKET CONTEXT SUMMARY (v2.5): market trend + H4/H1 bias as trader-readable card. Presentation mapping only — values come from existing operator/runtime fields, never derived in UI. */
-function MarketContextSummary({ snapshot }: { snapshot: TradingSnapshot | null }) {
+function MarketContextSummary({ snapshot, reader, symbol }: { snapshot: TradingSnapshot | null; reader: MarketRuntimeReader; symbol: string }) {
   const op = snapshot?.operator ?? null;
   const toneClass = (value: string | undefined) => value === "BULLISH" ? "text-bull" : value === "BEARISH" ? "text-bear" : "text-muted-foreground";
   const trend = trendLabel(op?.h4_primary);
@@ -448,11 +449,6 @@ function IntelligenceBlock({ reader, symbol }: { reader: MarketRuntimeReader; sy
   </div>;
 }
 
-function _unused() {
-  return <section>
-    {null}
-  </section>;
-}
 
 function PaperPositions({ store, symbol, quote }: { store: PaperJournalStore; symbol: string; quote: TicketQuote | null }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
@@ -560,7 +556,7 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
         <SignalSafetyStrip signal={snapshot?.signal ?? null} />
       </section>
 
-      <MarketContextSummary snapshot={snapshot} />
+      <MarketContextSummary snapshot={snapshot} reader={reader} symbol={view.symbol} />
       <section className="border border-border bg-card p-4 sm:p-5" aria-label="Rencana transaksi acuan" data-testid="radar-card">
         <RadarPlanView radar={snapshot?.radar_plan ?? null} signal={signal} entry={entry} projection={projection} />
         <TradeActions symbol={view.symbol} signal={signal} quote={quote} plan={plan} planFor={ticketPlan} reason={signalReason} confirmations={planConfirmations} mode={mode}
