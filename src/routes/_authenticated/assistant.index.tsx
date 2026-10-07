@@ -48,5 +48,6 @@ function AssistantHome() {
     </section>}
     <PerformancePanel />
     <TradeReviewPanel />
+    <DemoLabPanel />
   </div>;
 }
