@@ -23,6 +23,7 @@ import {
   RADAR_RECENT_EVENTS_MAX, RADAR_SCHEMA_VERSION, RADAR_STALE_AFTER_MS,
   type AlgorithmVersions, type RadarEventReference, type RadarFootprintTag, type RadarH1Phase, type RadarHealth, type RadarSnapshot,
 } from "./types";
+import { evaluateMarketIntelligence } from "../intelligence/MarketIntelligenceEngine";
 
 export const RADAR_ALGORITHM_VERSIONS: AlgorithmVersions = Object.freeze({
   footprint: INSTITUTIONAL_RADAR_POLICY_VERSION, regime: REGIME_ALGORITHM_VERSION, horizon: HORIZON_ALGORITHM_VERSION, events: EVENT_ALGORITHM_VERSION,
@@ -148,6 +149,10 @@ export class RadarRuntimeService {
       recentEvents: [...this.recent],
       validationSource: { mode: this.source.mode, dataSource: this.source.mode === "REAL" ? "REAL_MT5" : "SYNTHETIC", ...(this.source.provider ? { provider: this.source.provider } : {}), ...(this.source.feedId ? { feedId: this.source.feedId } : {}), evaluatedAt: nowMs },
       algorithmVersions: { ...RADAR_ALGORITHM_VERSIONS },
+      intelligence: evaluateMarketIntelligence({
+        h4: h4S, h1: h1S, m15: m15S, h1Close: visible("H1").at(-1)?.close ?? null, m15Close: m15.at(-1)?.close ?? null,
+        m5Momentum: momentum, volatility: regime.volatility, sweepDirection: footprints.sweepDetected ? footprints.sweepDirection ?? null : null,
+      }),
       generatedAt: nowMs,
     });
   }
