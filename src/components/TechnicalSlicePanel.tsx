@@ -423,7 +423,7 @@ function IntelligenceBlock({ reader, symbol }: { reader: MarketRuntimeReader; sy
   return <div className="mt-3 border-t border-border pt-3" data-testid="mc-intel">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <span className={`border px-2 py-1 text-xs font-bold tracking-wider ${statusCls}`} data-testid="mc-intel-status">{(r?.status ?? "NO_DATA").replaceAll("_", " ")}</span>
-      <span className="text-[11px] text-muted-foreground" data-testid="mc-intel-source">{eng.attached ? "ENGINE HOST (VPS)" : "BROWSER FALLBACK MODE · Analysis computed from loaded feed"}</span>
+      <span className="text-[11px] text-muted-foreground" data-testid="mc-intel-source">{eng.attached ? "ENGINE HOST VPS (LIVE)" : "BROWSER SESSION (EPHEMERAL) · refresh me-reset runtime state"}</span>
     </div>
     {!r ? <p className="mt-2 text-xs text-muted-foreground">Menunggu evaluasi radar pada M5 close (histori broker). Tidak ada data yang dikarang.</p> : <>
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
