@@ -137,7 +137,7 @@ export interface TechnicalSlicePanelProps {
   alerts?: SignalAlertStore;
   onAlert?: (alert: SignalAlert) => void;
   /** ENGINE HOST attach store: when present the panel is a pure view of the engine host (no local evaluation). */
-  engine?: EngineHostStore;
+  engine?: EngineHostStore | undefined;
   /** Why the dashboard fell back to BROWSER SESSION (engine host configured but offline). */
   fallbackReason?: string | null;
 }

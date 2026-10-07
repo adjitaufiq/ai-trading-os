@@ -51,7 +51,7 @@ function Terminal() {
     }));
     return () => { for (const s of stops) s(); setMounted({}); };
   }, [client, config, browserSession]);
-  const xau = mounted["XAUUSD"]?.reader ?? null, btc = mounted["BTCUSD"]?.reader ?? null;
+  const xau = browserSession ? mounted["XAUUSD"]?.reader ?? null : null, btc = browserSession ? mounted["BTCUSD"]?.reader ?? null : null;
   // Recreated only when a reader identity changes (so transition trails survive status updates).
   const runtimes = useMemo(() => [{ symbol: "XAUUSD", reader: xau }, { symbol: "BTCUSD", reader: btc }], [xau, btc]);
   const liveReaders = useMemo(() => ({ XAUUSD: xau, BTCUSD: btc }), [xau, btc]);
