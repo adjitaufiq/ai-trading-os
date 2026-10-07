@@ -17,8 +17,7 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
         const update = await request.json().catch(() => null) as { message?: { chat?: { id?: number }; text?: string } } | null;
         const chatId = update?.message?.chat?.id, text = update?.message?.text?.trim();
         if (!chatId || !text) return Response.json({ ok: true });
-        const allowed = process.env["TELEGRAM_CHAT_ID"];
-        if (!allowed || String(chatId) !== allowed.trim()) {
+        if (!isOperatorChat(chatId)) {
           console.log(`[telegram] message from unregistered chat ${chatId}`);
           await sendTelegramMessage(chatId, `Chat ini belum terdaftar sebagai operator. Chat ID: <code>${chatId}</code>`);
           return Response.json({ ok: true });
