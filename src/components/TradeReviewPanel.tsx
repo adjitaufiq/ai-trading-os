@@ -17,6 +17,7 @@ export function TradeReviewPanel() {
     queryKey: ["trade-reviews"],
     queryFn: async () => {
       const [t, r] = await Promise.all([
+        supabase.rpc("log_engine_access", { _scope: "trade_review_panel" }),
         supabase.from("engine_trades").select("trade_id,symbol,direction,result,r_multiple,closed_at").order("closed_at", { ascending: false }).limit(50),
         supabase.from("trade_reviews").select("trade_id,compliance_status,compliance,narrative,created_at").limit(500),
       ]);

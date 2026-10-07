@@ -24,6 +24,7 @@ export const generateTradeReview = createServerFn({ method: "POST" })
     const { data: isOp } = await supabase.rpc("is_engine_operator", { _user_id: userId });
     if (!isOp) throw new Error("Forbidden");
 
+    await supabase.rpc("log_engine_access", { _scope: `trade_review:${data.tradeId}` });
     const { data: existing } = await supabase.from("trade_reviews").select("id").eq("trade_id", data.tradeId).eq("review_version", TRADE_REVIEW_VERSION).maybeSingle();
     if (existing) return { ok: true as const, alreadyReviewed: true };
 

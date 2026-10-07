@@ -22,6 +22,7 @@ function AssistantHome() {
   const { data } = useQuery({
     queryKey: ["journal-intel"],
     queryFn: async () => {
+      void supabase.rpc("log_engine_access", { _scope: "journal_intelligence" });
       const [t, m] = await Promise.all([
         supabase.from("engine_trades").select("trade_id,symbol,result,r_multiple,profit_loss_usd,regime,approach,location,trigger_pattern,failure_category,data_source,opened_at").limit(1000),
         supabase.from("engine_memory").select("id", { count: "exact", head: true }),

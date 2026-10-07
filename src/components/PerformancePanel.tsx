@@ -19,6 +19,7 @@ export function PerformancePanel() {
     queryKey: ["performance-intel"],
     queryFn: async () => {
       const [t, r] = await Promise.all([
+        supabase.rpc("log_engine_access", { _scope: "performance_panel" }),
         supabase.from("engine_trades").select("trade_id,symbol,result,r_multiple,profit_loss_usd,regime,approach,location,trigger_pattern,failure_category,data_source,opened_at").limit(2000),
         supabase.from("trade_reviews").select("trade_id,compliance_status,review_version").limit(5000),
       ]);
