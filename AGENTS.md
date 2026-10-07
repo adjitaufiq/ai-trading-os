@@ -10,7 +10,7 @@
 <!-- LOVABLE:END -->
 
 - Frontend, including Trader Radar, is a projection-only mapper of existing runtime/engine fields: it never calculates indicators, infers direction, creates signals, changes enums, or overrides execution; strategy and authority stay outside UI. Why: Evidence ≠ Decision, AI ≠ Authority.
-- No order/execution code exists in the frontend until Stage 10 (DEMO). Why: capability must not exist, not merely be disabled.
+- Stage 10 DEMO is open: orders exist only on the VPS (DemoExecutionBridge in src/core/execution/demo, run by engine-host when EXECUTION_MODE=DEMO_STRESS_TEST, default REAL_DISABLED) for approved paper opens on a whitelisted demo account; the frontend has no order code, only a read-only Demo Lab view and the operator kill switch. Why: demo stress test needs real fills while real-account capability stays absent.
 - Core engine reads time only via CanonicalClock (LiveClock or ReplayClock); Date.now() appears only inside LiveClock. Why: LIVE and REPLAY must produce identical state for identical events.
 - Bars are built by CandleAggregator from event_at; lifecycle timestamps (closed_at, available_at) come from the clock, and consumers declare a TemporalPolicy. Why: prevents future-evidence leakage.
 - Broker data flows RawBrokerEvent → BrokerNormalizer → AnomalyClassifier (feed quality only, no timeframe/candle lifecycle) → BrokerFeedPipeline route; only LIVE_MUTATION (STREAM delivery + ACCEPT/ACCEPT_WITH_FLAG) reaches the live sink, which is a LiveCandleFanout of independent M5/M15/H1/H4 CandleAggregators; BACKFILL goes to BACKFILL_HISTORY, RECONCILE to RECONCILIATION_CANDIDATE, both never mutate live state. Why: BACKFILL/RECONCILE must not masquerade as live evidence, and CLOSED candles stay immutable.
