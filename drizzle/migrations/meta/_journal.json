@@ -43,6 +43,13 @@
       "when": 1791366311669,
       "tag": "0005_engine_history_access_audit",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791366392067,
+      "tag": "0006_revoke_anon_access_audit",
+      "breakpoints": true
     }
   ]
 }

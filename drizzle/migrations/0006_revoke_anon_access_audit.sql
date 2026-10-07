@@ -1,0 +1,1 @@
+REVOKE ALL ON public.engine_access_audit FROM anon;
