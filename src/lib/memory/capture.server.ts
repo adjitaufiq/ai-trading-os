@@ -2,6 +2,7 @@
 // Insert-only with ignoreDuplicates; never updates or deletes. Never writes to the engine host.
 import { EngineHostClient } from "@/core/enginehost/client";
 import type { JournalTrade } from "@/engine/journal/types";
+import { captureEngineEvents } from "@/lib/events/events.server";
 import { bundleToMemoryRow, demoRecordToRow, tradeToRow } from "./mappers";
 import type { DemoTradeRecord } from "@/core/execution/demo/types";
 
@@ -22,9 +23,11 @@ export async function captureEngineMemory() {
   const trades: JournalTrade[] = snap.envelope.data.bundles.flatMap((b) => [...b.trades] as JournalTrade[]);
   const tradeRows = [...new Map(trades.map((t) => [t.tradeId, tradeToRow(t)])).values()];
   // Stage 10 demo lab records (closed demo orders only); absent/disabled demo lab ⇒ nothing added.
+  let demoEvents: { type: string; signalId: string | null; symbol: string | null; at: number }[] = [];
   try {
     const r = await fetch(`${url.replace(/\/+$/, "")}/v1/engine/demo`);
-    const recs = r.ok ? (((await r.json()) as { data?: { records?: DemoTradeRecord[] } }).data?.records ?? []) : [];
+    const d = r.ok ? (((await r.json()) as { data?: { records?: DemoTradeRecord[]; recentEvents?: typeof demoEvents } }).data ?? {}) : {};
+    const recs = d.records ?? []; demoEvents = d.recentEvents ?? [];
     for (const rec of recs) { const row = demoRecordToRow(rec); if (row) tradeRows.push(row); }
   } catch { /* demo lab unreachable: paper capture continues */ }
 
@@ -36,5 +39,8 @@ export async function captureEngineMemory() {
     const { error } = await supabaseAdmin.from("engine_trades").upsert(tradeRows as never, { onConflict: "trade_id", ignoreDuplicates: true });
     if (error) return { ok: false as const, error: `TRADES_WRITE ${error.message}` };
   }
-  return { ok: true as const, memory_rows: rows.length, trades_seen: tradeRows.length };
+  // Proof-of-life events + notifications: never fails the memory capture.
+  let events: unknown = null;
+  try { events = await captureEngineEvents(url, snap.envelope.data.bundles, demoEvents); } catch (e) { events = { error: (e as Error).message }; }
+  return { ok: true as const, events, memory_rows: rows.length, trades_seen: tradeRows.length };
 }
