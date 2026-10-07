@@ -58,27 +58,96 @@ export async function answerQuestion(text: string): Promise<string> {
   return out ?? "AI sedang tidak tersedia. Data engine tetap jalan; coba lagi sebentar.";
 }
 
-const TITLES: Record<string, string> = { READY: "🚨 READY DETECTED", BLOCKED: "⛔ EXECUTION BLOCKED", ENGINE_OFFLINE: "🚨 ENGINE OFFLINE", ENGINE_ONLINE: "✅ ENGINE BACK ONLINE" };
+const TITLES: Record<string, string> = { READY: "🚨 ENGINE READY", BLOCKED: "⛔ EXECUTION BLOCKED", ENGINE_OFFLINE: "🚨 ENGINE OFFLINE", ENGINE_ONLINE: "✅ ENGINE BACK ONLINE" };
 export function alertHeadline(ev: { event_type: string; reason: string }): string {
   const t = ev.reason.toUpperCase();
   if (ev.event_type === "EXECUTION") return /REJECT|ERROR/.test(t) ? "⚠️ DEMO ORDER FAILED" : "🟢 DEMO ORDER OPENED";
-  if (ev.event_type === "EXIT") return /\bTP\b|TAKE_PROFIT|TAKE PROFIT/.test(t) ? "✅ TP HIT" : /\bSL\b|STOP_LOSS|STOP LOSS/.test(t) ? "🔴 SL HIT" : "⏹ POSITION CLOSED";
+  if (ev.event_type === "EXIT") return /\bTP\b|TAKE_PROFIT|TAKE PROFIT/.test(t) ? "🎯 TP HIT" : /\bSL\b|STOP_LOSS|STOP LOSS/.test(t) ? "🛑 SL HIT" : "⏹ POSITION CLOSED";
   return TITLES[ev.event_type] ?? ev.event_type;
 }
 
-/** Facts (verbatim) + optional AI explanation. */
+/** UTC "YYYY-MM-DD HH:mm UTC"; raw string passthrough when unparseable. */
+function fmtUtc(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : `${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+const numStr = (v: number | null) => (v === null ? "-" : String(v));
+const dirText = (d: string | null, emoji: boolean): string => {
+  const up = (d ?? "").toUpperCase();
+  if (!up) return "-";
+  if (!emoji) return up;
+  return up === "BUY" ? "🟢 BUY" : up === "SELL" ? "🔴 SELL" : up;
+};
+/** RR from engine entry/SL/TP only; "-" when any leg missing (never inferred). */
+function rrText(entry: number | null, sl: number | null, tp: number | null): string | null {
+  if (entry === null || sl === null || tp === null) return null;
+  const risk = Math.abs(entry - sl), reward = Math.abs(tp - entry);
+  return risk > 0 && reward > 0 ? `1:${(reward / risk).toFixed(2)}` : null;
+}
+/** Result taken verbatim from the engine/journal R figure inside the reason; "-" when absent. */
+function resultText(reason: string): string {
+  const m = reason.match(/([+-]?\d+(?:\.\d+)?)\s*R\b/i);
+  return m ? `${m[1]!}R` : "-";
+}
+const bulletReason = (reason: string): string[] => {
+  const parts = reason.split(/\s*[;·|]\s*/).map((s) => s.trim()).filter(Boolean);
+  return parts.length ? parts : [reason.trim() || "-"];
+};
+
+/** Facts (verbatim from engine event) + optional AI "Kenapa" — operator-format templates. */
 export function composeAlert(ev: AlertEvent, why: string | null): string {
-  const tf = ev.timeframe_context ?? {};
-  const L: string[] = [`<b>${alertHeadline(ev)}</b>`, "", `<b>${esc(ev.symbol)} ${esc(ev.direction ?? "")}</b>`.trim()];
+  const tf = (ev.timeframe_context ?? {}) as Record<string, unknown>;
+  const L: string[] = [];
+  const field = (label: string, value: string) => { L.push(`<b>${label}:</b>`, esc(value || "-")); };
+  const tfVal = (k: string): string => {
+    const v = tf[k];
+    return v === undefined || v === null || String(v).trim() === "" ? "-" : String(v);
+  };
+
+  if (ev.event_type === "ENGINE_OFFLINE" || ev.event_type === "ENGINE_ONLINE") {
+    L.push(`<b>${alertHeadline(ev)}</b>`, "", esc(ev.reason));
+  } else if (ev.event_type === "BLOCKED") {
+    L.push("<b>⛔ EXECUTION BLOCKED</b>", "");
+    field("Symbol", ev.symbol);
+    field("Direction", dirText(ev.direction, false));
+    field("Engine", "READY");
+    const br = (ev.block_reason ?? "").trim() || `${ev.stage ?? "-"}: ${ev.reason}`;
+    const sep = br.indexOf(":");
+    field("Blocked By", sep > 0 ? br.slice(0, sep).trim() : (ev.stage ?? "-"));
+    field("Reason", sep > 0 ? br.slice(sep + 1).trim() : br);
+  } else if (ev.event_type === "EXIT") {
+    L.push(`<b>${alertHeadline(ev)}</b>`, "", esc(`${ev.symbol} ${ev.direction ?? ""}`.trim()), "");
+    const isDemo = ev.stage === "DEMO_MT5";
+    field("Entry", isDemo ? "-" : numStr(ev.entry));
+    field("Exit", isDemo ? numStr(ev.entry) : "-");
+    field("Result", resultText(ev.reason));
+    field("Reason Review", ev.reason || "-");
+    L.push("<b>Journal:</b>", "Saved");
+  } else {
+    // READY / EXECUTION — one template; execution_result decides the Execution line.
+    L.push(`<b>${ev.event_type === "READY" ? "🚨 ENGINE READY" : alertHeadline(ev)}</b>`, "");
+    field("Symbol", ev.symbol);
+    field("Direction", dirText(ev.direction, true));
+    field("Time", fmtUtc(ev.occurred_at));
+    field("Engine Decision", typeof tf["decision"] === "string" && tf["decision"] ? tf["decision"] : "READY");
+    field("Confidence", ev.confidence !== null ? `${ev.confidence}/100` : "-");
+    L.push("", "<b>Market Context:</b>");
+    for (const [k, label] of [["h4", "H4"], ["h1", "H1"], ["m15", "M15"], ["m5", "M5"]] as const)
+      L.push(`<b>${label}:</b>`, esc(tfVal(k)));
+    L.push("", "<b>Setup Reason:</b>");
+    for (const b of bulletReason(ev.reason)) L.push(`- ${esc(b)}`);
+    L.push("", "<b>Trade Plan:</b>");
+    field("Entry", numStr(ev.entry));
+    field("Stop Loss", numStr(ev.stop_loss));
+    field("Take Profit", numStr(ev.take_profit));
+    field("Risk/Reward", rrText(ev.entry, ev.stop_loss, ev.take_profit) ?? "-");
+    const er = (ev.execution_result ?? "").trim();
+    L.push("", "<b>Execution:</b>", esc(er ? (/REJECT|ERROR/i.test(er) ? `⚠️ ${er}` : `✅ ${er}`) : "⏳ menunggu validasi Risk/TradePlan/demo"));
+    L.push("<b>Mode:</b>", "DEMO_MT5");
+  }
+
   if (why) L.push("", "<b>Kenapa:</b>", esc(why));
-  const ctx = ["h4", "h1", "m15", "m5"].map((k) => tf[k] ? `${k.toUpperCase()} ${String(tf[k])}` : null).filter(Boolean);
-  if (ctx.length) L.push("", `<b>MTF:</b> ${esc(ctx.join(" · "))}`);
-  if (ev.confidence !== null) L.push(`<b>Confidence:</b> ${ev.confidence}%`);
-  if (tf["decision"]) L.push(`<b>Engine Decision:</b> ${esc(String(tf["decision"]))}`);
-  if (ev.entry !== null || ev.stop_loss !== null) L.push(`<b>Entry</b> ${ev.entry ?? "-"} · <b>SL</b> ${ev.stop_loss ?? "-"} · <b>TP</b> ${ev.take_profit ?? "-"}`);
-  if (ev.block_reason) L.push(`<b>Blocked:</b> ${esc(ev.block_reason)}`);
-  L.push(`<b>Execution:</b> ${esc(ev.execution_result ?? (ev.event_type === "READY" ? "menunggu Risk/TradePlan/validasi demo" : `${ev.stage ?? "-"} · ${ev.reason}`))}`);
-  L.push("", `<i>${esc(ev.occurred_at)} · DEMO lab · AI hanya menjelaskan</i>`);
+  L.push("", `<i>${esc(fmtUtc(ev.occurred_at))} · DEMO lab · AI hanya menjelaskan</i>`);
   return L.join("\n").slice(0, 4000);
 }
 
