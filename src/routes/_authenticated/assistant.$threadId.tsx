@@ -15,6 +15,14 @@ import { Shimmer } from "@/components/ai-elements/shimmer";
 
 export const Route = createFileRoute("/_authenticated/assistant/$threadId")({
   component: ThreadPage,
+  head: () => ({ meta: [
+    { title: "Percakapan Analis — Personal AI Trading OS" },
+    { name: "description", content: "Percakapan analis per simbol berdasarkan fakta Engine Host dan memori historis." },
+    { property: "og:title", content: "Percakapan Analis — Personal AI Trading OS" },
+    { property: "og:description", content: "Penjelasan keputusan engine dan kondisi radar; AI tidak membuat sinyal atau mengeksekusi order." },
+    { property: "og:type", content: "website" },
+    { name: "twitter:card", content: "summary" },
+  ] }),
 });
 
 const SUGGESTIONS: Record<string, string[]> = {
