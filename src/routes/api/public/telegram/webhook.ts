@@ -11,9 +11,10 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        // Always 200 to Telegram so it never retries forever; unverified requests are dropped, never processed.
         const tk = process.env["TELEGRAM_API_KEY"];
-        if (!tk) return new Response("not configured", { status: 500 });
-        if (!safeEqual(request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "", derive(tk))) return new Response("Unauthorized", { status: 401 });
+        if (!tk) { console.error("[telegram] TELEGRAM_API_KEY missing at runtime; update dropped"); return Response.json({ ok: true, ignored: "not_configured" }); }
+        if (!safeEqual(request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "", derive(tk))) return Response.json({ ok: true, ignored: "unauthorized" });
         const update = await request.json().catch(() => null) as { message?: { chat?: { id?: number }; text?: string } } | null;
         const chatId = update?.message?.chat?.id, text = update?.message?.text?.trim();
         if (!chatId || !text) return Response.json({ ok: true });
