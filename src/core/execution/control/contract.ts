@@ -38,9 +38,10 @@ export function deriveControl(cfg: ExecutionConfigWire | null | undefined, legac
   const mode = parseExecutionMode(cfg.execution_mode);
   const profile: DemoRiskProfile = Object.freeze({
     riskPercent: clamp(cfg.risk_percent, 0.01, 2, DEMO_RISK_PROFILE.riskPercent),
-    maxOpenPositions: Math.floor(clamp(cfg.max_open_positions, 1, 5, DEMO_RISK_PROFILE.maxOpenPositions)),
-    maxTradesPerDay: Math.floor(clamp(cfg.max_daily_trades, 1, 50, DEMO_RISK_PROFILE.maxTradesPerDay)),
-    maxDailyLossPercent: clamp(cfg.max_daily_loss_percent, 0.01, 10, DEMO_RISK_PROFILE.maxDailyLossPercent),
+    // Demo stress test: operator may lift position/trade/daily-loss caps to effectively unlimited (DEMO account only).
+    maxOpenPositions: Math.floor(clamp(cfg.max_open_positions, 1, 100_000, DEMO_RISK_PROFILE.maxOpenPositions)),
+    maxTradesPerDay: Math.floor(clamp(cfg.max_daily_trades, 1, 1_000_000, DEMO_RISK_PROFILE.maxTradesPerDay)),
+    maxDailyLossPercent: clamp(cfg.max_daily_loss_percent, 0.01, 100, DEMO_RISK_PROFILE.maxDailyLossPercent),
   }) as DemoRiskProfile;
   const allowedSymbols = Array.isArray(cfg.allowed_symbols) ? cfg.allowed_symbols.map((s) => String(s).toUpperCase()) : [];
   const reason = cfg.kill_switch !== false ? "KILL_SWITCH"

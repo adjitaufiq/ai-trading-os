@@ -62,6 +62,7 @@ export function demoRecordToRow(r: DemoTradeRecord): TradeRow | null {
     r_multiple: r.riskUSD > 0 ? Math.round((r.profitLossUSD / r.riskUSD) * 10000) / 10000 : null,
     failure_category: null, data_source: "DEMO_MT5", regime: r.context.regime, approach: null,
     location: r.context.signalSource["location"] ?? null, trigger_pattern: r.context.signalSource["trigger"] ?? null,
-    reaction_quality: r.context.signalSource["reactionQuality"] ?? null, payload: r,
+    reaction_quality: r.context.signalSource["reactionQuality"] ?? null,
+    payload: { ...r, tradingStyle: tradingStyleOf(r.sentAt, r.closedAt), durationSeconds: Math.round((r.closedAt - r.sentAt) / 1000) } as unknown as typeof r,
   };
 }

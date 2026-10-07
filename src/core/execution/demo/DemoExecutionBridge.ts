@@ -151,6 +151,12 @@ export class DemoExecutionBridge {
       account: { ok: this.lastAccount.ok, reason: this.lastAccount.reason, login: id?.login ?? null, server: id?.server ?? null, tradeMode: id?.tradeMode ?? null },
       openPositions: this.openCount, tradesToday: this.tradesToday(),
       dailyLossPercent: id ? Math.round(dailyLossPercent(this.dayStart() ?? id.balance, id.equity) * 100) / 100 : 0,
+      capital: (() => {
+        const first = this.events.find((e) => e.type === "DAY_START");
+        const start = first ? Number(first.data?.["balance"]) : id?.balance ?? null;
+        return { startBalance: start, balance: id?.balance ?? null, equity: id?.equity ?? null, currency: id?.currency ?? null,
+          netPnl: start !== null && id ? Math.round((id.equity - start) * 100) / 100 : null };
+      })(),
       lastEvent: this.events.at(-1) ?? null, records: this.records(), recentEvents: this.events.slice(-30),
     });
   }
