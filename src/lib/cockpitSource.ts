@@ -39,7 +39,7 @@ export function localCockpitSource(service: TechnicalSliceService, reader: Marke
       return {
         source: "BROWSER_SESSION", symbol: reader.symbol, timestamp: reader.now(),
         radar: reader.radarSnapshot?.() ?? null, radarHealth: reader.radarHealth?.() ?? null,
-        live: live ? { source: live.source, bid: live.bid, ask: live.ask, event_at: live.event_at } : null,
+        live: live ? { source: live.source, bid: live.bid, ask: live.ask, event_at: live.event_at, observed_at: live.observed_at } : null,
         lastM5Close: reader.closedBars("M5").at(-1)?.close_time ?? null,
         account: reader.paperAccount?.() ?? null, trades: reader.paperTrades?.() ?? [], engineHealth: null,
       };

@@ -7,6 +7,7 @@ import { deriveSymbolHealth } from "./health";
 import type { PaperPersistence } from "./persistence";
 import type { EngineHostHealth, EngineSymbolBundle, SymbolEngineHealth } from "./types";
 import { TechnicalSliceService } from "../technical/TechnicalSliceService";
+import { LiveClock } from "../temporal/CanonicalClock";
 
 /** Documented supervisor policy (operator configuration). */
 export interface SupervisorPolicy { readonly tick_ms: number; readonly remount_after_ms: number; readonly backoff_min_ms: number; readonly backoff_max_ms: number }
@@ -83,7 +84,7 @@ export class EngineHost {
     s.stop = this.o.mount({
       symbol: s.symbol,
       onChange: (m) => {
-        if (m.reader !== s.reader) s.slice = m.reader ? new TechnicalSliceService(m.reader, s.symbol, { now: this.o.now }) : null;
+        if (m.reader !== s.reader) s.slice = m.reader ? new TechnicalSliceService(m.reader, s.symbol, new LiveClock(this.o.now)) : null;
         s.reader = m.reader; s.status = m.status;
       },
       onRuntime: (rt) => {
@@ -152,7 +153,7 @@ export class EngineHost {
       radar: Object.freeze({ snapshot: r?.radarSnapshot() ?? null, health: r?.radarHealth() ?? null }),
       account: r?.paperAccount?.() ?? null,
       trades: r?.paperTrades?.() ?? [],
-      live: live ? Object.freeze({ source: live.source, bid: live.bid, ask: live.ask, event_at: live.event_at }) : null,
+      live: live ? Object.freeze({ source: live.source, bid: live.bid, ask: live.ask, event_at: live.event_at, observed_at: live.observed_at }) : null,
       last_m5_close: r?.closedBars("M5").at(-1)?.close_time ?? null,
     });
   }

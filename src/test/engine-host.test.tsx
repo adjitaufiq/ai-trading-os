@@ -207,13 +207,14 @@ describe("Phase 2 — persistent engine host", () => {
   });
 
   it("dashboard attach mode: labels never mix; ephemeral warning only in browser session", () => {
-    const base = { configured: true, radar: null, account: null, error: null, checkedAt: 1 };
-    const { unmount } = render(<RadarObservabilityPanel reader={null} symbol="XAUUSD" engine={{ ...base, attached: true, symbolHealth: deriveSymbolHealth({ symbol: "XAUUSD", reader: fakeReader({ observed: 99_000 }), mount_status: "MOUNTED", restarts: 0, now: 100_000 }) }} />);
+    const facts = (source: "ENGINE_HOST" | "BROWSER_SESSION") => ({ source, symbol: "XAUUSD", timestamp: 1, radar: null, radarHealth: null, live: null, lastM5Close: null, account: null, trades: [],
+      engineHealth: source === "ENGINE_HOST" ? deriveSymbolHealth({ symbol: "XAUUSD", reader: fakeReader({ observed: 99_000 }), mount_status: "MOUNTED", restarts: 0, now: 100_000 }) : null });
+    const { unmount } = render(<RadarObservabilityPanel facts={facts("ENGINE_HOST")} symbol="XAUUSD" />);
     expect(screen.getByTestId("engine-source").textContent).toMatch(/^ENGINE HOST VPS \(LIVE\)/);
     expect(screen.queryByTestId("ephemeral-warning")).toBeNull();
     unmount();
-    render(<RadarObservabilityPanel reader={null} symbol="XAUUSD" engine={{ ...base, attached: false, symbolHealth: null }} />);
-    expect(screen.getByTestId("engine-source").textContent).toMatch(/^BROWSER SESSION \(EPHEMERAL\)/);
+    render(<RadarObservabilityPanel facts={facts("BROWSER_SESSION")} symbol="XAUUSD" fallbackReason="TIMEOUT" />);
+    expect(screen.getByTestId("engine-source").textContent).toMatch(/^BROWSER SESSION \(EPHEMERAL\) · ENGINE HOST OFFLINE/);
     expect(screen.getByTestId("ephemeral-warning")).toBeTruthy();
   });
 

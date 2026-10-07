@@ -49,7 +49,7 @@ export type EngineJournalView = readonly Readonly<JournalTrade>[];
 export type UiDataSource = "ENGINE_HOST" | "BROWSER_SESSION";
 
 /** Minimal live-quote facts a view needs (no raw evidence objects cross the wire). */
-export interface LiveQuoteFacts { readonly source: string; readonly bid: number; readonly ask: number; readonly event_at: number }
+export interface LiveQuoteFacts { readonly source: string; readonly bid: number; readonly ask: number; readonly event_at: number; readonly observed_at: number }
 
 /** One symbol's complete read model as served by the engine host (GET /v1/engine/:symbol/snapshot, SSE SNAPSHOT_UPDATE). */
 export interface EngineSymbolBundle {
