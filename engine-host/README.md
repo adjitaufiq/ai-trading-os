@@ -24,3 +24,9 @@ and give the resulting https URL to the dashboard as `VITE_ENGINE_HOST_URL`.
 
 ## API (GET only)
 `/v1/engine/health` · `/v1/engine/{SYMBOL}/radar` · `/v1/engine/{SYMBOL}/account` · `/v1/engine/{SYMBOL}/journal` · `/v1/engine/stream` (SSE health)
+
+## API (read-only, GET only)
+- `/v1/engine/health` — state per symbol (STARTING → BOOTSTRAP → SYNCING → ONLINE / DEGRADED / OFFLINE) + broker clock drift (NORMAL / DRIFT_WARNING > 3000 ms)
+- `/v1/engine/{symbol}/radar`, `/v1/engine/{symbol}/market-context`
+- `/v1/engine/account`, `/v1/engine/journal` (all symbols) and per-symbol `/v1/engine/{symbol}/account|journal`
+- `/v1/engine/events` — SSE: HEALTH_UPDATE, RADAR_UPDATE, MARKET_CONTEXT_UPDATE (only on a new CLOSED-bar evaluation)
