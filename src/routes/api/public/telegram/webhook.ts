@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createHash, timingSafeEqual } from "crypto";
-import { answerQuestion, sendTelegramMessage } from "@/lib/assistant/telegram.server";
+import { answerQuestion, isOperatorChat, sendTelegramMessage } from "@/lib/assistant/telegram.server";
 
 const derive = (k: string) => createHash("sha256").update(`telegram-webhook:${k}`).digest("base64url");
 const safeEqual = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
@@ -17,8 +17,7 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
         const update = await request.json().catch(() => null) as { message?: { chat?: { id?: number }; text?: string } } | null;
         const chatId = update?.message?.chat?.id, text = update?.message?.text?.trim();
         if (!chatId || !text) return Response.json({ ok: true });
-        const allowed = process.env["TELEGRAM_CHAT_ID"];
-        if (!allowed || String(chatId) !== allowed.trim()) {
+        if (!isOperatorChat(chatId)) {
           console.log(`[telegram] message from unregistered chat ${chatId}`);
           await sendTelegramMessage(chatId, `Chat ini belum terdaftar sebagai operator. Chat ID: <code>${chatId}</code>`);
           return Response.json({ ok: true });

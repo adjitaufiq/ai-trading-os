@@ -2,7 +2,7 @@
 // then dispatch notifications for newly inserted READY / EXECUTION / BLOCKED events. Insert-only; never writes to the VPS.
 // Notification failure never fails the capture: missing credentials ⇒ delivery_status PENDING with the reason.
 import type { EngineSymbolBundle } from "@/core/enginehost/types";
-import { AI_ALERTS_PER_RUN, composeAlert, explainEvent, sendTelegramMessage } from "@/lib/assistant/telegram.server";
+import { AI_ALERTS_PER_RUN, composeAlert, explainEvent, operatorChatId, sendTelegramMessage } from "@/lib/assistant/telegram.server";
 
 export interface EventRow {
   event_key: string; symbol: string; event_type: "RADAR" | "READY" | "BLOCKED" | "EXECUTION" | "EXIT" | "ENGINE_OFFLINE" | "ENGINE_ONLINE"; stage: string | null;
@@ -111,7 +111,7 @@ export async function ingestEventRows(rows: EventRow[]) {
   for (const ev of (data ?? []) as (EventRow & { id: string })[]) {
     if (!ALERT_TYPES.has(ev.event_type)) continue;
     const why = ev.event_type !== "ENGINE_OFFLINE" && ev.event_type !== "ENGINE_ONLINE" && aiUsed < AI_ALERTS_PER_RUN ? (aiUsed++, await explainEvent(ev)) : null;
-    const res = await sendTelegramMessage(process.env["TELEGRAM_CHAT_ID"] ?? "", composeAlert(ev, why));
+    const res = await sendTelegramMessage(operatorChatId(), composeAlert(ev, why));
     if (res.status !== "SENT") console.warn(`[engine-events] ${ev.event_key} delivery ${res.status}: ${res.note}`);
     const { error: ne } = await supabaseAdmin.from("engine_notifications").insert({ event_id: ev.id, channel: "TELEGRAM", delivery_status: res.status, note: res.note });
     if (ne) console.error("[engine-events] notification log failed", ne.message);

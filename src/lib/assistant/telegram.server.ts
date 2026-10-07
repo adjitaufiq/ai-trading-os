@@ -82,6 +82,18 @@ export function composeAlert(ev: AlertEvent, why: string | null): string {
   return L.join("\n").slice(0, 4000);
 }
 
+/** Operator chats: env TELEGRAM_CHAT_ID plus explicit fallback so alerts/Q&A keep working if the env var is unreadable at runtime. */
+export const OPERATOR_CHAT_IDS: [string, ...string[]] = ["6393450326"];
+export function operatorChatId(): string {
+  const env = process.env["TELEGRAM_CHAT_ID"]?.trim();
+  return env || OPERATOR_CHAT_IDS[0];
+}
+export function isOperatorChat(chatId: string | number): boolean {
+  const id = String(chatId).trim();
+  const env = process.env["TELEGRAM_CHAT_ID"]?.trim();
+  return (!!env && id === env) || OPERATOR_CHAT_IDS.includes(id);
+}
+
 export async function sendTelegramMessage(chatId: string | number, text: string): Promise<{ status: "SENT" | "FAILED" | "PENDING"; note: string }> {
   const lk = process.env["LOVABLE_API_KEY"], tk = process.env["TELEGRAM_API_KEY"];
   if (!lk || !tk || !chatId) return { status: "PENDING", note: `Telegram not configured (${[!tk && "TELEGRAM_API_KEY", !chatId && "TELEGRAM_CHAT_ID", !lk && "LOVABLE_API_KEY"].filter(Boolean).join(", ")} missing)` };
