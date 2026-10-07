@@ -15,6 +15,13 @@
       "when": 1791357031140,
       "tag": "0001_engine_memory_and_trades",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791360659572,
+      "tag": "0002_restrict_engine_history_to_operators",
+      "breakpoints": true
     }
   ]
 }
