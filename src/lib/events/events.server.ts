@@ -2,6 +2,7 @@
 // then dispatch notifications for newly inserted READY / EXECUTION / BLOCKED events. Insert-only; never writes to the VPS.
 // Notification failure never fails the capture: missing credentials ⇒ delivery_status PENDING with the reason.
 import type { EngineSymbolBundle } from "@/core/enginehost/types";
+import { AI_ALERTS_PER_RUN, composeAlert, explainEvent, sendTelegramMessage } from "@/lib/assistant/telegram.server";
 
 export interface EventRow {
   event_key: string; symbol: string; event_type: "RADAR" | "READY" | "BLOCKED" | "EXECUTION" | "EXIT" | "ENGINE_OFFLINE" | "ENGINE_ONLINE"; stage: string | null;
@@ -88,20 +89,6 @@ export function formatAlert(r: { symbol: string; event_type: string; stage: stri
   return lines.join("\n").replace(/&(?!lt;|gt;|amp;)/g, "&amp;");
 }
 
-async function sendTelegram(text: string): Promise<{ status: "SENT" | "FAILED" | "PENDING"; note: string }> {
-  const lk = process.env["LOVABLE_API_KEY"], tk = process.env["TELEGRAM_API_KEY"], chat = process.env["TELEGRAM_CHAT_ID"];
-  if (!lk || !tk || !chat) return { status: "PENDING", note: `Telegram not configured (${[!tk && "TELEGRAM_API_KEY", !chat && "TELEGRAM_CHAT_ID", !lk && "LOVABLE_API_KEY"].filter(Boolean).join(", ")} missing)` };
-  try {
-    const r = await fetch("https://connector-gateway.lovable.dev/telegram/sendMessage", {
-      method: "POST", headers: { Authorization: `Bearer ${lk}`, "X-Connection-Api-Key": tk, "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chat, text, parse_mode: "HTML" }),
-    });
-    const body = await r.text();
-    if (!r.ok) return { status: "FAILED", note: `[${r.status}] ${body.slice(0, 300)}` };
-    return { status: "SENT", note: "ok" };
-  } catch (e) { return { status: "FAILED", note: (e as Error).message }; }
-}
-
 export async function captureEngineEvents(baseUrl: string, bundles: readonly EngineSymbolBundle[], demoEvents: readonly DemoEv[]) {
   const rows: EventRow[] = [];
   try {
@@ -120,10 +107,11 @@ export async function ingestEventRows(rows: EventRow[]) {
   if (!rows.length) return { inserted: 0, notified: 0 };
   const { data, error } = await supabaseAdmin.from("engine_events").upsert(rows as never, { onConflict: "event_key", ignoreDuplicates: true }).select();
   if (error) { console.error("[engine-events] write failed", error.message); return { inserted: 0, notified: 0, error: error.message }; }
-  let notified = 0;
+  let notified = 0, aiUsed = 0;
   for (const ev of (data ?? []) as (EventRow & { id: string })[]) {
     if (!ALERT_TYPES.has(ev.event_type)) continue;
-    const res = await sendTelegram(formatAlert(ev));
+    const why = ev.event_type !== "ENGINE_OFFLINE" && ev.event_type !== "ENGINE_ONLINE" && aiUsed < AI_ALERTS_PER_RUN ? (aiUsed++, await explainEvent(ev)) : null;
+    const res = await sendTelegramMessage(process.env["TELEGRAM_CHAT_ID"] ?? "", composeAlert(ev, why));
     if (res.status !== "SENT") console.warn(`[engine-events] ${ev.event_key} delivery ${res.status}: ${res.note}`);
     const { error: ne } = await supabaseAdmin.from("engine_notifications").insert({ event_id: ev.id, channel: "TELEGRAM", delivery_status: res.status, note: res.note });
     if (ne) console.error("[engine-events] notification log failed", ne.message);
