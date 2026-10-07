@@ -82,6 +82,54 @@ export type Database = {
         }
         Relationships: []
       }
+      demo_execution_control: {
+        Row: {
+          id: number
+          reason: string | null
+          stopped: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: number
+          reason?: string | null
+          stopped?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: number
+          reason?: string | null
+          stopped?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      demo_execution_control_log: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          id: string
+          reason: string | null
+          stopped: boolean
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          reason?: string | null
+          stopped: boolean
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          reason?: string | null
+          stopped?: boolean
+        }
+        Relationships: []
+      }
       engine_memory: {
         Row: {
           active_events: string[]
