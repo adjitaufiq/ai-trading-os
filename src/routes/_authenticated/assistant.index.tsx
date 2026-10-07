@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { TradeReviewPanel } from "@/components/TradeReviewPanel";
 import { PerformancePanel } from "@/components/PerformancePanel";
 import { DemoLabPanel } from "@/components/DemoLabPanel";
+import { EngineEventsPanel } from "@/components/EngineEventsPanel";
 import { ExecutionControlPanel } from "@/components/ExecutionControlPanel";
 import { journalIntelligence, type Group, type TradeFact } from "@/lib/memory/analytics";
 
@@ -51,6 +52,7 @@ function AssistantHome() {
     <PerformancePanel />
     <TradeReviewPanel />
     <ExecutionControlPanel />
+    <EngineEventsPanel />
     <DemoLabPanel />
   </div>;
 }

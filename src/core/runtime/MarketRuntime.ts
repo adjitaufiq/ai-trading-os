@@ -16,7 +16,7 @@ import { CandleStore, type CandleStoreMetrics } from "../candles/CandleStore";
 import { detectMissingIntervals, type MissingInterval } from "../candles/MissingInterval";
 import { RadarRuntimeService } from "../radar/RadarRuntimeService";
 import type { RadarHealth, RadarSnapshot } from "../radar/types";
-import { LivePaperLoop, type ApprovedPaperOpen, type PaperLoopState, type VirtualAccountView } from "../paper/LivePaperLoop";
+import { LivePaperLoop, type ApprovedPaperOpen, type PaperPipelineEvent, type PaperLoopState, type VirtualAccountView } from "../paper/LivePaperLoop";
 import type { JournalTrade } from "../../engine/journal/types";
 import type { MarketDataHandlers, MarketDataStream } from "../broker/gateway/BrokerGatewayClient";
 import type {
@@ -146,8 +146,8 @@ export class MarketRuntime {
     // so it warms up from history instead of waiting hours for live M15 bars. History never enters CandleStore/fanout.
     this.fanout.aggregators.M5.onBar((b) => { if (b.status === "CLOSED") this.radar.onClosedM5(b, (tf) => this.radarEvidence(tf), o.clock.now()); });
     this.paper = new LivePaperLoop(sym, o.spec.origin === "BROKER_REPORTED" ? "REAL_MT5" : "SYNTHETIC", o.spec);
-    // paper loop runs after the radar on the same CLOSED M5 emission; fills use the latest LIVE bid/ask
-    this.fanout.aggregators.M5.onBar((b) => { if (b.status === "CLOSED") this.paper.onClosedM5(b, (tf) => this.stores[tf].closed, this.lastLive); });
+    // paper loop runs after the radar on the same CLOSED M5 emission over the SAME merged evidence (broker CLOSED history + live CLOSED); fills use the latest LIVE bid/ask
+    this.fanout.aggregators.M5.onBar((b) => { if (b.status === "CLOSED") this.paper.onClosedM5(b, (tf) => this.radarEvidence(tf), this.lastLive); });
     const count = (r: AuditRecord) => { this.routeCounts[r.route]++; };
     this.pipeline = new BrokerFeedPipeline(o.spec, o.classifier, o.clock, (e) => { this.fanout.ingest(e); this.lastLive = e; this.paper.mark(e); if (this.firstLiveAt === null) this.firstLiveAt = e.event_at; });
     const pipe = this.pipeline;
@@ -287,6 +287,7 @@ export class MarketRuntime {
   /** Engine-host persistence: plain-data virtual account + append-only journal export (no market state). */
   /** Observer for approved paper opens (demo lab). Cannot alter engine/paper state. */
   onApprovedPaperOpen(cb: (e: ApprovedPaperOpen) => void): () => void { return this.paper.onApprovedOpen(cb); }
+  onPaperPipelineEvent(cb: (e: PaperPipelineEvent) => void): () => void { return this.paper.onPipelineEvent(cb); }
   paperState(): PaperLoopState { return this.paper.exportState(); }
   /** Restore persisted paper state; only valid before the first CLOSED M5 reaches the paper loop. */
   restorePaperState(s: PaperLoopState): void { this.paper.restoreState(s); }
