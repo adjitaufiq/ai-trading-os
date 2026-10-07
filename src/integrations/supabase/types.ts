@@ -232,6 +232,56 @@ export type Database = {
         }
         Relationships: []
       }
+      trade_reviews: {
+        Row: {
+          compliance: Json
+          compliance_status: string
+          created_at: string
+          created_by: string
+          facts: Json
+          id: string
+          model: string | null
+          narrative: string
+          review_version: string
+          symbol: string
+          trade_id: string
+        }
+        Insert: {
+          compliance: Json
+          compliance_status: string
+          created_at?: string
+          created_by: string
+          facts: Json
+          id?: string
+          model?: string | null
+          narrative: string
+          review_version: string
+          symbol: string
+          trade_id: string
+        }
+        Update: {
+          compliance?: Json
+          compliance_status?: string
+          created_at?: string
+          created_by?: string
+          facts?: Json
+          id?: string
+          model?: string | null
+          narrative?: string
+          review_version?: string
+          symbol?: string
+          trade_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trade_reviews_trade_id_fkey"
+            columns: ["trade_id"]
+            isOneToOne: false
+            referencedRelation: "engine_trades"
+            referencedColumns: ["trade_id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
