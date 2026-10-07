@@ -8,7 +8,15 @@ import type { PaperPersistence } from "./persistence";
 import type { EngineHostHealth, EngineSymbolBundle, SymbolEngineHealth } from "./types";
 import { TechnicalSliceService } from "../technical/TechnicalSliceService";
 import { LiveClock } from "../temporal/CanonicalClock";
-import type { ApprovedPaperOpen } from "../paper/LivePaperLoop";
+import type { ApprovedPaperOpen, PaperPipelineEvent } from "../paper/LivePaperLoop";
+
+/** Pipeline event enriched with the radar intelligence at emission time (copy only, never recomputed). */
+export interface EnginePipelineEvent extends PaperPipelineEvent {
+  readonly confidence: number | null;
+  readonly timeframe_context: Readonly<Record<string, string | null>>;
+  readonly snapshot_ref: number | null;
+}
+export const PIPELINE_RING = 500;
 import type { ExecutionMode } from "../execution/demo/types";
 
 /** Documented supervisor policy (operator configuration). */
@@ -41,6 +49,7 @@ interface Slot {
 
 export class EngineHost {
   private readonly slots = new Map<string, Slot>();
+  private readonly pipeline: EnginePipelineEvent[] = [];
   private timer: ReturnType<typeof setInterval> | null = null;
   private sliceTimer: ReturnType<typeof setInterval> | null = null;
   readonly startedAt: number;
@@ -100,11 +109,25 @@ export class EngineHost {
         const { state, error } = this.o.persistence.load(s.symbol, ds);
         if (error) { s.persistError = error; this.log(`${s.symbol} snapshot not restored: ${error}`); }
         if (state) { rt.restorePaperState(state); this.log(`${s.symbol} restored paper state (${state.journal.length} journal rows)`); }
+        rt.onPaperPipelineEvent((e) => this.recordPipeline(e, s.reader));
         if (this.o.onApprovedOpen) rt.onApprovedPaperOpen((e) => this.o.onApprovedOpen?.(e, s.reader));
         s.rt = rt;
       },
     });
   }
+
+  private recordPipeline(e: PaperPipelineEvent, reader: MarketRuntimeReader | null): void {
+    const snap = reader?.radarSnapshot() ?? null, i = snap?.intelligence;
+    this.pipeline.push(Object.freeze({
+      ...e, confidence: i?.confidence ?? null, snapshot_ref: snap?.generatedAt ?? null,
+      timeframe_context: Object.freeze({ bias: i?.bias ?? null, h4: i?.h4_state ?? null, h1: i?.h1_state ?? null, m15: i?.m15_condition ?? null, m5: i?.m5_condition ?? null, regime: snap?.regime.type ?? null, decision: i?.status ?? null }),
+    }));
+    if (this.pipeline.length > PIPELINE_RING) this.pipeline.splice(0, this.pipeline.length - PIPELINE_RING);
+    this.log(`${e.symbol} pipeline ${e.type}/${e.stage} ${e.direction ?? ""} ${e.reason}`);
+  }
+
+  /** Bounded in-memory pipeline log (READY/BLOCKED/EXECUTION/EXIT) for cloud capture. */
+  pipelineEvents(): readonly EnginePipelineEvent[] { return [...this.pipeline]; }
 
   private persistSlot(s: Slot): void {
     if (!s.rt) return;
