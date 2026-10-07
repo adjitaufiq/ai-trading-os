@@ -23,7 +23,7 @@ export const REFERENCE_PLAN_POLICY_VERSION = "reference-plan-v3-p0.6-local-swing
 export const GUARD_POLICY_VERSION = "guard-v0-monitor-only";
 export const POLICIES = Object.freeze({
   bias: "H4 primary trend (EMA21/EMA50 + confirmed structure): UP → BUY, DOWN → SELL, MIXED → NEUTRAL, insufficient → NOT_EVALUABLE",
-  setup: `${OPERATOR_POLICY_VERSION}: ACTIVE when operator status is CARI_BUY/CARI_SELL with local location (+ H1 RSI gate in TREND) satisfied; H1 alignment is metadata only (P0.1); H1 REVERSAL_CANDIDATE → INVALID; otherwise INACTIVE`,
+  setup: `${OPERATOR_POLICY_VERSION}: ACTIVE when operator status is CARI_BUY/CARI_SELL with local location (+ H1 RSI gate in TREND) satisfied; H1 alignment is metadata only (P0.1); H1 REVERSAL_CANDIDATE → INACTIVE (WAIT_CONFIRMATION, mtf-classification-v1); otherwise INACTIVE`,
   signal: "Setup ACTIVE + fresh CLOSED M5/M15 trigger (new identity) → READY with frozen origin; READY carried until TTL / early invalidation / chasing (signal-ttl-v0.4-p0.3-v1); consumed triggers never resurrect",
   reference_plan: "BUY ASK / SELL BID; SL = latest confirmed M15 swing (fallback M5) on the protective side ± 0.25×ATR14(M15), no H1 fallback; raw TP1=1R/TP2=2R kept for audit; final TP2 = nearer of raw 2R and nearest M15/H1/H4 opposing zone edge − 0.20×ATR14(M15) buffer; final R:R < 1.0 ⇒ BAD_RR (TP1 null, actionable entry vetoed). Read-only analysis, never execution",
   operator: OPERATOR_RULES,
@@ -516,7 +516,6 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
   const side = op.status === "CARI_BUY" ? "BUY" : op.status === "CARI_SELL" ? "SELL" : null;
   let setup: TradingSnapshot["setup"];
   if (op.regime === "INSUFFICIENT" || op.h1_context === "INSUFFICIENT") setup = { state: "NOT_EVALUABLE", reason: op.reason === "H4_TREND_INSUFFICIENT_HISTORY" ? "INSUFFICIENT_HISTORY" : "H1_CONTEXT_INSUFFICIENT_HISTORY" };
-  else if (op.h1_context === "REVERSAL_CANDIDATE") setup = { state: "INVALID", reason: "H1_REVERSAL_CANDIDATE_AGAINST_H4" };
   else if (op.setup_ready && side) setup = { state: "ACTIVE", reason: `${op.regime}_${side}_LOCATION${op.regime === "TREND" ? "_RSI" : ""}` };
   else setup = { state: "INACTIVE", reason: op.reason };
 

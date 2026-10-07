@@ -11,7 +11,7 @@ import {
   type Indicator, type LabelledSwing, type Structure, type TechBar,
 } from "./indicators";
 
-export const OPERATOR_POLICY_VERSION = "operator-v2.2-p0.2-scalp-momentum";
+export const OPERATOR_POLICY_VERSION = "operator-v2.3-mtf-classification";
 export const PATTERN_DEFINITION_VERSION = "candle-patterns-v1";
 export const ZONE_DEFINITION_VERSION = "sr-zone-swing-cluster-atr-v1";
 
@@ -282,6 +282,55 @@ export interface MacroContext {
   /** Major walls from the existing zone engine. Safety/location evidence; no veto thresholds in P0.1. */
   readonly major_zones: { readonly H4: readonly SrZone[]; readonly H1: readonly SrZone[] };
   readonly macro_direction: MacroDirection;
+  /** MTF classification (MTF_POLICY_VERSION): descriptive only, never picks BUY/SELL or executes. */
+  readonly mtf: MtfClassification;
+}
+
+export const MTF_POLICY_VERSION = "mtf-classification-v1";
+export type MtfMarketClass = "BULLISH" | "BEARISH" | "SIDEWAYS" | "TRANSITION";
+export type MtfH1State = "ALIGNED" | "PULLBACK" | "COUNTER_TREND_REBOUND" | "COUNTER_TREND_DECLINE" | "RESUMING" | "MIXED" | "NO_PRIMARY_DIRECTION" | "INSUFFICIENT";
+export type MtfActionContext = "FOLLOW_TREND" | "WAIT_CONFIRMATION" | "RANGE_ONLY" | "STAND_ASIDE" | "NOT_EVALUABLE";
+export interface MtfClassification {
+  readonly policy_version: typeof MTF_POLICY_VERSION;
+  readonly classification: MtfMarketClass;
+  readonly h4_bias: "BULLISH" | "BEARISH" | "SIDEWAYS" | "INSUFFICIENT";
+  readonly h1_state: MtfH1State;
+  readonly action_context: MtfActionContext;
+  /** Deterministic 0–100 agreement score from MTF_CONFIDENCE_PARAMS; descriptive, never a gate. */
+  readonly confidence: number;
+  readonly reasons: readonly string[];
+}
+/** Explicit, versioned confidence weights (agreement of H4/H1/M15/M5). Sum of positive weights = 100. */
+export const MTF_CONFIDENCE_PARAMS = { H4_CLEAR: 40, H1_ALIGNED: 30, H1_RESUMING: 20, H1_PULLBACK: 10, M15_WITH_H4: 15, M5_WITH_H4: 15 } as const;
+
+export function classifyMtf(h4: TrendState, ctx: H1Context, m15Fast: string, m5Fast: string, bounded: boolean): MtfClassification {
+  const P2 = MTF_CONFIDENCE_PARAMS;
+  const h4_bias = h4 === "UP" ? "BULLISH" : h4 === "DOWN" ? "BEARISH" : h4 === "MIXED" ? "SIDEWAYS" : "INSUFFICIENT";
+  const reasons: string[] = [];
+  const mk = (classification: MtfMarketClass, h1_state: MtfH1State, action_context: MtfActionContext, confidence: number): MtfClassification =>
+    Object.freeze({ policy_version: MTF_POLICY_VERSION, classification, h4_bias, h1_state, action_context, confidence: Math.max(0, Math.min(100, confidence)), reasons: Object.freeze(reasons) });
+  if (h4 === "INSUFFICIENT") { reasons.push("H4 history insufficient"); return mk("TRANSITION", "INSUFFICIENT", "NOT_EVALUABLE", 0); }
+  if (h4 === "MIXED") {
+    reasons.push("H4 EMA21/50 and structure disagree → no primary bias");
+    reasons.push(bounded ? "H1 has bounded S/R (≥ min touches) → range scalping only" : "No clear H1 bounds → choppy");
+    return mk("SIDEWAYS", "NO_PRIMARY_DIRECTION", bounded ? "RANGE_ONLY" : "STAND_ASIDE", bounded ? 40 : 20);
+  }
+  const dir = h4 as "UP" | "DOWN";
+  const cls: MtfMarketClass = dir === "UP" ? "BULLISH" : "BEARISH";
+  let conf: number = P2.H4_CLEAR;
+  reasons.push(`H4 ${cls} (EMA21 vs EMA50 + ${dir === "UP" ? "HH/HL" : "LH/LL"})`);
+  const lower = (m15Fast === dir ? P2.M15_WITH_H4 : 0) + (m5Fast === dir ? P2.M5_WITH_H4 : 0);
+  if (m15Fast === dir) reasons.push("M15 EMA5>EMA21 searah H4"); if (m5Fast === dir) reasons.push("M5 EMA5/21 searah H4");
+  if (ctx === "INSUFFICIENT") { reasons.push("H1 history insufficient"); return mk(cls, "INSUFFICIENT", "NOT_EVALUABLE", conf); }
+  if (ctx === "ALIGNED") { reasons.push("H1 trend searah H4"); return mk(cls, "ALIGNED", "FOLLOW_TREND", conf + P2.H1_ALIGNED + lower); }
+  if (ctx === "RETURNING_TO_H4") { reasons.push("H1 EMA5 kembali searah H4 + swing terakhir searah"); return mk(cls, "RESUMING", "FOLLOW_TREND", conf + P2.H1_RESUMING + lower); }
+  if (ctx === "PULLBACK_AGAINST_H4") { reasons.push("H1 EMA5 melawan H4 → pullback, tunggu konfirmasi M15/M5"); return mk(cls, "PULLBACK", "WAIT_CONFIRMATION", conf + P2.H1_PULLBACK + lower); }
+  if (ctx === "REVERSAL_CANDIDATE") {
+    const st: MtfH1State = dir === "DOWN" ? "COUNTER_TREND_REBOUND" : "COUNTER_TREND_DECLINE";
+    reasons.push(`H1 trend berlawanan H4 → ${st}; bias H4 dipertahankan, tunggu konfirmasi`);
+    return mk("TRANSITION", st, "WAIT_CONFIRMATION", conf - 10 + lower);
+  }
+  reasons.push("H1 campuran"); return mk("TRANSITION", "MIXED", "WAIT_CONFIRMATION", conf + lower);
 }
 export interface ScalpTf {
   readonly ema5: Indicator; readonly ema21: Indicator; readonly ema50: Indicator;
@@ -400,8 +449,10 @@ export function operatorAnalysis(closed: Readonly<Record<Timeframe, readonly Tec
       const loc = zoneOk || emaTf !== null;
       const rsi = rsiDirectionGate(side, per.H1.rsi14); // retained H1 RSI hard gate until P0.8
       checks = { context, location: loc, rsi: rsi.pass, trigger: trig };
-      // Legacy H1 REVERSAL_CANDIDATE / INSUFFICIENT veto retained (known P0.8/P0.x blocker).
-      if (ctx === "REVERSAL_CANDIDATE" || ctx === "INSUFFICIENT") reason = `H1_${ctx}`;
+      // mtf-classification-v1: H1 INSUFFICIENT still vetoes. H1 counter-trend (REVERSAL_CANDIDATE) no longer forces HOLD:
+      // the side stays searchable (CARI_*) but is never promoted to a candidate → WAIT_CONFIRMATION.
+      if (ctx === "INSUFFICIENT") reason = `H1_${ctx}`;
+      else if (ctx === "REVERSAL_CANDIDATE") { status = side === "BUY" ? "CARI_BUY" : "CARI_SELL"; reason = "H1_COUNTER_TREND_WAIT_CONFIRMATION"; }
       else {
         status = side === "BUY" ? "CARI_BUY" : "CARI_SELL";
         if (!loc) reason = "NOT_AT_SR_OR_EMA_CONFLUENCE";
@@ -420,7 +471,7 @@ export function operatorAnalysis(closed: Readonly<Record<Timeframe, readonly Tec
       }
     }
   }
-  const setupReady = status !== "HOLD" && checks.location && checks.rsi !== false;
+  const setupReady = status !== "HOLD" && checks.location && checks.rsi !== false && reason !== "H1_COUNTER_TREND_WAIT_CONFIRMATION";
   let triggerBar: OperatorAnalysis["trigger_bar"] = null;
   if (candidateSide) {
     const want = candidateSide === "BUY" ? "BULLISH" : "BEARISH";
@@ -430,6 +481,7 @@ export function operatorAnalysis(closed: Readonly<Record<Timeframe, readonly Tec
   const macro: MacroContext = {
     h4_primary: h4, h1_context: ctx, h4_structure: per.H4.events, h1_structure: per.H1.events,
     major_zones: { H4: zones.H4 ?? [], H1: zones.H1 ?? [] }, macro_direction: macroDirectionOf(h4),
+    mtf: classifyMtf(h4, ctx, per.M15.fast, per.M5.fast, bounded),
   };
   const scalp: ScalpContext = {
     M15: sM15, M5: sM5, local_zones: zones.M15 ?? [], location, nearest_support: ns, nearest_resistance: nr,
