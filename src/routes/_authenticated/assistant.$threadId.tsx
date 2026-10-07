@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Radar } from "lucide-react";
+import { FileText, Radar } from "lucide-react";
+import { briefingPrompt } from "@/lib/assistant/briefing";
 import { supabase } from "@/integrations/supabase/client";
 import { loadThread, threadsQueryKey, type AssistantThread } from "@/lib/assistant/threads";
 import { SCOPE_LABEL, TOPIC_LABEL, type ThreadScope } from "@/lib/assistant/knowledgeBase";
@@ -17,8 +18,8 @@ export const Route = createFileRoute("/_authenticated/assistant/$threadId")({
 });
 
 const SUGGESTIONS: Record<string, string[]> = {
-  XAUUSD: ["Apa yang terjadi sekarang?", "Kenapa NO SETUP?", "Jelaskan active events saat ini"],
-  BTCUSD: ["Apa yang terjadi sekarang?", "Kenapa NO SETUP?", "Horizon apa yang cocok sekarang?"],
+  XAUUSD: ["Buat briefing XAUUSD sesi ini", "Apa yang terjadi sekarang?", "Kenapa NO SETUP?", "Jelaskan active events saat ini"],
+  BTCUSD: ["Buat briefing BTCUSD sesi ini", "Apa yang terjadi sekarang?", "Kenapa NO SETUP?", "Horizon apa yang cocok sekarang?"],
   ENGINE: ["Apakah engine host sehat?", "Apa arti MOUNTED dan ACTIVE?", "Is OBSERVATION_ONLY real trading?"],
   KNOWLEDGE: ["Apa arti RANGE_COMPRESSION?", "Bedanya FVG_ACTIVE dan FVG_MITIGATED?", "What does NO_FIT mean?"],
 };
@@ -72,6 +73,11 @@ function ChatWindow({ thread, initial }: { thread: AssistantThread; initial: UIM
     <header className="flex items-center gap-2 border-b border-border px-4 py-2">
       <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-secondary-foreground">{SCOPE_LABEL[scope]}</span>
       <span className="text-xs text-muted-foreground">{TOPIC_LABEL[thread.topic] ?? thread.topic}</span>
+      {scope === "XAUUSD" || scope === "BTCUSD" ? (
+        <button onClick={() => send(briefingPrompt(scope))} disabled={busy} className="flex items-center gap-1 rounded border border-border px-2 py-0.5 text-[10px] hover:bg-accent disabled:opacity-50">
+          <FileText className="size-3" /> Session Brief
+        </button>
+      ) : null}
       <span className="ml-auto text-[10px] text-muted-foreground">Sumber fakta: ENGINE HOST VPS · AI hanya menjelaskan</span>
     </header>
     <Conversation className="flex-1">

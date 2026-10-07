@@ -7,6 +7,7 @@ import { buildLiveContext } from "./context.server";
 import { withLovableAiGatewayRunIdHeader } from "./gateway.server";
 import { selectLlmAdapter } from "./llm/gateway.server";
 import { buildMemoryContext } from "../memory/context.server";
+import { briefingInstructions, isBriefingRequest } from "./briefing";
 
 function json(status: number, error: string) {
   return new Response(JSON.stringify({ error }), { status, headers: { "Content-Type": "application/json" } });
@@ -70,12 +71,14 @@ export async function handleAssistantChat(request: Request): Promise<Response> {
   const scope = thread.symbol ?? "KNOWLEDGE";
   const [liveCtx, memoryCtx] = await Promise.all([buildLiveContext(scope), scope === "ENGINE" ? Promise.resolve("") : buildMemoryContext(supabase, scope)]);
   const live = memoryCtx ? `${liveCtx}\n\n=== ${memoryCtx}\nATURAN MEMORY: boleh membandingkan kondisi sekarang dengan similar_past_states dan menjelaskan statistik journal; sebut ukuran sampel; jangan menyimpulkan dari sampel kecil; jangan pernah mengusulkan perubahan aturan engine atau optimasi otomatis.` : liveCtx;
+  const lastText = last.role === "user" ? last.parts.map((p) => (p.type === "text" ? p.text : "")).join(" ") : "";
+  const briefing = (scope === "XAUUSD" || scope === "BTCUSD") && isBriefingRequest(lastText);
   const adapter = selectLlmAdapter();
   if (!adapter) return json(500, "AI belum dikonfigurasi.");
   const sel = adapter.create(request);
   const result = streamText({
     model: sel.model,
-    instructions: instructions(scope, thread.topic, live),
+    instructions: instructions(scope, thread.topic, live) + (briefing ? `\n\n${briefingInstructions(scope)}` : ""),
     messages: await convertToModelMessages(messages),
     abortSignal: request.signal,
     ...(sel.providerOptions ? { providerOptions: sel.providerOptions } : {}),
