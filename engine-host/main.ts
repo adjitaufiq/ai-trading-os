@@ -74,7 +74,10 @@ if (executionMode === "DEMO_STRESS_TEST") {
       baseUrl: env.CONTROL_PLANE_URL, secret: env.EXECUTION_AGENT_SECRET, agentId: env.EXECUTION_AGENT_ID ?? "vps-1",
       version: AGENT_VERSION, executionMode, now: () => Date.now(), log, status: () => demo?.status() ?? null,
     });
+  } else {
+    log("[demo-lab] STANDALONE mode: CONTROL_PLANE_URL/EXECUTION_AGENT_SECRET not set, using local env limits + DEMO_KILL_SWITCH file only");
   }
+  if (env.DEMO_CONTROL_URL) log("[demo-lab] DEMO_CONTROL_URL set: orders blocked until it returns stopped=false (unset it for pure standalone)");
   const killFile = join(dataDir, "DEMO_KILL_SWITCH");
   const eventsFile = join(dataDir, "demo-events.jsonl");
   demo = new DemoExecutionBridge({
