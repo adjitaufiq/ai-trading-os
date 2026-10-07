@@ -1,5 +1,5 @@
 # Stage 3 PRE-2D gap closure
-- [ ] Telegram presentation: safe Markdown→HTML, professional briefing prompt, clean alerts/Q&A, parser fallback and regression tests.
+- [x] Telegram presentation: safe Markdown→HTML, professional briefing prompt, clean alerts/Q&A, parser fallback; 913 regression tests passed and automatic build/typecheck OK.
 - [x] Patch B — R4 bootstrap + R6 observation identity (approved to proceed; independent source audit pending)
 - [x] Patch C — R5 gap contract, R7 bounded retention, R8 internal vs broker bar (candidate for full PRE-2D audit)
 - [ ] Full PRE-2D integration + regression + independent source audit (blocked: awaiting explicit user instruction)
