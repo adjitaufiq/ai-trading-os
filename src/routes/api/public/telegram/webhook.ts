@@ -26,8 +26,12 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
           await sendTelegramMessage(chatId, "AI Trading Assistant (mobile). Tanya apa saja, mis. <i>Kenapa BTC SELL?</i> atau <i>Briefing XAUUSD</i>. Bot ini hanya menjelaskan keputusan engine — tidak bisa order.");
           return Response.json({ ok: true });
         }
-        const answer = await answerQuestion(text);
-        await sendTelegramMessage(chatId, answer.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").slice(0, 4000));
+        // Never 500 back to Telegram (it retries forever and blocks the queue); log and reply with a safe fallback.
+        let answer: string;
+        try { answer = await answerQuestion(text); }
+        catch (e) { console.error("[telegram] answerQuestion failed", e); answer = "AI sedang tidak tersedia. Data engine tetap jalan; coba lagi sebentar."; }
+        try { await sendTelegramMessage(chatId, answer.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").slice(0, 4000)); }
+        catch (e) { console.error("[telegram] send failed", e); }
         return Response.json({ ok: true });
       },
     },
