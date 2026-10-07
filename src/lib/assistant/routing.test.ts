@@ -34,3 +34,10 @@ describe("tierForIntent", () => {
     expect(tierForIntent("DEEP_ANALYSIS")).toBe("reasoning");
   });
 });
+
+import { classifyIntent as ci5b } from "./routing";
+describe("Phase 5B performance queries", () => {
+  it("route to DEEP_ANALYSIS", () => {
+    for (const q of ["Apa kelemahan performa sistem saat ini?", "Regime apa yang paling sulit?", "Setup mana paling konsisten?"]) expect(ci5b(q)).toBe("DEEP_ANALYSIS");
+  });
+});

@@ -16,6 +16,7 @@ const DEEP_PATTERNS: readonly RegExp[] = [
   /\bsimilar\b/i, /\bmirip\b/i, /\bserupa\b/i,
   /\bhistori\b/i, /\bhistory\b/i, /\bhistorical\b/i, /\bmasa lalu\b/i,
   /\bfailure\b/i, /\bkegagalan\b/i, /\bpola\b/i, /\bpattern\b/i,
+  /\bkelemahan\b/i, /\bweakness\b/i, /\bpaling (sulit|susah|konsisten|buruk|bagus)\b/i, /\bkonsisten\b/i, /\bregime apa\b/i, /\bsetup (mana|apa)\b/i,
   /\bwin rate\b/i, /\baverage r\b/i, /\br multiple\b/i,
   /\bkenapa\b.*\b(engine|decision|keputusan)\b/i,
   /\bwhy\b.*\b(engine|decision)\b/i,
