@@ -257,10 +257,9 @@ export class MarketRuntime {
     this.history[tf] = Object.freeze(out.slice(-this.o.maxClosedBarsPerTimeframe));
     // Bootstrap: evaluate the radar once on the latest broker CLOSED M5 so it leaves INITIALIZING without waiting for a live close.
     // onClosedM5 ignores closes already evaluated, so later live bars proceed normally.
-    if (tf === "M5") {
-      const last = this.history.M5.at(-1);
-      if (last) this.radar.onClosedM5(this.historyToBar(last), (t) => this.radarEvidence(t), now);
-    }
+    // Re-run on every timeframe seed (M15/H1/H4 may land after M5) so MTF context is live within seconds.
+    const last = this.history.M5.at(-1);
+    if (last) this.radar.bootstrapFromHistory(this.historyToBar(last), (t) => this.radarEvidence(t), now);
     return this.history[tf].length;
   }
 
