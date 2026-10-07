@@ -65,8 +65,6 @@ async function rig(sym: "XAUUSD" | "BTCUSD") {
   return { clock, tr, rt, r: rt.reader };
 }
 
-/** Deterministic oscillating path so swings/structure form. */
-const price = (sym: string, k: number) => {
 import { RadarRuntimeService } from "@/core/radar/RadarRuntimeService";
 import { TIMEFRAME_MS, type Bar, type Timeframe } from "@/core/contracts";
 
