@@ -103,7 +103,8 @@ export class RadarRuntimeService {
     const m15S = detectStructureShift(structure("M15"), m15.at(-1)!);
     const ema = computeEMAContext(m5, now);
     const momentum: M5MomentumObservation = !ema.ok ? "UNAVAILABLE" : ema.context.slope21 === "RISING" ? "BULLISH" : ema.context.slope21 === "FALLING" ? "BEARISH" : "NONE";
-    const vol = this.lastVolatility ?? "NORMAL";
+    const vol = this.lastVolatility;
+    if (vol === null) return; // no volatility baseline yet ⇒ never substitute a default
     const intelligence = evaluateMarketIntelligence({
       h4: structure("H4"), h1: structure("H1"), m15: m15S, h1Close: visible("H1").at(-1)?.close ?? null, m15Close: m15.at(-1)?.close ?? null,
       m5Momentum: momentum, volatility: vol, sweepDirection: prev.footprints.lastSweep?.direction ?? null,
@@ -128,6 +129,13 @@ export class RadarRuntimeService {
     const h4S = structure("H4"), h1S = structure("H1");
     const atr = computeAtr(m15);
     if (atr === null) return;
+    // Volatility baseline: on the first evaluation, seed the ATR percentile history from rolling ATR over the
+    // already-CLOSED broker history (visible ≤ this bar) instead of starting from an empty list.
+    if (this.atrHistory.length === 0) {
+      for (let k = Math.max(MIN_M15_BARS, m15.length - ATR_HISTORY); k < m15.length; k++) {
+        const a = computeAtr(m15.slice(0, k)); if (a !== null) this.atrHistory.push(a);
+      }
+    }
     const regime = classifyRegime({ symbol: sym, now, h4Structure: h4S, h1Structure: h1S, m15Atr: atr, historicalAtrList: [...this.atrHistory] });
     this.lastVolatility = regime.volatility;
     this.atrHistory.push(atr); if (this.atrHistory.length > ATR_HISTORY) this.atrHistory.shift();
