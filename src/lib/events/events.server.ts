@@ -4,13 +4,14 @@
 import type { EngineSymbolBundle } from "@/core/enginehost/types";
 
 export interface EventRow {
-  event_key: string; symbol: string; event_type: "RADAR" | "READY" | "BLOCKED" | "EXECUTION" | "EXIT"; stage: string | null;
+  event_key: string; symbol: string; event_type: "RADAR" | "READY" | "BLOCKED" | "EXECUTION" | "EXIT" | "ENGINE_OFFLINE" | "ENGINE_ONLINE"; stage: string | null;
   signal_id: string | null; occurred_at: string; direction: string | null; confidence: number | null;
   timeframe_context: Record<string, unknown>; reason: string; snapshot_ref: string | null;
   entry: number | null; stop_loss: number | null; take_profit: number | null; payload: unknown;
+  execution_result?: string | null; block_reason?: string | null; source?: string;
 }
 
-interface PipelineEv {
+export interface PipelineEv {
   type: "READY" | "BLOCKED" | "EXECUTION" | "EXIT"; stage: string; symbol: string; signalId: string | null; direction: "BUY" | "SELL" | null;
   at: number; reason: string; entry: number | null; stopLoss: number | null; takeProfit: number | null;
   confidence: number | null; timeframe_context: Record<string, unknown>; snapshot_ref: number | null;
@@ -26,6 +27,8 @@ export function pipelineToRow(e: PipelineEv): EventRow {
     signal_id: e.signalId, occurred_at: iso(e.at), direction: e.direction, confidence: e.confidence, timeframe_context: e.timeframe_context ?? {},
     reason: e.reason, snapshot_ref: e.snapshot_ref !== null ? iso(e.snapshot_ref) : null,
     entry: e.entry, stop_loss: e.stopLoss, take_profit: e.takeProfit, payload: e,
+    execution_result: e.type === "EXECUTION" || e.type === "EXIT" ? e.reason : null,
+    block_reason: e.type === "BLOCKED" ? `${e.stage}: ${e.reason}` : null,
   };
 }
 
@@ -44,6 +47,8 @@ export function demoToRows(events: readonly DemoEv[]): EventRow[] {
       reason: `${e.type} ${e.detail ?? ""}`.trim(), snapshot_ref: null,
       entry: kind === "EXECUTION" ? num(e.data?.["price"]) : kind === "EXIT" ? num(e.data?.["price"]) : num(intent?.["plannedEntry"]),
       stop_loss: num(intent?.["stopLoss"]), take_profit: num(intent?.["takeProfit"]), payload: e,
+      execution_result: kind === "EXECUTION" || kind === "EXIT" ? `${e.type} ${e.detail ?? ""}`.trim() : null,
+      block_reason: kind === "BLOCKED" ? (e.detail ?? e.type) : null,
     });
   }
   return out;
@@ -62,10 +67,22 @@ export function bundleToRadarRow(b: EngineSymbolBundle): EventRow | null {
   };
 }
 
-const ALERT_TYPES = new Set(["READY", "EXECUTION", "BLOCKED"]);
+const ALERT_TYPES = new Set(["READY", "EXECUTION", "BLOCKED", "EXIT", "ENGINE_OFFLINE", "ENGINE_ONLINE"]);
+
+/** Human alert title derived from copied event fields (no inference beyond text match on the engine's own reason). */
+export function alertTitle(r: { event_type: string; reason: string }): string {
+  const t = r.reason.toUpperCase();
+  if (r.event_type === "READY") return "🟡 READY detected";
+  if (r.event_type === "BLOCKED") return "⛔ EXECUTION BLOCKED";
+  if (r.event_type === "EXECUTION") return /REJECT|ERROR/.test(t) ? "⚠️ DEMO ORDER FAILED" : "🟢 DEMO ORDER OPENED";
+  if (r.event_type === "EXIT") return /\bTP\b|TAKE_PROFIT|TAKE PROFIT/.test(t) ? "✅ TP HIT" : /\bSL\b|STOP_LOSS|STOP LOSS/.test(t) ? "🔴 SL HIT" : "⏹ POSITION CLOSED";
+  if (r.event_type === "ENGINE_OFFLINE") return "🚨 ENGINE OFFLINE";
+  if (r.event_type === "ENGINE_ONLINE") return "✅ ENGINE BACK ONLINE";
+  return r.event_type;
+}
 
 export function formatAlert(r: { symbol: string; event_type: string; stage: string | null; direction: string | null; confidence: number | null; reason: string; entry: number | null; stop_loss: number | null; take_profit: number | null; occurred_at: string }): string {
-  const lines = [`<b>${r.event_type}</b> ${r.symbol} ${r.direction ?? ""}`.trim(), `Stage: ${r.stage ?? "-"}`, `Confidence: ${r.confidence ?? "-"}`, `Reason: ${r.reason}`];
+  const lines = [`<b>${alertTitle(r)}</b> ${r.symbol} ${r.direction ?? ""}`.trim(), `Stage: ${r.stage ?? "-"}`, `Confidence: ${r.confidence ?? "-"}`, `Reason: ${r.reason}`];
   if (r.entry !== null || r.stop_loss !== null) lines.push(`Entry ${r.entry ?? "-"} · SL ${r.stop_loss ?? "-"} · TP ${r.take_profit ?? "-"}`);
   lines.push(`${r.occurred_at} · DEMO lab, bukan akun real`);
   return lines.join("\n").replace(/&(?!lt;|gt;|amp;)/g, "&amp;");
@@ -86,7 +103,6 @@ async function sendTelegram(text: string): Promise<{ status: "SENT" | "FAILED" |
 }
 
 export async function captureEngineEvents(baseUrl: string, bundles: readonly EngineSymbolBundle[], demoEvents: readonly DemoEv[]) {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const rows: EventRow[] = [];
   try {
     const r = await fetch(`${baseUrl.replace(/\/+$/, "")}/v1/engine/pipeline`);
@@ -95,6 +111,12 @@ export async function captureEngineEvents(baseUrl: string, bundles: readonly Eng
   } catch (e) { console.error("[engine-events] pipeline fetch failed", (e as Error).message); }
   rows.push(...demoToRows(demoEvents));
   for (const b of bundles) { const r = bundleToRadarRow(b); if (r) rows.push(r); }
+  return ingestEventRows(rows);
+}
+
+/** Insert-only (dedupe on event_key) + Telegram dispatch for newly inserted alertable rows. */
+export async function ingestEventRows(rows: EventRow[]) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   if (!rows.length) return { inserted: 0, notified: 0 };
   const { data, error } = await supabaseAdmin.from("engine_events").upsert(rows as never, { onConflict: "event_key", ignoreDuplicates: true }).select();
   if (error) { console.error("[engine-events] write failed", error.message); return { inserted: 0, notified: 0, error: error.message }; }
@@ -108,4 +130,16 @@ export async function captureEngineEvents(baseUrl: string, bundles: readonly Eng
     notified++;
   }
   return { inserted: data?.length ?? 0, notified };
+}
+
+/** ENGINE_OFFLINE / ENGINE_ONLINE transitions, deduped against the latest recorded health event. */
+export async function recordEngineHealth(online: boolean, detail: string) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data } = await supabaseAdmin.from("engine_events").select("event_type").in("event_type", ["ENGINE_OFFLINE", "ENGINE_ONLINE"]).order("occurred_at", { ascending: false }).limit(1);
+  const last = data?.[0]?.event_type ?? "ENGINE_ONLINE";
+  const type = online ? "ENGINE_ONLINE" : "ENGINE_OFFLINE";
+  if (last === type) return { changed: false };
+  const now = new Date().toISOString();
+  return ingestEventRows([{ event_key: `health:${type}:${now}`, symbol: "ALL", event_type: type, stage: "HEALTH", signal_id: null, occurred_at: now,
+    direction: null, confidence: null, timeframe_context: {}, reason: detail, snapshot_ref: null, entry: null, stop_loss: null, take_profit: null, payload: {}, source: "health" }]);
 }

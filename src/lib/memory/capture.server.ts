@@ -2,7 +2,7 @@
 // Insert-only with ignoreDuplicates; never updates or deletes. Never writes to the engine host.
 import { EngineHostClient } from "@/core/enginehost/client";
 import type { JournalTrade } from "@/engine/journal/types";
-import { captureEngineEvents } from "@/lib/events/events.server";
+import { captureEngineEvents, recordEngineHealth } from "@/lib/events/events.server";
 import { bundleToMemoryRow, demoRecordToRow, tradeToRow } from "./mappers";
 import type { DemoTradeRecord } from "@/core/execution/demo/types";
 
@@ -16,7 +16,11 @@ export async function captureEngineMemory() {
   if (!url) return { ok: false as const, error: "ENGINE_HOST_NOT_CONFIGURED" };
   const client = new EngineHostClient({ baseUrl: url, timeoutMs: 10_000 });
   const snap = await client.snapshots();
-  if (!snap.ok) return { ok: false as const, error: `ENGINE_HOST ${snap.error}` };
+  if (!snap.ok) {
+    try { await recordEngineHealth(false, `Engine Host unreachable: ${snap.error}`); } catch { /* never fail capture */ }
+    return { ok: false as const, error: `ENGINE_HOST ${snap.error}` };
+  }
+  try { await recordEngineHealth(true, "Engine Host reachable again"); } catch { /* ignore */ }
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
   const rows = snap.envelope.data.bundles.map(bundleToMemoryRow).filter((x) => x !== null);
