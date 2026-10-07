@@ -4,7 +4,7 @@ import { EngineHostClient } from "@/core/enginehost/client";
 import type { EngineSymbolBundle } from "@/core/enginehost/types";
 
 function engineUrl(): string | null {
-  const v = (import.meta.env.VITE_ENGINE_HOST_URL as string | undefined) ?? process.env["VITE_ENGINE_HOST_URL"];
+  const v = (import.meta.env["VITE_ENGINE_HOST_URL"] as string | undefined) ?? process.env["VITE_ENGINE_HOST_URL"];
   return v && v.trim() ? v.trim() : null;
 }
 
