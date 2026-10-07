@@ -109,7 +109,7 @@ export class EngineHost {
         const { state, error } = this.o.persistence.load(s.symbol, ds);
         if (error) { s.persistError = error; this.log(`${s.symbol} snapshot not restored: ${error}`); }
         if (state) { rt.restorePaperState(state); this.log(`${s.symbol} restored paper state (${state.journal.length} journal rows)`); }
-        rt.onPaperPipelineEvent((e) => this.recordPipeline(e, s.reader));
+        rt.onPaperPipelineEvent?.((e) => this.recordPipeline(e, s.reader));
         if (this.o.onApprovedOpen) rt.onApprovedPaperOpen((e) => this.o.onApprovedOpen?.(e, s.reader));
         s.rt = rt;
       },
