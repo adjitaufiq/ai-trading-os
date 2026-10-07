@@ -1,8 +1,8 @@
 import unittest
 from types import SimpleNamespace as NS
 
-from vps.mt5_exec.native_exec import ExecCapabilityDenied, WhitelistedExecNative
-from vps.mt5_exec.service import MAGIC, AccountBlocked, DemoExecService
+from mt5_exec.native_exec import ExecCapabilityDenied, WhitelistedExecNative
+from mt5_exec.service import MAGIC, AccountBlocked, DemoExecService
 
 
 class FakeExec:
