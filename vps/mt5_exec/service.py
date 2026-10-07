@@ -3,8 +3,9 @@ before touching anything; any other account refuses with ACCOUNT_BLOCKED. Orders
 and the signal_id as comment; a signal_id already seen (open position or history) is refused (DUPLICATE_SIGNAL)."""
 from __future__ import annotations
 
+import sys
 import time
-from typing import Any, Dict, FrozenSet, Optional
+from typing import Any, Callable, Dict, FrozenSet, Optional
 
 MAGIC = 610_006  # Phase 6A demo lab
 DEVIATION_POINTS = 20
@@ -24,13 +25,29 @@ def _mode_name(n: Any, mode: int) -> str:
     return "UNKNOWN"
 
 
+def _stderr_log(msg: str) -> None:
+    print(f"[mt5-exec] {msg}", file=sys.stderr, flush=True)
+
+
+def select_filling(n: Any, symbol: str) -> tuple:
+    """Pick a filling mode the broker supports for this symbol: FOK > IOC > RETURN."""
+    info = n.symbol_info(symbol)
+    flags = int(getattr(info, "filling_mode", 0) or 0) if info is not None else 0
+    if flags & int(getattr(n, "SYMBOL_FILLING_FOK", 1)):
+        return n.ORDER_FILLING_FOK, "FOK"
+    if flags & int(getattr(n, "SYMBOL_FILLING_IOC", 2)):
+        return n.ORDER_FILLING_IOC, "IOC"
+    return n.ORDER_FILLING_RETURN, "RETURN"
+
+
 class DemoExecService:
-    def __init__(self, native: Any, logins: FrozenSet[int], servers: FrozenSet[str]) -> None:
+    def __init__(self, native: Any, logins: FrozenSet[int], servers: FrozenSet[str], log: Callable[[str], None] = _stderr_log) -> None:
         if not logins or not servers:
             raise ValueError("demo whitelist must not be empty")
         self._n = native
         self._logins = logins
         self._servers = servers
+        self._log = log
 
     # ---- identity binding ----
     def account(self) -> Dict[str, Any]:
@@ -108,16 +125,19 @@ class DemoExecService:
         if tick is None:
             return {"status": "ERROR", "comment": "NO_TICK", "ticket": None, "price": None, "retcode": None}
         price = float(tick.ask if direction == "BUY" else tick.bid)
+        filling, filling_name = select_filling(n, symbol)
         req = {
             "action": n.TRADE_ACTION_DEAL, "symbol": symbol, "volume": float(volume),
             "type": n.ORDER_TYPE_BUY if direction == "BUY" else n.ORDER_TYPE_SELL,
             "price": price, "sl": float(sl), "tp": float(tp), "deviation": DEVIATION_POINTS, "magic": MAGIC,
-            "comment": sid[:31], "type_time": n.ORDER_TIME_GTC, "type_filling": n.ORDER_FILLING_IOC,
+            "comment": sid[:31], "type_time": n.ORDER_TIME_GTC, "type_filling": filling,
         }
         chk = n.order_check(req)
+        self._log(f"symbol={symbol} filling={filling_name} order_check_retcode={getattr(chk, 'retcode', None)}")
         if chk is None or int(chk.retcode) != 0:
             return {"status": "REJECTED", "comment": f"ORDER_CHECK {getattr(chk, 'comment', n.last_error())}", "ticket": None, "price": None, "retcode": getattr(chk, "retcode", None)}
         res = n.order_send(req)
+        self._log(f"symbol={symbol} filling={filling_name} order_send_retcode={getattr(res, 'retcode', None)}")
         if res is None:
             return {"status": "ERROR", "comment": f"ORDER_SEND {n.last_error()}", "ticket": None, "price": None, "retcode": None}
         ok = int(res.retcode) == n.TRADE_RETCODE_DONE

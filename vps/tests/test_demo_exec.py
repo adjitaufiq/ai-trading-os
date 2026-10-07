@@ -7,7 +7,10 @@ from mt5_exec.service import MAGIC, AccountBlocked, DemoExecService
 
 class FakeExec:
     ACCOUNT_TRADE_MODE_DEMO, ACCOUNT_TRADE_MODE_CONTEST, ACCOUNT_TRADE_MODE_REAL = 0, 1, 2
-    TRADE_ACTION_DEAL, ORDER_TYPE_BUY, ORDER_TYPE_SELL, ORDER_TIME_GTC, ORDER_FILLING_IOC = 1, 0, 1, 0, 1
+    TRADE_ACTION_DEAL, ORDER_TYPE_BUY, ORDER_TYPE_SELL, ORDER_TIME_GTC = 1, 0, 1, 0
+    ORDER_FILLING_FOK, ORDER_FILLING_IOC, ORDER_FILLING_RETURN = 0, 1, 2
+    SYMBOL_FILLING_FOK, SYMBOL_FILLING_IOC = 1, 2
+    filling_flags = 1
     TRADE_RETCODE_DONE, DEAL_ENTRY_OUT, DEAL_REASON_SL, DEAL_REASON_TP = 10009, 1, 4, 5
 
     def __init__(self, mode=0, login=111, server="Exness-MT5Trial"):
@@ -17,6 +20,7 @@ class FakeExec:
     def account_info(self): return self.acct
     def last_error(self): return (0, "ok")
     def symbol_select(self, *_): return True
+    def symbol_info(self, _): return NS(filling_mode=self.filling_flags)
     def symbol_info_tick(self, _): return NS(bid=2000.0, ask=2000.2)
     def order_check(self, _): return NS(retcode=0, comment="ok")
     def positions_get(self): return tuple(self.pos)
@@ -35,7 +39,7 @@ ORDER = {"signal_id": "sig1", "symbol": "XAUUSD", "direction": "BUY", "volume": 
 
 class DemoExecTests(unittest.TestCase):
     def svc(self, fake):
-        return DemoExecService(fake, frozenset({111}), frozenset({"Exness-MT5Trial"}))
+        return DemoExecService(fake, frozenset({111}), frozenset({"Exness-MT5Trial"}), log=lambda _m: None)
 
     def test_real_account_blocked(self):
         f = FakeExec(mode=2)
@@ -56,6 +60,12 @@ class DemoExecTests(unittest.TestCase):
         self.assertEqual(f.sent[0]["magic"], MAGIC)
         self.assertEqual(self.svc(f).send_order(ORDER)["comment"], "DUPLICATE_SIGNAL")
         self.assertEqual(len(f.sent), 1)
+
+    def test_filling_mode_selection(self):
+        for flags, want in ((3, 0), (2, 1), (0, 2)):
+            f = FakeExec(); f.filling_flags = flags
+            self.assertEqual(self.svc(f).send_order(ORDER)["status"], "FILLED")
+            self.assertEqual(f.sent[0]["type_filling"], want)
 
     def test_whitelist_proxy(self):
         p = WhitelistedExecNative(FakeExec())
