@@ -1,15 +1,11 @@
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
 import type { DemoLabStatus } from "@/core/execution/demo/types";
 
 // Phase 6A Demo Lab: read-only view of the VPS demo executor + operator kill switch. There is no order button.
 const engineUrl = (import.meta.env["VITE_ENGINE_HOST_URL"] as string | undefined)?.trim();
 
 export function DemoLabPanel() {
-  const qc = useQueryClient();
-  const [err, setErr] = useState<string | null>(null);
   const lab = useQuery({
     queryKey: ["demo-lab"], refetchInterval: 15_000,
     queryFn: async (): Promise<Partial<DemoLabStatus> | null> => {
@@ -23,25 +19,13 @@ export function DemoLabPanel() {
     queryKey: ["demo-control"],
     queryFn: async () => (await supabase.from("demo_execution_control").select("stopped,reason,updated_at").eq("id", 1).maybeSingle()).data,
   });
-  const toggle = async (stopped: boolean) => {
-    setErr(null);
-    const { data: u } = await supabase.auth.getUser();
-    const { error } = await supabase.from("demo_execution_control")
-      .update({ stopped, reason: stopped ? "STOP DEMO EXECUTION (operator)" : "operator started demo lab", updated_by: u.user?.id ?? null, updated_at: new Date().toISOString() })
-      .eq("id", 1);
-    if (error) setErr(error.message);
-    await qc.invalidateQueries({ queryKey: ["demo-control"] });
-  };
   const s = lab.data;
   const stopped = ctl.data?.stopped !== false;
   return <section className="mx-auto w-full max-w-3xl space-y-3">
     <div className="flex items-center justify-between gap-2">
       <h2 className="text-sm font-semibold">Demo Lab (Stage 10 DEMO, akun demo saja)</h2>
-      {stopped
-        ? <Button size="sm" variant="outline" onClick={() => toggle(false)}>Jalankan demo lab</Button>
-        : <Button size="sm" variant="destructive" onClick={() => toggle(true)}>STOP DEMO EXECUTION</Button>}
+      <span className="text-xs text-muted-foreground">Kendali: panel Execution Control</span>
     </div>
-    {err && <p className="text-xs text-destructive">{err}</p>}
     <div className="grid gap-2 text-xs sm:grid-cols-3">
       <div className="rounded border border-border p-2">Saklar: <b>{stopped ? "STOPPED" : "RUNNING"}</b></div>
       <div className="rounded border border-border p-2">Mode VPS: <b>{s?.mode ?? "tidak terbaca"}</b></div>

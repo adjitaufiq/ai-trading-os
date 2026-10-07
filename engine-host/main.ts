@@ -12,6 +12,12 @@
 //   DEMO_ACCOUNT_WHITELIST / DEMO_SERVER_WHITELIST  comma lists (identity binding)
 //   DEMO_CONTROL_URL      optional cloud kill-switch URL (fail-closed when unreachable)
 //   Local kill switch: create file <ENGINE_DATA_DIR>/DEMO_KILL_SWITCH
+// Step 2 cloud control plane (optional, recommended): config pulled from the cloud, heartbeat/events pushed.
+//   CONTROL_PLANE_URL        e.g. https://ai-trading-os.lovable.app
+//   EXECUTION_AGENT_SECRET   HMAC secret shared with the cloud (same value as the cloud secret)
+//   EXECUTION_AGENT_ID       agent name (default vps-1)
+// The env EXECUTION_MODE still has to be DEMO_STRESS_TEST to wire any order path; the cloud can only
+// halt or set limits within it, never arm a host started without it, and never target a real account.
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, appendFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -27,6 +33,7 @@ import { createDemoGatewayClient } from "../src/core/execution/demo/gatewayClien
 import { parseWhitelist } from "../src/core/execution/demo/guards";
 import { buildDemoIntent } from "../src/core/execution/demo/intent";
 import { parseExecutionMode } from "../src/core/execution/demo/types";
+import { ControlPlaneAgent } from "../src/core/execution/control/agentSync";
 import type { ApprovedPaperOpen } from "../src/core/paper/LivePaperLoop";
 import type { MarketRuntimeReader } from "../src/core/runtime/MarketRuntime";
 import { ENGINE_CORS_HEADERS, buildEngineEvents, routeEngineRequest, sseFrame } from "../src/core/enginehost/api";
@@ -54,17 +61,26 @@ const log = (m: string) => console.log(`${new Date().toISOString()} ${m}`);
 const executionMode = parseExecutionMode(env.EXECUTION_MODE);
 let demo: DemoExecutionBridge | null = null;
 let cloudKill = false;
+let agent: ControlPlaneAgent | null = null;
+const AGENT_VERSION = "engine-host/control-plane-v1";
 if (executionMode === "DEMO_STRESS_TEST") {
   if (!env.DEMO_EXEC_TOKEN) throw new Error("DEMO_STRESS_TEST requires DEMO_EXEC_TOKEN");
   const whitelist = parseWhitelist(env.DEMO_ACCOUNT_WHITELIST, env.DEMO_SERVER_WHITELIST);
   if (!whitelist.logins.length || !whitelist.servers.length) throw new Error("DEMO_STRESS_TEST requires DEMO_ACCOUNT_WHITELIST and DEMO_SERVER_WHITELIST");
+  if (env.CONTROL_PLANE_URL && env.EXECUTION_AGENT_SECRET) {
+    agent = new ControlPlaneAgent({
+      baseUrl: env.CONTROL_PLANE_URL, secret: env.EXECUTION_AGENT_SECRET, agentId: env.EXECUTION_AGENT_ID ?? "vps-1",
+      version: AGENT_VERSION, executionMode, now: () => Date.now(), log, status: () => demo?.status() ?? null,
+    });
+  }
   const killFile = join(dataDir, "DEMO_KILL_SWITCH");
   const eventsFile = join(dataDir, "demo-events.jsonl");
   demo = new DemoExecutionBridge({
     mode: executionMode, whitelist, now: () => Date.now(), log,
     gateway: createDemoGatewayClient({ baseUrl: env.DEMO_EXEC_URL ?? "http://127.0.0.1:8100", token: env.DEMO_EXEC_TOKEN }),
     store: { readLines: () => existsSync(eventsFile) ? readFileSync(eventsFile, "utf8").split("\n").filter(Boolean) : [], append: (l) => appendFileSync(eventsFile, `${l}\n`) },
-    killSwitch: () => cloudKill || existsSync(killFile),
+    killSwitch: () => cloudKill || existsSync(killFile) || (agent ? agent.current().halted : false),
+    ...(agent ? { profile: () => agent!.current().profile } : {}),
   });
   const controlUrl = env.DEMO_CONTROL_URL;
   if (controlUrl) {
@@ -75,6 +91,11 @@ if (executionMode === "DEMO_STRESS_TEST") {
     };
     void poll(); setInterval(poll, 15_000);
   }
+  if (agent) {
+    const a = agent;
+    const tick = async () => { await a.pullConfig(); await a.pushHeartbeat(); await a.pushEvents(demo?.status().recentEvents ?? []); };
+    void tick(); setInterval(() => { void tick(); }, 15_000);
+  }
   setInterval(() => { void demo?.sync().catch((e) => log(`[demo-lab] sync failed ${(e as Error).message}`)); }, 15_000);
   log(`[demo-lab] DEMO_STRESS_TEST armed · logins ${whitelist.logins.join(",")} · servers ${whitelist.servers.join(",")}`);
 }
@@ -82,7 +103,7 @@ if (executionMode === "DEMO_STRESS_TEST") {
 const host = new EngineHost({
   symbols, persistence: new PaperPersistence(store), now: () => Date.now(), log, executionMode,
   ...(demo ? {
-    onApprovedOpen: (e: ApprovedPaperOpen, reader: MarketRuntimeReader | null) => { void demo!.handle(buildDemoIntent(e, reader?.radarSnapshot() ?? null)).catch((x) => log(`[demo-lab] handle failed ${(x as Error).message}`)); },
+    onApprovedOpen: (e: ApprovedPaperOpen, reader: MarketRuntimeReader | null) => { if (agent && !agent.current().allowedSymbols.includes(e.symbol.toUpperCase())) { log(`[demo-lab] ${e.symbol} not in cloud allowed_symbols, skipped`); return; } void demo!.handle(buildDemoIntent(e, reader?.radarSnapshot() ?? null)).catch((x) => log(`[demo-lab] handle failed ${(x as Error).message}`)); },
     demoStatus: () => demo!.status(),
   } : {}),
   mount: ({ symbol, onChange, onRuntime }) => mountCanonicalRuntime({ client, config, wsFactory: browserWebSocketFactory, symbol, onChange, onRuntime }),
