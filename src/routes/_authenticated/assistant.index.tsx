@@ -4,6 +4,7 @@ import { Radar } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { TradeReviewPanel } from "@/components/TradeReviewPanel";
 import { PerformancePanel } from "@/components/PerformancePanel";
+import { DemoLabPanel } from "@/components/DemoLabPanel";
 import { journalIntelligence, type Group, type TradeFact } from "@/lib/memory/analytics";
 
 export const Route = createFileRoute("/_authenticated/assistant/")({ component: AssistantHome });
