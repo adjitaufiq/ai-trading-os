@@ -12,7 +12,7 @@ export interface EngineHostClientOptions {
   readonly fetchImpl?: typeof fetch;
 }
 
-const STATES = new Set(["STARTING", "SYNCING", "ONLINE", "DEGRADED", "OFFLINE"]);
+const STATES = new Set(["STARTING", "BOOTSTRAP", "SYNCING", "ONLINE", "DEGRADED", "OFFLINE"]);
 
 function isEnvelope(x: unknown): x is EngineEnvelope<unknown> {
   const e = x as Record<string, unknown> | null;
