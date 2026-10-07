@@ -44,15 +44,19 @@ host.start();
 
 const sse = new Set<import("node:http").ServerResponse>();
 const seen = new Map<string, number>();
+const seenBundle = new Map<string, string>();
 setInterval(() => {
-  const frames = buildEngineEvents(host, Date.now(), seen).map(sseFrame).join("");
+  const frames = buildEngineEvents(host, Date.now(), seen, seenBundle).map(sseFrame).join("");
   for (const r of sse) r.write(frames);
-}, 5_000);
+}, 2_000);
 
 createServer((req, res) => {
   const path = (req.url ?? "/").split("?")[0];
   if (req.method === "GET" && (path === "/v1/engine/events" || path === "/v1/engine/stream")) {
     res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive", ...ENGINE_CORS_HEADERS });
+    // New subscriber gets every symbol's current bundle immediately (refresh recovery), then deltas.
+    const now = Date.now();
+    for (const symbol of host.symbols) { const b = host.bundle(symbol, now); if (b) res.write(sseFrame({ type: "SNAPSHOT_UPDATE", symbol, timestamp: new Date(now).toISOString(), data: b })); }
     sse.add(res); req.on("close", () => sse.delete(res));
     return;
   }
