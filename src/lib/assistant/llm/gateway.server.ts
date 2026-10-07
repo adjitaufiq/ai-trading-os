@@ -1,13 +1,17 @@
 // LLM Gateway (server-only). Selects a provider adapter by env; no provider is hardcoded in the chat handler.
 // LLM_PROVIDER = "openrouter" | "lovable" (default: openrouter when OPENROUTER_API_KEY is set, else lovable).
+// Phase 4C: create(request, tier) — tier only scales reasoning effort/model size, never permissions.
 import { createOpenAI } from "@ai-sdk/openai";
-import type { LlmProviderAdapter, LlmProviderId } from "../contracts";
+import type { LlmProviderAdapter, LlmProviderId, LlmTaskTier } from "../contracts";
 import { createLovableAiGatewayRunIdFetch, getLovableAiGatewayRunId } from "../gateway.server";
+
+// Lovable default model is fixed by policy; tiers map to reasoning effort on the same model.
+const LOVABLE_EFFORT: Record<LlmTaskTier, string> = { fast: "low", medium: "medium", reasoning: "high" };
 
 const lovableAdapter: LlmProviderAdapter = {
   id: "lovable",
   isConfigured: () => !!process.env["LOVABLE_API_KEY"],
-  create(request) {
+  create(request, tier = "medium") {
     const apiKey = process.env["LOVABLE_API_KEY"]!;
     const modelId = "openai/gpt-6-astra";
     const runIdFetch = createLovableAiGatewayRunIdFetch(getLovableAiGatewayRunId(request));
@@ -17,7 +21,7 @@ const lovableAdapter: LlmProviderAdapter = {
     });
     return {
       provider: "lovable", modelId, model: p.responses(modelId),
-      providerOptions: { openai: { forceReasoning: true, reasoningEffort: "low", reasoningSummary: "auto", store: false, include: ["reasoning.encrypted_content"] } },
+      providerOptions: { openai: { forceReasoning: true, reasoningEffort: LOVABLE_EFFORT[tier], reasoningSummary: "auto", store: false, include: ["reasoning.encrypted_content"] } },
       getRunId: runIdFetch.getRunId, waitForRunId: runIdFetch.waitForRunId,
     };
   },

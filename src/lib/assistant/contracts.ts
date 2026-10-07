@@ -59,5 +59,8 @@ export interface LlmModelSelection {
 export interface LlmProviderAdapter {
   readonly id: LlmProviderId;
   isConfigured(): boolean;
-  create(request: Request): LlmModelSelection;
+  create(request: Request, tier?: LlmTaskTier): LlmModelSelection;
 }
+
+/** Phase 4C task tier — how much reasoning the explainer gets, never what it may say. */
+export type { LlmTaskTier } from "./routing";
