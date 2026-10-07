@@ -6,6 +6,7 @@ import type { Timeframe } from "@/core/contracts";
 import { TIMEFRAMES } from "@/core/technical/tradingState";
 import { toTechBar } from "@/core/technical/TechnicalSliceService";
 import { runQuickBacktest, BACKTEST_DISCLAIMER, type BacktestResult } from "@/core/technical/backtest";
+import type { JournalTrade } from "@/engine/journal/types";
 import { sharedPaperJournal, type JournalEntry, type PaperJournalStore } from "@/lib/paperJournal";
 
 const n = (v: number | null | undefined, d = 3) => (v == null || !Number.isFinite(v) ? "—" : Math.abs(v) >= 1000 ? v.toFixed(2) : v.toFixed(d));
@@ -87,10 +88,23 @@ export function BacktestPanel({ runtimes, symbol }: { runtimes: readonly { symbo
   </section>;
 }
 
-export function JournalPanel({ runtimes, selectedSymbol, store }: { runtimes: readonly { symbol: string; reader: MarketRuntimeReader | null }[]; selectedSymbol: string; store?: PaperJournalStore }) {
+/** Engine-host paper journal (VPS, append-only). Read-only list; rows are rendered exactly as served. */
+export function EngineJournalList({ trades, symbol }: { trades: readonly Readonly<JournalTrade>[]; symbol: string }) {
+  const rows = trades.filter((t) => t.symbol === symbol).slice().sort((a, b) => b.closedAt - a.closedAt);
+  return <section aria-label="Jurnal engine host" className="border border-border bg-card p-4" data-testid="engine-journal">
+    <div className="flex items-center gap-2"><NotebookPen className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">Jurnal paper · ENGINE HOST VPS (LIVE) · {symbol}</h3></div>
+    {rows.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">Belum ada trade paper yang ditutup di engine host.</p> :
+      <ul className="mt-3 space-y-2 text-sm">{rows.map((t) => <li key={t.tradeId} className="border-b border-border/50 pb-2">
+        <div className={t.profitLossUSD >= 0 ? "text-bull" : "text-bear"}>{t.direction} {n(t.entryPrice)} → {n(t.exitPrice)} · {t.result} · ${t.profitLossUSD.toFixed(2)}</div>
+        <div className="text-xs text-muted-foreground">{time(t.openedAt)} – {time(t.closedAt)} · SL {n(t.stopLoss)} · TP {n(t.takeProfit)} · {t.closeReason}</div>
+      </li>)}</ul>}
+  </section>;
+}
+
+export function JournalPanel({ runtimes, selectedSymbol, store, engineTrades }: { runtimes: readonly { symbol: string; reader: MarketRuntimeReader | null }[]; selectedSymbol: string; store?: PaperJournalStore; engineTrades?: readonly Readonly<JournalTrade>[] | null }) {
   const s = useMemo(() => store ?? sharedPaperJournal(), [store]);
   return <section className="bg-background px-4 pb-8 sm:px-8"><div className="mx-auto max-w-screen-2xl space-y-4">
-    <BacktestPanel runtimes={runtimes} symbol={selectedSymbol} />
+    {engineTrades ? <EngineJournalList trades={engineTrades} symbol={selectedSymbol} /> : <BacktestPanel runtimes={runtimes} symbol={selectedSymbol} />}
     <JournalList store={s} symbols={runtimes.map((r) => r.symbol)} />
   </div></section>;
 }
