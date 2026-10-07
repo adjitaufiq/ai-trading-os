@@ -18,7 +18,7 @@ export function envelope<T>(data: T, now: number): EngineEnvelope<T> {
   return { schema: ENGINE_HOST_SCHEMA, source: "ENGINE_HOST", generated_at: now, data };
 }
 
-type HostView = Pick<EngineHost, "health" | "reader" | "symbols"> & Partial<Pick<EngineHost, "bundle" | "bundleKey">>;
+type HostView = Pick<EngineHost, "health" | "reader" | "symbols"> & Partial<Pick<EngineHost, "bundle" | "bundleKey" | "demoStatus">>;
 
 export function routeEngineRequest(host: HostView, method: string, rawPath: string, now: number): EngineHttpResponse {
   if (method === "OPTIONS") return { status: 204, body: "", headers: { ...ENGINE_CORS_HEADERS } };
@@ -27,6 +27,7 @@ export function routeEngineRequest(host: HostView, method: string, rawPath: stri
   if (path === "/v1/engine/health") return json(200, envelope(host.health(), now));
   if (path === "/v1/engine/account") return json(200, envelope({ accounts: host.symbols.map((symbol) => ({ symbol, account: host.reader(symbol)?.paperAccount?.() ?? null })) }, now));
   if (path === "/v1/engine/journal") return json(200, envelope({ trades: host.symbols.flatMap((symbol) => host.reader(symbol)?.paperTrades?.() ?? []) }, now));
+  if (path === "/v1/engine/demo") return json(200, envelope(host.demoStatus?.() ?? { mode: "REAL_DISABLED" }, now));
   if (path === "/v1/engine/snapshot") return json(200, envelope({ bundles: host.symbols.map((symbol) => host.bundle?.(symbol, now) ?? null).filter(Boolean) }, now));
   const m = /^\/v1\/engine\/([A-Z0-9._]+)\/(radar|market-context|account|journal|snapshot)$/.exec(path);
   if (!m) return json(404, { error: "NOT_FOUND" });
