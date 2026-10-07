@@ -59,6 +59,14 @@ export interface ApprovedPaperOpen {
   readonly riskDecision: "APPROVED"; readonly signalSource: Readonly<Record<string, string>>; readonly closedBarAt: number;
 }
 
+/** Pipeline observability event (proof of life). Read-only copy; emitting never alters the loop. */
+export type PaperPipelineType = "READY" | "BLOCKED" | "EXECUTION" | "EXIT";
+export interface PaperPipelineEvent {
+  readonly type: PaperPipelineType; readonly stage: "SIGNAL" | "PLAN" | "RISK" | "PAPER";
+  readonly symbol: string; readonly signalId: string | null; readonly direction: "BUY" | "SELL" | null; readonly at: number;
+  readonly reason: string; readonly entry: number | null; readonly stopLoss: number | null; readonly takeProfit: number | null;
+}
+
 interface Open { trade: PaperTrade; plan: TradePlan; bars: ArenaCandle[]; h1Phase: string; tier: string }
 
 export const PAPER_STATE_VERSION = "paper-state-v1" as const;
@@ -101,6 +109,13 @@ export class LivePaperLoop {
   private readonly openListeners = new Set<(e: ApprovedPaperOpen) => void>();
   /** Observer hook; listeners cannot influence the paper loop (errors are swallowed). */
   onApprovedOpen(cb: (e: ApprovedPaperOpen) => void): () => void { this.openListeners.add(cb); return () => this.openListeners.delete(cb); }
+
+  private readonly pipeListeners = new Set<(e: PaperPipelineEvent) => void>();
+  onPipelineEvent(cb: (e: PaperPipelineEvent) => void): () => void { this.pipeListeners.add(cb); return () => this.pipeListeners.delete(cb); }
+  private emit(e: Omit<PaperPipelineEvent, "symbol">): void {
+    const ev = Object.freeze({ ...e, symbol: this.symbol });
+    for (const l of this.pipeListeners) { try { l(ev); } catch { /* observers never affect the loop */ } }
+  }
 
   constructor(readonly symbol: string, readonly dataSource: DataSource, private readonly spec: SymbolSpecification) {}
 
@@ -180,6 +195,7 @@ export class LivePaperLoop {
           this.after.push({ tradeId: row.tradeId, balance: r2(this.balance) });
           this.streak = row.result === "LOSS" ? { consecutiveLosses: this.streak.consecutiveLosses + 1, lastLossAt: row.closedAt } : { consecutiveLosses: 0, lastLossAt: this.streak.lastLossAt };
           this.decision = `CLOSED ${row.result} ${row.closeReason}`;
+          this.emit({ type: "EXIT", stage: "PAPER", signalId: o.plan.setupId ?? null, direction: t.snapshot.direction, at: bar.close_time, reason: `${row.result} ${row.closeReason ?? ""}`.trim(), entry: t.snapshot.entryPrice, stopLoss: t.snapshot.stopLoss, takeProfit: t.snapshot.takeProfit });
         }
         this.open = null; this.lastMark = null;
       }
@@ -211,9 +227,12 @@ export class LivePaperLoop {
     if (!this.setup || this.setup.state !== "READY") return;
 
     const setup = this.setup; this.setup = null; // consumed by the plan attempt
+    const base = { signalId: setup.id, direction: setup.direction, at: bar.close_time } as const;
+    this.emit({ ...base, type: "READY", stage: "SIGNAL", reason: `READY ${setup.direction}`, entry: null, stopLoss: null, takeProfit: null });
+    const blocked = (stage: "PLAN" | "RISK" | "PAPER", reason: string, p?: TradePlan) => this.emit({ ...base, type: "BLOCKED", stage, reason, entry: p?.entry ?? null, stopLoss: p?.sl ?? null, takeProfit: p?.tp ?? null });
     const bid = live ? live.bid : c.close, ask = live ? live.ask : c.close + spread;
     const plan = buildTradePlan({ setup, entry: setup.direction === "BUY" ? ask : bid, m15Structure: m15S, atrM15: atr, now });
-    if (plan.status !== "PLANNED") { this.decision = `PLAN_HOLD ${plan.holdReason ?? ""}`; return; }
+    if (plan.status !== "PLANNED") { this.decision = `PLAN_HOLD ${plan.holdReason ?? ""}`; blocked("PLAN", this.decision, plan); return; }
     const D = VIRTUAL_ACCOUNT_DEFAULTS;
     const contract = { tickSize: this.spec.tick_size, tickValue: this.spec.tick_size * this.spec.contract_size };
     const acct: AccountProfile = {
@@ -225,7 +244,7 @@ export class LivePaperLoop {
       nowSec: now, positions: [], exposureLimits: { maxSymbolRiskUSD: this.balance * D.maxSymbolRiskPercent / 100, maxTotalRiskUSD: this.balance * D.maxTotalRiskPercent / 100 },
       spread: { current: spread, history: [...this.spreads] }, quote: { ask, bid, maxSlippage: D.maxSlippage }, lossStreak: this.streak, strictRiskMode: true,
     });
-    if (risk.decision !== "APPROVED") { this.decision = `RISK_${risk.decision} ${risk.reasons.join(",")}`; return; }
+    if (risk.decision !== "APPROVED") { this.decision = `RISK_${risk.decision} ${risk.reasons.join(",")}`; blocked("RISK", this.decision, plan); return; }
     // fill reference = opposite side; simulateFill adds the real spread (BUY→ask, SELL→bid)
     const pt = createPaperTrade({
       plan, risk, marketPrice: plan.direction === "BUY" ? bid : ask, sim: { spread, slippage: 0, maxSlippage: D.maxSlippage, latencyMs: 0, latencyDriftPerMs: 0 },
@@ -233,11 +252,12 @@ export class LivePaperLoop {
       signalSource: { bias: `H4_${bias.h4.bias}_H1_${bias.h1.phase}`, location: loc.context.priceLocation, trigger: reaction?.pattern ?? "NONE", reactionQuality: reaction?.quality ?? "NONE", emaContext: ema.context.actions.join(",") || ema.context.pricePosition },
       now,
     });
-    if (pt.state === "REJECTED") { this.decision = `PAPER_REJECTED ${pt.reason}`; return; }
+    if (pt.state === "REJECTED") { this.decision = `PAPER_REJECTED ${pt.reason}`; blocked("PAPER", this.decision, plan); return; }
     const o = openPaperTrade(pt.trade, now); // exits evaluated from the NEXT closed M5 bar
-    if (!o.ok) return;
+    if (!o.ok) { blocked("PAPER", "PAPER_OPEN_FAILED", plan); return; }
     this.open = { trade: o.trade, plan, bars: [], h1Phase: bias.h1.phase, tier: loc.context.locationTier };
     this.decision = `OPEN ${plan.direction}`;
+    this.emit({ ...base, type: "EXECUTION", stage: "PAPER", reason: `PAPER OPEN ${plan.direction}`, entry: o.trade.snapshot.entryPrice, stopLoss: plan.sl, takeProfit: plan.tp });
     const openEv: ApprovedPaperOpen = Object.freeze({
       signalId: setup.id, planId: plan.id, symbol: sym, direction: plan.direction, entry: plan.entry, stopLoss: plan.sl!, takeProfit: plan.tp!, rr: plan.rr,
       riskDecision: "APPROVED" as const, signalSource: Object.freeze({ ...o.trade.snapshot.signalSource }), closedBarAt: bar.close_time,
