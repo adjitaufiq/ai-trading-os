@@ -78,6 +78,41 @@ export class RadarRuntimeService {
     }
   }
 
+  /**
+   * Historical bootstrap: (re)evaluate on the latest broker CLOSED M5 as soon as any timeframe's history lands,
+   * so the radar + MTF context appear within seconds instead of after the next live M5 close. Never re-evaluates
+   * once a newer (live) close was processed; same-bar refresh only recomputes the snapshot (event engine not re-stepped).
+   */
+  bootstrapFromHistory(bar: Bar, closed: (tf: Timeframe) => readonly Bar[], nowMs: number): void {
+    if (bar.status !== "CLOSED" || bar.timeframe !== "M5" || bar.symbol !== this.symbol || bar.close_time < this.lastBarClose) return;
+    if (bar.close_time > this.lastBarClose || !this.snap) { this.lastBarClose = -Infinity; this.onClosedM5(bar, closed, nowMs); return; }
+    try { this.refresh(bar, closed); this.error = null; } catch (e) { this.error = (e as Error).message; }
+  }
+
+  private refresh(bar: Bar, closed: (tf: Timeframe) => readonly Bar[]): void {
+    const prev = this.snap; if (!prev) return;
+    const sym = this.symbol, now = bar.close_time / 1000;
+    const visible = (tf: Timeframe) => closed(tf).filter((b) => b.status === "CLOSED" && b.close_time <= bar.close_time).map(toArena);
+    const m5 = visible("M5"), m15 = visible("M15");
+    if (m15.length < MIN_M15_BARS) return;
+    const structure = (tf: SwingTimeframe): MarketStructure => {
+      const det = new SwingDetector(sym, tf);
+      for (const c of tf === "M15" ? m15 : visible(tf)) det.push(c);
+      return buildStructure(sym, tf, det.getSwings(), now);
+    };
+    const m15S = detectStructureShift(structure("M15"), m15.at(-1)!);
+    const ema = computeEMAContext(m5, now);
+    const momentum: M5MomentumObservation = !ema.ok ? "UNAVAILABLE" : ema.context.slope21 === "RISING" ? "BULLISH" : ema.context.slope21 === "FALLING" ? "BEARISH" : "NONE";
+    const vol = this.lastVolatility ?? "NORMAL";
+    const intelligence = evaluateMarketIntelligence({
+      h4: structure("H4"), h1: structure("H1"), m15: m15S, h1Close: visible("H1").at(-1)?.close ?? null, m15Close: m15.at(-1)?.close ?? null,
+      m5Momentum: momentum, volatility: vol, sweepDirection: prev.footprints.lastSweep?.direction ?? null,
+    });
+    this.snap = deepFreeze<RadarSnapshot>({ ...prev, intelligence });
+  }
+
+  private lastVolatility: "COMPRESSION" | "NORMAL" | "EXPANSION" | null = null;
+
   private evaluate(bar: Bar, closed: (tf: Timeframe) => readonly Bar[], nowMs: number): void {
     const sym = this.symbol;
     const now = bar.close_time / 1000;
@@ -94,6 +129,7 @@ export class RadarRuntimeService {
     const atr = computeAtr(m15);
     if (atr === null) return;
     const regime = classifyRegime({ symbol: sym, now, h4Structure: h4S, h1Structure: h1S, m15Atr: atr, historicalAtrList: [...this.atrHistory] });
+    this.lastVolatility = regime.volatility;
     this.atrHistory.push(atr); if (this.atrHistory.length > ATR_HISTORY) this.atrHistory.shift();
     const footprints = scanInstitutionalFootprints({ candles: m15, structure: m15S, atr14M15: atr });
     const ema = computeEMAContext(m5, now);

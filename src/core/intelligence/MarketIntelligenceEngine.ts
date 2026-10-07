@@ -4,11 +4,11 @@
 // "READY" status is context readiness, NOT a trade signal and never opens anything.
 import type { MarketStructure } from "../../engine/core/swing/types";
 
-export const MARKET_INTELLIGENCE_VERSION = "mtf-intel-v1" as const;
+export const MARKET_INTELLIGENCE_VERSION = "mtf-intel-v2" as const;
 
 export type DecisionStatus = "READY" | "WAIT_CONFIRMATION" | "STAND_ASIDE" | "NO_DATA";
 export type IntelBias = "BULLISH" | "BEARISH" | "SIDEWAYS" | "TRANSITION";
-export type MarketPhase = "TRENDING" | "ACCUMULATION" | "DISTRIBUTION" | "RANGE";
+export type MarketPhase = "TRENDING" | "ACCUMULATION" | "DISTRIBUTION" | "RANGE" | "TRANSITION";
 export type H1State = "FOLLOW_TREND" | "HEALTHY_PULLBACK" | "COUNTER_TREND_REBOUND" | "COUNTER_TREND_DECLINE" | "STRUCTURAL_BREAKDOWN";
 export type IntelSetup = "PULLBACK_BUY" | "PULLBACK_SELL" | "BREAKOUT_BUY" | "BREAKOUT_SELL" | "RANGE_ONLY" | "NO_SETUP";
 export type M5Momentum = "BULLISH" | "BEARISH" | "NONE" | "UNAVAILABLE";
@@ -29,6 +29,10 @@ export interface MarketIntelligenceReport {
   readonly invalidation_conditions: readonly string[];
   readonly risk_assessment: "LOW" | "MEDIUM" | "HIGH";
   readonly audit_trail: readonly string[];
+  /** Structured fields for AI Copilot ingestion (descriptive only). */
+  readonly key_levels: { readonly support?: number; readonly resistance?: number };
+  readonly invalidation_levels: readonly number[];
+  readonly reasons: readonly string[];
 }
 
 /** Weights (total 100) — every number explicit; changes bump MARKET_INTELLIGENCE_VERSION. */
@@ -38,9 +42,11 @@ export const INTEL_WEIGHTS = {
   M15_SUPPORTS: 20, M15_LOCATION_ONLY: 10,
   M5_TIMING: 10,
   QUALITY_OK: 5,
-  /** READY additionally needs confidence ≥ this. */
-  READY_MIN_CONFIDENCE: 80,
-  LOW_RISK_MIN_CONFIDENCE: 80,
+  /** READY needs confidence ≥ this plus zero outstanding confirmations. */
+  READY_MIN_CONFIDENCE: 75,
+  /** Below this ⇒ STAND_ASIDE; [this, READY_MIN) ⇒ WAIT_CONFIRMATION. */
+  WAIT_MIN_CONFIDENCE: 50,
+  LOW_RISK_MIN_CONFIDENCE: 75,
 } as const;
 
 export interface MarketIntelligenceInput {
@@ -72,6 +78,7 @@ export function evaluateMarketIntelligence(i: MarketIntelligenceInput): MarketIn
       confidence_breakdown: { h4: 0, h1: 0, m15: 0, m5: 0, quality: 0 },
       confirmation_needed: ["Swing H4/H1 terkonfirmasi (butuh histori CLOSED lebih banyak)"], invalidation_conditions: [],
       risk_assessment: "HIGH", audit_trail: ["Struktur H4/H1 belum punya swing high & low terkonfirmasi — tidak ada data yang dikarang."],
+      key_levels: {}, invalidation_levels: [], reasons: ["Data candle CLOSED belum cukup untuk membaca struktur H4/H1."],
     });
   }
 
@@ -82,20 +89,23 @@ export function evaluateMarketIntelligence(i: MarketIntelligenceInput): MarketIn
   else if (h4.trend === "LH_LL") bias = h4.structureShift === "BULLISH_MSS" ? "TRANSITION" : "BEARISH";
   else bias = h4.shiftDetected ? "TRANSITION" : "SIDEWAYS";
   const h4State = `${h4.trend}${h4.shiftDetected ? ` · ${h4.structureShift}` : ""}`;
-  audit.push(bias === "BULLISH" ? `H4 HH/HL: high ${px(h4.lastConfirmedHigh?.price)} di atas ${px(h4.previousHigh?.price)}, demand HL ${px(h4.lastConfirmedLow?.price)} bertahan.`
-    : bias === "BEARISH" ? `H4 LH/LL: low ${px(h4.lastConfirmedLow?.price)} di bawah ${px(h4.previousLow?.price)}, supply LH ${px(h4.lastConfirmedHigh?.price)} dominan.`
+  audit.push(bias === "BULLISH" ? `H4 higher low ${px(h4.lastConfirmedLow?.price)} bertahan di atas support; high terakhir ${px(h4.lastConfirmedHigh?.price)} > ${px(h4.previousHigh?.price)} → bias bullish.`
+    : bias === "BEARISH" ? `H4 lower high ${px(h4.lastConfirmedHigh?.price)} menahan harga di bawah resistance; low terakhir ${px(h4.lastConfirmedLow?.price)} < ${px(h4.previousLow?.price)} → bias bearish.`
     : bias === "SIDEWAYS" ? `H4 range ${px(h4.lastConfirmedLow?.price)}–${px(h4.lastConfirmedHigh?.price)} tanpa struktur terarah.`
-    : `H4 ${h4State}: swing sebelumnya ditembus, continuation belum terkonfirmasi.`);
+    : `H4 ${h4State}: swing kunci sudah dites/ditembus, continuation belum terkonfirmasi → fase transisi.`);
   const dir: "BULL" | "BEAR" | null = bias === "BULLISH" ? "BULL" : bias === "BEARISH" ? "BEAR" : null;
 
   // Phase
   const h1HigherLow = !!i.h1.lastConfirmedLow && !!i.h1.previousLow && i.h1.lastConfirmedLow.price > i.h1.previousLow.price;
   const h1LowerHigh = !!i.h1.lastConfirmedHigh && !!i.h1.previousHigh && i.h1.lastConfirmedHigh.price < i.h1.previousHigh.price;
-  const phase: MarketPhase = dir ? "TRENDING"
+  const phase: MarketPhase = bias === "TRANSITION" ? "TRANSITION"
+    : dir ? "TRENDING"
+    : bias === "SIDEWAYS" && i.h1.shiftDetected ? "TRANSITION"
     : bias === "SIDEWAYS" && i.sweepDirection === "BULLISH" && h1HigherLow ? "ACCUMULATION"
     : bias === "SIDEWAYS" && i.sweepDirection === "BEARISH" && h1LowerHigh ? "DISTRIBUTION" : "RANGE";
   if (phase === "ACCUMULATION") audit.push("Sweep likuiditas bawah + H1 higher low di dalam range H4 → akumulasi.");
   if (phase === "DISTRIBUTION") audit.push("Sweep likuiditas atas + H1 lower high di dalam range H4 → distribusi.");
+  if (phase === "TRANSITION" && bias === "SIDEWAYS") audit.push(`Impuls berlawanan signifikan di dalam range H4 (H1 ${i.h1.structureShift}) → transisi.`);
 
   // 2. H1 structure relative to H4
   const h1 = i.h1;
@@ -114,8 +124,8 @@ export function evaluateMarketIntelligence(i: MarketIntelligenceInput): MarketIn
   } else {
     h1State = h1.trend === "HH_HL" ? "COUNTER_TREND_REBOUND" : h1.trend === "LH_LL" ? "COUNTER_TREND_DECLINE" : "FOLLOW_TREND";
   }
-  audit.push(h1State === "STRUCTURAL_BREAKDOWN" ? `H1 close ${px(i.h1Close)} menembus level kunci H4 ${px(keyLevel)} → struktur H4 rusak.`
-    : h1State === "HEALTHY_PULLBACK" ? `H1 ${h1.trend} berlawanan H4, tapi level kunci ${px(keyLevel)} belum pecah dan momentum koreksi melemah → pullback sehat.`
+  audit.push(h1State === "STRUCTURAL_BREAKDOWN" ? `H1 close ${px(i.h1Close)} menembus level kunci H4 ${px(keyLevel)} → struktur H4 rusak, view ${dir === "BULL" ? "bullish" : "bearish"} batal.`
+    : h1State === "HEALTHY_PULLBACK" ? `Koreksi H1 tanpa kerusakan struktur: level kunci H4 ${px(keyLevel)} masih utuh (H1 close ${px(i.h1Close)}) → pullback sehat.`
     : h1State === "FOLLOW_TREND" ? `H1 ${h1.trend} ${dir ? "searah H4" : "selaras dengan kondisi H4"}.`
     : `H1 ${h1.trend} counter-trend dengan momentum M5 masih mendorong koreksi.`);
 
@@ -162,22 +172,30 @@ export function evaluateMarketIntelligence(i: MarketIntelligenceInput): MarketIn
   else if (h1State === "STRUCTURAL_BREAKDOWN" || !setupAllowedH1) confirm.push("H1 kembali searah H4 tanpa menembus level kunci");
 
   let status: DecisionStatus;
-  if (h1State === "STRUCTURAL_BREAKDOWN" || bias === "TRANSITION" || setup === "NO_SETUP") status = "STAND_ASIDE";
+  if (h1State === "STRUCTURAL_BREAKDOWN" || bias === "TRANSITION" || setup === "NO_SETUP" || confidence < W.WAIT_MIN_CONFIDENCE) status = "STAND_ASIDE";
   else if (setup !== "RANGE_ONLY" && confirm.length === 0 && confidence >= W.READY_MIN_CONFIDENCE) status = "READY";
   else status = "WAIT_CONFIRMATION";
 
   // Invalidation
   if (dir === "BULL") {
-    invalid.push(`H1 close di bawah demand H4 ${px(h4.lastConfirmedLow?.price)}`);
-    invalid.push(`H4 cetak lower low di bawah ${px(h4.lastConfirmedLow?.price)}`);
-    if (m15.lastConfirmedLow) invalid.push(`M15 close di bawah swing low ${px(m15.lastConfirmedLow.price)}`);
+    invalid.push(`H1 close di bawah demand kunci H4 ${px(h4.lastConfirmedLow?.price)} membatalkan view bullish`);
+    invalid.push(`H4 cetak lower low di bawah ${px(h4.lastConfirmedLow?.price)} → struktur bullish rusak`);
+    if (m15.lastConfirmedLow) invalid.push(`M15 close di bawah swing low ${px(m15.lastConfirmedLow.price)} → setup buy gugur`);
   } else if (dir === "BEAR") {
-    invalid.push(`H1 close di atas supply H4 ${px(h4.lastConfirmedHigh?.price)}`);
-    invalid.push(`H4 cetak higher high di atas ${px(h4.lastConfirmedHigh?.price)}`);
-    if (m15.lastConfirmedHigh) invalid.push(`M15 close di atas swing high ${px(m15.lastConfirmedHigh.price)}`);
+    invalid.push(`H1 close di atas supply kunci H4 ${px(h4.lastConfirmedHigh?.price)} membatalkan view bearish`);
+    invalid.push(`H4 cetak higher high di atas ${px(h4.lastConfirmedHigh?.price)} → struktur bearish rusak`);
+    if (m15.lastConfirmedHigh) invalid.push(`M15 close di atas swing high ${px(m15.lastConfirmedHigh.price)} → setup sell gugur`);
   } else {
-    invalid.push(`H4 close keluar range ${px(h4.lastConfirmedLow?.price)}–${px(h4.lastConfirmedHigh?.price)}`);
+    invalid.push(`H4 close keluar range ${px(h4.lastConfirmedLow?.price)}–${px(h4.lastConfirmedHigh?.price)} membatalkan skenario range`);
   }
+  const lv = (n: number | undefined) => (n == null || !Number.isFinite(n) ? [] : [n]);
+  const invalidationLevels = dir === "BULL" ? [...lv(h4.lastConfirmedLow?.price), ...lv(m15.lastConfirmedLow?.price)]
+    : dir === "BEAR" ? [...lv(h4.lastConfirmedHigh?.price), ...lv(m15.lastConfirmedHigh?.price)]
+    : [...lv(h4.lastConfirmedLow?.price), ...lv(h4.lastConfirmedHigh?.price)];
+  const keyLevels = {
+    ...(h4.lastConfirmedLow ? { support: h4.lastConfirmedLow.price } : {}),
+    ...(h4.lastConfirmedHigh ? { resistance: h4.lastConfirmedHigh.price } : {}),
+  };
 
   const risk = status === "STAND_ASIDE" || !qualityOk ? "HIGH" : status === "READY" && confidence >= W.LOW_RISK_MIN_CONFIDENCE ? "LOW" : "MEDIUM";
   audit.push(`Confidence ${confidence}/100 (H4 ${c.h4} · H1 ${c.h1} · M15 ${c.m15} · M5 ${c.m5} · Quality ${c.quality}) — confidence ≠ kesiapan entry.`);
@@ -187,5 +205,6 @@ export function evaluateMarketIntelligence(i: MarketIntelligenceInput): MarketIn
     m15_condition: m15Cond, m5_condition: m5Cond, setup, status, confidence, confidence_breakdown: Object.freeze(c),
     confirmation_needed: Object.freeze(confirm), invalidation_conditions: Object.freeze(invalid), risk_assessment: risk,
     audit_trail: Object.freeze(audit),
+    key_levels: Object.freeze(keyLevels), invalidation_levels: Object.freeze(invalidationLevels), reasons: Object.freeze([...audit]),
   });
 }
