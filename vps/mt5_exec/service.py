@@ -87,6 +87,14 @@ class DemoExecService:
 
     # ---- the only write ----
     def send_order(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        res = self._send_order(body)
+        res.update({"symbol": str(body.get("symbol", "")), "direction": body.get("direction"),
+                    "timestamp": int(time.time() * 1000)})
+        res.setdefault("volume", None)
+        res["error"] = None if res["status"] == "FILLED" else res.get("comment")
+        return res
+
+    def _send_order(self, body: Dict[str, Any]) -> Dict[str, Any]:
         self._require_demo()
         sid, symbol, direction = str(body.get("signal_id", "")), str(body.get("symbol", "")), body.get("direction")
         volume, sl, tp = body.get("volume"), body.get("sl"), body.get("tp")
