@@ -227,7 +227,7 @@ export class LivePaperLoop {
     if (!this.setup || this.setup.state !== "READY") return;
 
     const setup = this.setup; this.setup = null; // consumed by the plan attempt
-    const base = { signalId: setup.id, direction: setup.direction, at: bar.close_time } as const;
+    const base = { signalId: setup.id, direction: setup.direction === "NONE" ? null : setup.direction, at: bar.close_time };
     this.emit({ ...base, type: "READY", stage: "SIGNAL", reason: `READY ${setup.direction}`, entry: null, stopLoss: null, takeProfit: null });
     const blocked = (stage: "PLAN" | "RISK" | "PAPER", reason: string, p?: TradePlan) => this.emit({ ...base, type: "BLOCKED", stage, reason, entry: p?.entry ?? null, stopLoss: p?.sl ?? null, takeProfit: p?.tp ?? null });
     const bid = live ? live.bid : c.close, ask = live ? live.ask : c.close + spread;
