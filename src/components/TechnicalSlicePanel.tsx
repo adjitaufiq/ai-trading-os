@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { RadarObservabilityPanel } from "./RadarObservabilityPanel";
+import { localCockpitSource, remoteCockpitSource, type CockpitSource, type RuntimeFacts } from "@/lib/cockpitSource";
+import type { EngineHostStore } from "@/lib/engineHostStore";
 import { useEngineHost } from "@/hooks/use-engine-host";
 import type { SignalAlert, SignalAlertStore } from "@/lib/signalAlerts";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -135,6 +137,10 @@ export interface TechnicalSlicePanelProps {
   /** Radar: ENGINE snapshots of EVERY symbol are fed here (fresh BUY/SELL transitions ⇒ onAlert). */
   alerts?: SignalAlertStore;
   onAlert?: (alert: SignalAlert) => void;
+  /** ENGINE HOST attach store: when present the panel is a pure view of the engine host (no local evaluation). */
+  engine?: EngineHostStore;
+  /** Why the dashboard fell back to BROWSER SESSION (engine host configured but offline). */
+  fallbackReason?: string | null;
 }
 
 function trendTone(relation: Relation | undefined): ConfirmationTone {
@@ -293,11 +299,11 @@ function RadarMetric({ label, value, detail, testId }: { label: string; value: s
   </div>;
 }
 
-function TraderRadarView({ snapshot, reader, part }: { snapshot: TradingSnapshot | null; reader: MarketRuntimeReader; part: CockpitTab }) {
+function TraderRadarView({ snapshot, facts, part }: { snapshot: TradingSnapshot | null; facts: RuntimeFacts; part: CockpitTab }) {
   const op = snapshot?.operator ?? null;
-  const radar = reader.radarSnapshot?.() ?? null;
-  const radarHealth = reader.radarHealth?.() ?? null;
-  const live = reader.latestLiveObservation();
+  const radar = facts.radar;
+  const radarHealth = facts.radarHealth;
+  const live = facts.live;
   const signal = cockpitSignal(snapshot);
   const actionable = signal === "BUY" || signal === "SELL";
   const projected = op?.status === "CARI_BUY" ? "BUY" : op?.status === "CARI_SELL" ? "SELL" : null;
@@ -317,7 +323,7 @@ function TraderRadarView({ snapshot, reader, part }: { snapshot: TradingSnapshot
   const structure = (tf: "H4" | "H1" | "M15") => structureLabel(snapshot?.evidence?.[tf].structure.summary);
   const horizons = radar?.horizon.compatibleHorizons ?? [];
   const horizonItem = (name: "SCALPING" | "INTRADAY" | "SWING") => `${name} ${horizons.includes(name) ? "✓ AVAILABLE" : "✕ NOT SUITABLE"}`;
-  const lastM5 = snapshot?.evidence?.M5.last_closed_available_at ?? reader.closedBars("M5").at(-1)?.close_time ?? null;
+  const lastM5 = snapshot?.evidence?.M5.last_closed_available_at ?? facts.lastM5Close;
   const source = radar?.validationSource.dataSource ?? (live?.source === "EXNESS_MT5" ? "REAL_MT5" : unavailableCopy);
   const freshness = radarHealth?.status === "STALE" || snapshot?.availability === "STALE" ? "STALE DATA" : live ? "LIVE OBSERVATION" : "WAITING LIVE DATA";
   const why = snapshot?.why.slice(0, 5) ?? [];
@@ -346,7 +352,7 @@ function TraderRadarView({ snapshot, reader, part }: { snapshot: TradingSnapshot
       <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Radar Observability</h3>
       <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
         <div><div className="text-muted-foreground">SOURCE</div><div className="mt-1 font-semibold">{source} · {freshness}</div></div>
-        <div><div className="text-muted-foreground">SYMBOL</div><div className="mt-1 font-semibold">{reader.symbol}</div></div>
+        <div><div className="text-muted-foreground">SYMBOL</div><div className="mt-1 font-semibold">{facts.symbol}</div></div>
         <div><div className="text-muted-foreground">LAST UPDATE</div><div className="mt-1 font-mono">{formatUtc(live?.observed_at)}</div></div>
         <div><div className="text-muted-foreground">LAST CLOSED M5</div><div className="mt-1 font-mono">{formatUtc(lastM5, false)}</div></div>
       </div>
@@ -356,7 +362,7 @@ function TraderRadarView({ snapshot, reader, part }: { snapshot: TradingSnapshot
   return <section className="space-y-3" aria-label="Trader Radar Dashboard" data-testid="trader-radar-v2">
     <div className="border border-border bg-card p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><div className="text-xs font-semibold uppercase text-muted-foreground">Market Radar · {snapshot?.symbol ?? reader.symbol}</div><div className="mt-2 text-3xl font-semibold" data-testid="radar-state">{radarState}</div></div>
+        <div><div className="text-xs font-semibold uppercase text-muted-foreground">Market Radar · {snapshot?.symbol ?? facts.symbol}</div><div className="mt-2 text-3xl font-semibold" data-testid="radar-state">{radarState}</div></div>
         <span className="border border-border bg-muted/35 px-2 py-1 text-xs font-semibold">OBSERVE ONLY</span>
       </div>
       <p className="mt-2 text-sm text-muted-foreground" data-testid="radar-state-reason">{snapshot ? reasonCopy(snapshot.entry.reason) : unavailableCopy}</p>
@@ -385,7 +391,7 @@ function TraderRadarView({ snapshot, reader, part }: { snapshot: TradingSnapshot
 }
 
 /** MARKET CONTEXT SUMMARY (v2.5): market trend + H4/H1 bias as trader-readable card. Presentation mapping only — values come from existing operator/runtime fields, never derived in UI. */
-function MarketContextSummary({ snapshot, reader, symbol }: { snapshot: TradingSnapshot | null; reader: MarketRuntimeReader; symbol: string }) {
+function MarketContextSummary({ snapshot, facts }: { snapshot: TradingSnapshot | null; facts: RuntimeFacts }) {
   const op = snapshot?.operator ?? null;
   const toneClass = (value: string | undefined) => value === "BULLISH" ? "text-bull" : value === "BEARISH" ? "text-bear" : "text-muted-foreground";
   const trend = trendLabel(op?.h4_primary);
@@ -409,21 +415,20 @@ function MarketContextSummary({ snapshot, reader, symbol }: { snapshot: TradingS
         <div className="mt-0.5 text-xs text-muted-foreground" data-testid="mc-h1-relation">{contextLabel(op?.h1_context)}</div>
       </div>
     </div>
-    <IntelligenceBlock reader={reader} symbol={symbol} />
+    <IntelligenceBlock facts={facts} />
   </section>;
 }
 
 /** Market Intelligence (mtf-intel-v1) projection. Source: ENGINE HOST (VPS) when attached, else BROWSER FALLBACK — never mixed. */
-function IntelligenceBlock({ reader, symbol }: { reader: MarketRuntimeReader; symbol: string }) {
-  const eng = useEngineHost(symbol, 5_000);
-  const r = eng.attached ? eng.radar?.snapshot?.intelligence ?? null : reader.radarSnapshot?.()?.intelligence ?? null;
+function IntelligenceBlock({ facts }: { facts: RuntimeFacts }) {
+  const r = facts.radar?.intelligence ?? null;
   const tone = (v: string | undefined) => v === "BULLISH" ? "text-bull" : v === "BEARISH" ? "text-bear" : "text-muted-foreground";
   const statusCls = r?.status === "READY" ? "border-bull/50 text-bull" : r?.status === "STAND_ASIDE" ? "border-bear/50 text-bear" : "border-border text-warn";
   const Row = ({ k, v, sub }: { k: string; v: string; sub?: string }) => <div className="border-b border-border/50 py-1.5 text-xs"><div className="flex justify-between gap-3"><span className="font-semibold text-muted-foreground">{k}</span><span className="text-right text-foreground">{v}</span></div>{sub && <div className="mt-0.5 text-muted-foreground">{sub}</div>}</div>;
   return <div className="mt-3 border-t border-border pt-3" data-testid="mc-intel">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <span className={`border px-2 py-1 text-xs font-bold tracking-wider ${statusCls}`} data-testid="mc-intel-status">{(r?.status ?? "NO_DATA").replaceAll("_", " ")}</span>
-      <span className="text-[11px] text-muted-foreground" data-testid="mc-intel-source">{eng.attached ? "ENGINE HOST VPS (LIVE)" : "BROWSER SESSION (EPHEMERAL) · refresh me-reset runtime state"}</span>
+      <span className="text-[11px] text-muted-foreground" data-testid="mc-intel-source">{facts.source === "ENGINE_HOST" ? "ENGINE HOST VPS (LIVE)" : "BROWSER SESSION (EPHEMERAL) · refresh me-reset runtime state"}</span>
     </div>
     {!r ? <p className="mt-2 text-xs text-muted-foreground">Menunggu evaluasi radar pada M5 close (histori broker). Tidak ada data yang dikarang.</p> : <>
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -486,9 +491,21 @@ export function SignalSafetyStrip({ signal }: { signal: TradingSnapshot["signal"
 
 type CockpitTab = "TRADE" | "RADAR" | "ANALYSIS";
 
-function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceService; reader: MarketRuntimeReader; explain?: TechnicalSlicePanelProps["explain"]; store: PaperJournalStore }) {
-  useSyncExternalStore(service.subscribe, service.getVersion, service.getVersion);
-  const view = service.view();
+/** Guarded entry: renders only when the slice view and runtime facts come from the SAME source and symbol. */
+function Cockpit({ source, explain, store, fallbackReason }: { source: CockpitSource; explain?: TechnicalSlicePanelProps["explain"]; store: PaperJournalStore; fallbackReason?: string | null }) {
+  useSyncExternalStore(source.subscribe, source.getVersion, source.getVersion);
+  const view = source.view();
+  const facts = source.facts();
+  if (facts.source !== source.source || facts.symbol !== source.symbol || (view && view.symbol !== source.symbol)) return <SourceMismatch detail={`view ${source.source}/${view?.symbol ?? "—"} · facts ${facts.source}/${facts.symbol}`} />;
+  if (!view) return <div className="border border-border bg-card p-4 text-sm text-muted-foreground" data-testid="engine-snapshot-pending">ENGINE HOST VPS (LIVE) · menunggu snapshot {source.symbol} dari engine host…</div>;
+  return <CockpitBody view={view} facts={facts} explain={explain} store={store} fallbackReason={fallbackReason ?? null} />;
+}
+
+function SourceMismatch({ detail }: { detail: string }) {
+  return <div role="alert" className="border border-destructive/60 bg-card p-4 text-sm text-destructive" data-testid="state-source-mismatch"><div className="font-semibold">STATE SOURCE MISMATCH</div><div className="mt-1 text-xs text-muted-foreground">{detail}</div></div>;
+}
+
+function CockpitBody({ view, facts, explain, store, fallbackReason }: { view: SliceView; facts: RuntimeFacts; explain?: TechnicalSlicePanelProps["explain"]; store: PaperJournalStore; fallbackReason: string | null }) {
   const snapshot = view.current;
   const evidence = snapshot?.evidence;
   const signal = cockpitSignal(snapshot);
@@ -556,18 +573,18 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
         <SignalSafetyStrip signal={snapshot?.signal ?? null} />
       </section>
 
-      <MarketContextSummary snapshot={snapshot} reader={reader} symbol={view.symbol} />
+      <MarketContextSummary snapshot={snapshot} facts={facts} />
       <section className="border border-border bg-card p-4 sm:p-5" aria-label="Rencana transaksi acuan" data-testid="radar-card">
         <RadarPlanView radar={snapshot?.radar_plan ?? null} signal={signal} entry={entry} projection={projection} />
         <TradeActions symbol={view.symbol} signal={signal} quote={quote} plan={plan} planFor={ticketPlan} reason={signalReason} confirmations={planConfirmations} mode={mode}
           onConfirm={(side) => { if (quote) store.open({ symbol: view.symbol, side, quote, now: uiClock.now(), snapshot }); }} />
       </section>
-    <TraderRadarView snapshot={snapshot} reader={reader} part="TRADE" />
+    <TraderRadarView snapshot={snapshot} facts={facts} part="TRADE" />
     <PaperPositions store={store} symbol={view.symbol} quote={quote} />
     </div>
-    <div hidden={tab !== "RADAR"} className="space-y-4" data-testid="tab-radar"><RadarObservabilityPanel reader={reader} symbol={view.symbol} /><TraderRadarView snapshot={snapshot} reader={reader} part="RADAR" /></div>
+    <div hidden={tab !== "RADAR"} className="space-y-4" data-testid="tab-radar"><RadarObservabilityPanel facts={facts} symbol={view.symbol} fallbackReason={fallbackReason} /><TraderRadarView snapshot={snapshot} facts={facts} part="RADAR" /></div>
     <div hidden={tab !== "ANALYSIS"} className="space-y-4" data-testid="tab-analysis">
-    <TraderRadarView snapshot={snapshot} reader={reader} part="ANALYSIS" />
+    <TraderRadarView snapshot={snapshot} facts={facts} part="ANALYSIS" />
 
     <details open className="border-t border-border pt-3" aria-label="Ringkasan engine" data-testid="operator-summary">
       <summary className="cursor-pointer text-xs font-semibold uppercase text-muted-foreground">Detail konteks engine</summary>
@@ -618,7 +635,42 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
   </article>;
 }
 
-export function TechnicalSlicePanel({ runtimes, selectedSymbol, unmountedReason, tickMs = 2000, explain, store, alerts, onAlert }: TechnicalSlicePanelProps) {
+export function TechnicalSlicePanel(props: TechnicalSlicePanelProps) {
+  // Never Mix State: engine-host mode must not receive any mounted browser runtime.
+  if (props.engine && props.runtimes.some((r) => r.reader)) return <section className="bg-background px-4 pb-24 sm:px-8"><div className="mx-auto max-w-screen-2xl"><SourceMismatch detail="ENGINE_HOST store aktif bersamaan dengan BROWSER_SESSION runtime" /></div></section>;
+  return props.engine ? <EnginePanel {...props} engine={props.engine} /> : <BrowserPanel {...props} />;
+}
+
+function PanelFrame({ children }: { children: React.ReactNode }) {
+  return <section className="bg-background px-4 pb-24 sm:px-8 md:pb-8" aria-label="Kokpit trading"><div className="mx-auto max-w-screen-2xl">{children}</div></section>;
+}
+const waiting = <div className="border border-border bg-card p-4 text-sm text-muted-foreground">Menunggu pasar terpilih…</div>;
+
+/** ENGINE HOST mode: zero local evaluation. SSE → store → render; alerts/marks consume the engine's own snapshots. */
+function EnginePanel({ runtimes, selectedSymbol, explain, store, alerts, onAlert, engine }: TechnicalSlicePanelProps & { engine: EngineHostStore }) {
+  const journal = useMemo(() => store ?? sharedPaperJournal(), [store]);
+  const version = useSyncExternalStore(engine.subscribe, engine.getVersion, engine.getVersion);
+  const onAlertRef = useRef(onAlert);
+  onAlertRef.current = onAlert;
+  const seen = useRef(new Map<string, number>());
+  useEffect(() => {
+    for (const b of Object.values(engine.getState().bundles)) {
+      const snap = b.slice?.current;
+      if (!snap || seen.current.get(b.symbol) === b.timestamp) continue;
+      seen.current.set(b.symbol, b.timestamp);
+      const now = uiClock.now();
+      if (snap.quote) journal.mark(b.symbol, snap.quote, now); // manual SIMULATION positions only
+      const alert = alerts?.observe(snap, b.symbol, now);
+      if (alert) onAlertRef.current?.(alert);
+    }
+  }, [version, engine, journal, alerts]);
+  const sources = useMemo(() => Object.fromEntries(runtimes.map((r) => [r.symbol, remoteCockpitSource(r.symbol, engine)])), [runtimes, engine]);
+  const src = sources[selectedSymbol];
+  return <PanelFrame>{src ? <Cockpit source={src} explain={explain} store={journal} /> : waiting}</PanelFrame>;
+}
+
+/** BROWSER SESSION mode: the local canonical runtime is the only source. */
+function BrowserPanel({ runtimes, selectedSymbol, unmountedReason, tickMs = 2000, explain, store, alerts, onAlert, fallbackReason }: TechnicalSlicePanelProps) {
   const services = useMemo(() => runtimes.map((runtime) => new TechnicalSliceService(runtime.reader, runtime.symbol, new LiveClock(), unmountedReason)), [runtimes, unmountedReason]);
   const journal = useMemo(() => store ?? sharedPaperJournal(), [store]);
   const onAlertRef = useRef(onAlert);
@@ -641,7 +693,7 @@ export function TechnicalSlicePanel({ runtimes, selectedSymbol, unmountedReason,
     return () => clearInterval(timer);
   }, [services, tickMs, journal, alerts]);
   const selected = services.find((service) => service.symbol === selectedSymbol) ?? null;
-  return <section className="bg-background px-4 pb-24 sm:px-8 md:pb-8" aria-label="Kokpit trading">
-    <div className="mx-auto max-w-screen-2xl">{selected ? (() => { const runtime = runtimes.find((r) => r.symbol === selectedSymbol); return runtime?.reader ? <Cockpit service={selected} reader={runtime.reader} explain={explain} store={journal} /> : <div className="border border-border bg-card p-4 text-sm text-muted-foreground">Menunggu pasar terpilih…</div>; })() : <div className="border border-border bg-card p-4 text-sm text-muted-foreground">Menunggu pasar terpilih…</div>}</div>
-  </section>;
+  const reader = runtimes.find((r) => r.symbol === selectedSymbol)?.reader ?? null;
+  const source = useMemo(() => selected && reader ? localCockpitSource(selected, reader) : null, [selected, reader]);
+  return <PanelFrame>{source ? <Cockpit source={source} explain={explain} store={journal} fallbackReason={fallbackReason ?? null} /> : waiting}</PanelFrame>;
 }
