@@ -23,12 +23,40 @@ export function routeEngineRequest(host: Pick<EngineHost, "health" | "reader" | 
   if (method !== "GET") return json(405, { error: "METHOD_NOT_ALLOWED", detail: "engine host is read-only" });
   const path = rawPath.split("?")[0]!.replace(/\/+$/, "");
   if (path === "/v1/engine/health") return json(200, envelope(host.health(), now));
-  const m = /^\/v1\/engine\/([A-Z0-9._]+)\/(radar|account|journal)$/.exec(path);
+  if (path === "/v1/engine/account") return json(200, envelope({ accounts: host.symbols.map((symbol) => ({ symbol, account: host.reader(symbol)?.paperAccount?.() ?? null })) }, now));
+  if (path === "/v1/engine/journal") return json(200, envelope({ trades: host.symbols.flatMap((symbol) => host.reader(symbol)?.paperTrades?.() ?? []) }, now));
+  const m = /^\/v1\/engine\/([A-Z0-9._]+)\/(radar|market-context|account|journal)$/.exec(path);
   if (!m) return json(404, { error: "NOT_FOUND" });
   const symbol = m[1]!, view = m[2]!;
   if (!host.symbols.includes(symbol)) return json(404, { error: "SYMBOL_NOT_HOSTED", symbol });
   const r = host.reader(symbol);
   if (view === "radar") return json(200, envelope({ symbol, snapshot: r?.radarSnapshot() ?? null, health: r?.radarHealth() ?? null }, now));
+  if (view === "market-context") {
+    const snap = r?.radarSnapshot() ?? null;
+    return json(200, envelope({ symbol, report: snap?.intelligence ?? null, evaluated_bar_close: snap?.lastEvaluatedBarTime ?? null, radar_status: r?.radarHealth().status ?? "NOT_MOUNTED" }, now));
+  }
   if (view === "account") return json(200, envelope({ symbol, account: r?.paperAccount?.() ?? null }, now));
   return json(200, envelope({ symbol, trades: r?.paperTrades?.() ?? [] }, now));
 }
+
+export type EngineEventType = "HEALTH_UPDATE" | "MARKET_CONTEXT_UPDATE" | "RADAR_UPDATE";
+export interface EngineEvent { readonly type: EngineEventType; readonly symbol: string | null; readonly timestamp: string; readonly data: unknown }
+
+/**
+ * SSE frame builder for GET /v1/engine/events (pure; `seen` tracks the last emitted radar evaluation per symbol).
+ * Emits HEALTH_UPDATE every call and RADAR_UPDATE + MARKET_CONTEXT_UPDATE only when a new CLOSED-bar evaluation exists.
+ */
+export function buildEngineEvents(host: Pick<EngineHost, "health" | "reader" | "symbols">, now: number, seen: Map<string, number>): EngineEvent[] {
+  const ts = new Date(now).toISOString();
+  const out: EngineEvent[] = [{ type: "HEALTH_UPDATE", symbol: null, timestamp: ts, data: host.health() }];
+  for (const symbol of host.symbols) {
+    const snap = host.reader(symbol)?.radarSnapshot() ?? null;
+    if (!snap || seen.get(symbol) === snap.generatedAt) continue;
+    seen.set(symbol, snap.generatedAt);
+    out.push({ type: "RADAR_UPDATE", symbol, timestamp: ts, data: snap });
+    if (snap.intelligence) out.push({ type: "MARKET_CONTEXT_UPDATE", symbol, timestamp: ts, data: snap.intelligence });
+  }
+  return out;
+}
+
+export const sseFrame = (e: EngineEvent) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;

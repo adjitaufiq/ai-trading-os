@@ -15,7 +15,7 @@ import { mountCanonicalRuntime } from "../src/lib/canonicalRuntimes";
 import { browserWebSocketFactory } from "../src/lib/browserWebSocket";
 import { EngineHost } from "../src/core/enginehost/EngineHost";
 import { PaperPersistence, type EngineStorePort } from "../src/core/enginehost/persistence";
-import { ENGINE_CORS_HEADERS, envelope, routeEngineRequest } from "../src/core/enginehost/api";
+import { ENGINE_CORS_HEADERS, buildEngineEvents, routeEngineRequest, sseFrame } from "../src/core/enginehost/api";
 
 const env = process.env;
 const gatewayUrl = env.ENGINE_GATEWAY_URL ?? "http://127.0.0.1:8000";
@@ -43,14 +43,15 @@ const host = new EngineHost({
 host.start();
 
 const sse = new Set<import("node:http").ServerResponse>();
+const seen = new Map<string, number>();
 setInterval(() => {
-  const msg = `data: ${JSON.stringify(envelope(host.health(), Date.now()))}\n\n`;
-  for (const r of sse) r.write(msg);
+  const frames = buildEngineEvents(host, Date.now(), seen).map(sseFrame).join("");
+  for (const r of sse) r.write(frames);
 }, 5_000);
 
 createServer((req, res) => {
   const path = (req.url ?? "/").split("?")[0];
-  if (req.method === "GET" && path === "/v1/engine/stream") {
+  if (req.method === "GET" && (path === "/v1/engine/events" || path === "/v1/engine/stream")) {
     res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive", ...ENGINE_CORS_HEADERS });
     sse.add(res); req.on("close", () => sse.delete(res));
     return;
