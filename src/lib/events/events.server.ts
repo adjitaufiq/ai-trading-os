@@ -2,7 +2,7 @@
 // then dispatch notifications for newly inserted READY / EXECUTION / BLOCKED events. Insert-only; never writes to the VPS.
 // Notification failure never fails the capture: missing credentials ⇒ delivery_status PENDING with the reason.
 import type { EngineSymbolBundle } from "@/core/enginehost/types";
-import { AI_ALERTS_PER_RUN, composeAlert, explainEvent, sendTelegramMessage } from "@/lib/assistant/telegram.server";
+import { AI_ALERTS_PER_RUN, composeAlert, explainEvent, operatorChatId, sendTelegramMessage } from "@/lib/assistant/telegram.server";
 
 export interface EventRow {
   event_key: string; symbol: string; event_type: "RADAR" | "READY" | "BLOCKED" | "EXECUTION" | "EXIT" | "ENGINE_OFFLINE" | "ENGINE_ONLINE"; stage: string | null;
