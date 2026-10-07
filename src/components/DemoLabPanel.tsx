@@ -21,6 +21,9 @@ export function DemoLabPanel() {
   });
   const s = lab.data;
   const stopped = ctl.data?.stopped !== false;
+  const lim = (n: number | undefined, d: number) => (n ?? d) >= 1000 ? "∞" : String(n ?? d);
+  const c = s?.capital;
+  const money = (n: number | null | undefined) => n === null || n === undefined ? "—" : `${n.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${c?.currency ?? ""}`;
   return <section className="mx-auto w-full max-w-3xl space-y-3">
     <div className="flex items-center justify-between gap-2">
       <h2 className="text-sm font-semibold">Demo Lab (Stage 10 DEMO, akun demo saja)</h2>
@@ -30,9 +33,15 @@ export function DemoLabPanel() {
       <div className="rounded border border-border p-2">Saklar: <b>{stopped ? "STOPPED" : "RUNNING"}</b></div>
       <div className="rounded border border-border p-2">Mode VPS: <b>{s?.mode ?? "tidak terbaca"}</b></div>
       <div className="rounded border border-border p-2">Akun: <b>{s?.account ? (s.account.ok ? `DEMO ${s.account.login} · ${s.account.server}` : `BLOCKED ${s.account.reason ?? ""}`) : "—"}</b></div>
-      <div className="rounded border border-border p-2">Posisi terbuka: <b>{s?.openPositions ?? "—"}</b> / {s?.profile?.maxOpenPositions ?? 1}</div>
-      <div className="rounded border border-border p-2">Trade hari ini: <b>{s?.tradesToday ?? "—"}</b> / {s?.profile?.maxTradesPerDay ?? 5}</div>
+      <div className="rounded border border-border p-2">Posisi terbuka: <b>{s?.openPositions ?? "—"}</b> / {lim(s?.profile?.maxOpenPositions, 1)}</div>
+      <div className="rounded border border-border p-2">Trade hari ini: <b>{s?.tradesToday ?? "—"}</b> / {lim(s?.profile?.maxTradesPerDay, 5)}</div>
       <div className="rounded border border-border p-2">Loss harian: <b>{s?.dailyLossPercent ?? "—"}%</b> / {s?.profile?.maxDailyLossPercent ?? 2}%</div>
+    </div>
+    <div className="grid gap-2 text-xs sm:grid-cols-4">
+      <div className="rounded border border-border p-2">Modal awal: <b>{money(c?.startBalance)}</b></div>
+      <div className="rounded border border-border p-2">Balance: <b>{money(c?.balance)}</b></div>
+      <div className="rounded border border-border p-2">Equity: <b>{money(c?.equity)}</b></div>
+      <div className="rounded border border-border p-2">Net P/L: <b>{money(c?.netPnl)}</b></div>
     </div>
     <div className="rounded border border-border p-3">
       <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Order demo</h3>

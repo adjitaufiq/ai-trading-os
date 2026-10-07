@@ -91,5 +91,7 @@ export interface DemoLabStatus {
   readonly mode: ExecutionMode; readonly policyVersion: typeof DEMO_EXECUTION_POLICY_VERSION; readonly profile: DemoRiskProfile;
   readonly killSwitch: boolean; readonly account: { readonly ok: boolean; readonly reason: AccountBlockReason | null; readonly login: number | null; readonly server: string | null; readonly tradeMode: AccountTradeMode | null };
   readonly openPositions: number; readonly tradesToday: number; readonly dailyLossPercent: number;
+  /** Demo capital since the first recorded day: broker balance/equity copied as-is, netPnl = equity − startBalance. */
+  readonly capital?: { readonly startBalance: number | null; readonly balance: number | null; readonly equity: number | null; readonly currency: string | null; readonly netPnl: number | null };
   readonly lastEvent: DemoEvent | null; readonly records: readonly DemoTradeRecord[]; readonly recentEvents: readonly DemoEvent[];
 }
