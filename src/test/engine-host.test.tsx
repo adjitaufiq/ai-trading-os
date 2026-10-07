@@ -3,7 +3,10 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { LivePaperLoop, PAPER_STATE_VERSION, type PaperLoopState } from "@/core/paper/LivePaperLoop";
 import { MemoryEngineStore, PaperPersistence } from "@/core/enginehost/persistence";
-import { routeEngineRequest } from "@/core/enginehost/api";
+import { buildEngineEvents, routeEngineRequest } from "@/core/enginehost/api";
+import { deriveBrokerClock } from "@/core/enginehost/brokerClock";
+import { render, screen } from "@testing-library/react";
+import { RadarObservabilityPanel } from "@/components/RadarObservabilityPanel";
 import { deriveSymbolHealth } from "@/core/enginehost/health";
 import { EngineHost } from "@/core/enginehost/EngineHost";
 import { EngineHostClient } from "@/core/enginehost/client";
@@ -74,7 +77,7 @@ describe("engine host — health", () => {
     expect(h(null, "RESOLVING_SPEC").state).toBe("STARTING");
     expect(h(null, "SPEC_UNAVAILABLE TIMEOUT").state).toBe("OFFLINE");
     expect(h(fakeReader({ boot: "FETCHING_HISTORY", observed: 99_000 })).state).toBe("SYNCING");
-    expect(h(fakeReader({ radar: "INITIALIZING", observed: 99_000 })).state).toBe("SYNCING");
+    expect(h(fakeReader({ radar: "INITIALIZING", observed: 99_000 })).state).toBe("BOOTSTRAP");
     const on = h(fakeReader({ observed: 99_000 }));
     expect(on.state).toBe("ONLINE");
     expect(on.latency_ms).toBe(300);
@@ -142,6 +145,81 @@ describe("engine host — architecture", () => {
     for (const d of dirs) for (const f of readdirSync(d).filter((x) => x.endsWith(".ts"))) {
       const src = readFileSync(join(d, f), "utf8");
       expect(src, f).not.toMatch(/order_send|placeOrder|src\/probe|engine\/execution/);
+    }
+  });
+});
+
+describe("Phase 2 — persistent engine host", () => {
+  it("broker clock: NORMAL ≤ 3000 ms, DRIFT_WARNING above, never rewrites timestamps", () => {
+    const ev = { event_at: 1_000_000, observed_at: 1_001_000 };
+    const n = deriveBrokerClock(ev);
+    expect([n.status, n.clock_drift_ms, n.broker_time]).toEqual(["NORMAL", 1000, new Date(1_000_000).toISOString()]);
+    expect(deriveBrokerClock({ event_at: 1_000_000, observed_at: 1_004_500 }).status).toBe("DRIFT_WARNING");
+    expect(deriveBrokerClock({ event_at: 1_004_500, observed_at: 1_000_000 }).status).toBe("DRIFT_WARNING");
+    expect(ev).toEqual({ event_at: 1_000_000, observed_at: 1_001_000 }); // input untouched
+    expect(deriveBrokerClock(null).status).toBe("UNKNOWN");
+  });
+
+  it("BOOTSTRAP until the radar baseline exists; health carries the broker clock", () => {
+    const b = deriveSymbolHealth({ symbol: "XAUUSD", reader: fakeReader({ radar: "INITIALIZING", observed: 99_000 }), mount_status: "MOUNTED", restarts: 0, now: 100_000 });
+    expect(b.state).toBe("BOOTSTRAP");
+    expect(b.clock.status).toBe("NORMAL");
+  });
+
+  it("serves market-context, aggregate account/journal and SSE events; still read-only", () => {
+    const snap = { generatedAt: 7, lastEvaluatedBarTime: 6, intelligence: { status: "WAIT_CONFIRMATION" } };
+    const reader = { ...fakeReader({ observed: 1 }), radarSnapshot: () => snap, paperAccount: () => ({ balance: 1 }), paperTrades: () => [row("T1")] };
+    const host = { symbols: ["XAUUSD"], reader: () => reader, health: () => ({ operating_mode: "MONITOR_ONLY", execution_enabled: false, symbols: [] }) } as never;
+    expect(JSON.parse(routeEngineRequest(host, "GET", "/v1/engine/XAUUSD/market-context", 1).body).data).toMatchObject({ report: { status: "WAIT_CONFIRMATION" }, evaluated_bar_close: 6 });
+    expect(JSON.parse(routeEngineRequest(host, "GET", "/v1/engine/account", 1).body).data.accounts).toHaveLength(1);
+    expect(JSON.parse(routeEngineRequest(host, "GET", "/v1/engine/journal", 1).body).data.trades).toHaveLength(1);
+    expect(routeEngineRequest(host, "POST", "/v1/engine/journal", 1).status).toBe(405);
+    const seen = new Map<string, number>();
+    expect(buildEngineEvents(host, 1, seen).map((e) => e.type)).toEqual(["HEALTH_UPDATE", "RADAR_UPDATE", "MARKET_CONTEXT_UPDATE"]);
+    expect(buildEngineEvents(host, 2, seen).map((e) => e.type)).toEqual(["HEALTH_UPDATE"]); // no new CLOSED evaluation ⇒ no duplicate
+  });
+
+  it("restart recovery: a new host process restores snapshot + journal; journal rows are never rewritten", () => {
+    const store = new MemoryEngineStore();
+    const p1 = new PaperPersistence(store);
+    p1.load("XAUUSD", "REAL_MT5");
+    p1.persist(stateWith([row("T1")], 10_010));
+    p1.persist(stateWith([row("T1"), row("T2")], 10_020));
+    const before = [...store.readJournalLines("XAUUSD")];
+    // "VPS restart": brand-new persistence over the same disk
+    const { state } = new PaperPersistence(store).load("XAUUSD", "REAL_MT5");
+    expect(state?.balance).toBe(10_020);
+    expect(state?.journal).toHaveLength(2);
+    new PaperPersistence(store).persist(stateWith([row("T1"), row("T2")], 10_020));
+    expect(store.readJournalLines("XAUUSD").slice(0, before.length)).toEqual(before);
+  });
+
+  it("gateway reconnect: sustained STALE_FEED (DEGRADED) triggers a remount", () => {
+    let now = 0, mounts = 0;
+    const host = new EngineHost({
+      symbols: ["XAUUSD"], persistence: new PaperPersistence(new MemoryEngineStore()), now: () => now,
+      policy: { tick_ms: 1000, remount_after_ms: 10_000, backoff_min_ms: 1000, backoff_max_ms: 4000 },
+      mount: ({ onChange }) => { mounts++; onChange({ symbol: "XAUUSD", reader: fakeReader({ observed: 1 }), status: "MOUNTED" }); return () => {}; },
+    });
+    host.start(); host.stop();
+    now = 200_000; host.tick(); expect(host.health().symbols[0]!.error).toBe("STALE_FEED");
+    now = 211_000; host.tick(); expect(mounts).toBe(2);
+  });
+
+  it("dashboard attach mode: labels never mix; ephemeral warning only in browser session", () => {
+    const base = { configured: true, radar: null, account: null, error: null, checkedAt: 1 };
+    const { unmount } = render(<RadarObservabilityPanel reader={null} symbol="XAUUSD" engine={{ ...base, attached: true, symbolHealth: deriveSymbolHealth({ symbol: "XAUUSD", reader: fakeReader({ observed: 99_000 }), mount_status: "MOUNTED", restarts: 0, now: 100_000 }) }} />);
+    expect(screen.getByTestId("engine-source").textContent).toMatch(/^ENGINE HOST VPS \(LIVE\)/);
+    expect(screen.queryByTestId("ephemeral-warning")).toBeNull();
+    unmount();
+    render(<RadarObservabilityPanel reader={null} symbol="XAUUSD" engine={{ ...base, attached: false, symbolHealth: null }} />);
+    expect(screen.getByTestId("engine-source").textContent).toMatch(/^BROWSER SESSION \(EPHEMERAL\)/);
+    expect(screen.getByTestId("ephemeral-warning")).toBeTruthy();
+  });
+
+  it("no execution surface in engine host or radar volatility path", () => {
+    for (const f of ["src/core/enginehost/brokerClock.ts", "src/core/enginehost/api.ts", "engine-host/main.ts", "src/core/radar/RadarRuntimeService.ts"]) {
+      expect(readFileSync(join(process.cwd(), f), "utf8"), f).not.toMatch(/OrderSend|order_send|placeOrder|engine\/execution|engine\/risk|\/v1\/order/i);
     }
   });
 });

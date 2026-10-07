@@ -1,5 +1,6 @@
 // Pure engine-health derivation from runtime evidence. No UI assumptions, no clock reads (now is injected).
 import type { MarketRuntimeReader } from "../runtime/MarketRuntime";
+import { deriveBrokerClock } from "./brokerClock";
 import type { EngineState, SymbolEngineHealth } from "./types";
 
 /** Documented host policy (operator configuration, not broker-measured values). */
@@ -15,7 +16,7 @@ export function deriveSymbolHealth(i: {
   if (!r) {
     // INIT / RESOLVING_SPEC = still starting; any other unmounted status is a real failure reason from the mount.
     const starting = i.mount_status === "INIT" || i.mount_status === "RESOLVING_SPEC";
-    return Object.freeze({ symbol: i.symbol, state: starting ? "STARTING" : "OFFLINE", last_update_at: null, latency_ms: null, error: starting ? null : i.mount_status, radar_status: "NOT_MOUNTED", mount_status: i.mount_status, restarts: i.restarts });
+    return Object.freeze({ symbol: i.symbol, state: starting ? "STARTING" : "OFFLINE", last_update_at: null, latency_ms: null, error: starting ? null : i.mount_status, radar_status: "NOT_MOUNTED", mount_status: i.mount_status, restarts: i.restarts, clock: deriveBrokerClock(null) });
   }
   const snap = r.snapshot();
   const live = r.latestLiveObservation();
@@ -26,10 +27,11 @@ export function deriveSymbolHealth(i: {
   let error: string | null = null;
   if (snap.lifecycle === "STOPPED") { state = "OFFLINE"; error = snap.degraded_reason ?? "RUNTIME_STOPPED"; }
   else if (snap.bootstrap_state === "DEGRADED") { state = "DEGRADED"; error = snap.degraded_reason ?? "BOOTSTRAP_DEGRADED"; }
-  else if (snap.lifecycle !== "RUNNING" || snap.bootstrap_state !== "SYNCHRONIZED" || radar.status === "INITIALIZING") state = "SYNCING";
+  else if (snap.lifecycle !== "RUNNING" || snap.bootstrap_state !== "SYNCHRONIZED") state = "SYNCING";
+  else if (radar.status === "INITIALIZING") state = "BOOTSTRAP"; // baseline not ready: never show default volatility/radar
   else if (last === null || i.now - last > p.stale_feed_ms) { state = "DEGRADED"; error = "STALE_FEED"; }
   else if (radar.status === "ERROR") { state = "DEGRADED"; error = radar.lastError ?? "RADAR_ERROR"; }
   else state = "ONLINE";
   if (!error && snap.last_stream_error && state !== "ONLINE") error = snap.last_stream_error;
-  return Object.freeze({ symbol: i.symbol, state, last_update_at: last, latency_ms: latency, error, radar_status: radar.status, mount_status: i.mount_status, restarts: i.restarts });
+  return Object.freeze({ symbol: i.symbol, state, last_update_at: last, latency_ms: latency, error, radar_status: radar.status, mount_status: i.mount_status, restarts: i.restarts, clock: deriveBrokerClock(live) });
 }

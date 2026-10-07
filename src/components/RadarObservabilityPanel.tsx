@@ -25,14 +25,16 @@ export function RadarObservabilityPanel({ reader, symbol, tickMs = 2000, engine 
   const acct = host ? eng.account : reader?.paperAccount?.() ?? null;
   const source = snap?.validationSource.dataSource ?? (health ? (health.validationMode === "REAL" ? "REAL_MT5" : "SYNTHETIC") : "—");
   const engineLabel = host
-    ? `ENGINE HOST (VPS) · ${eng.symbolHealth?.state ?? "?"}`
-    : `BROWSER SESSION · reset saat refresh${eng.configured ? ` (engine host: ${eng.error ?? eng.symbolHealth?.state ?? "menghubungkan"})` : ""}`;
+    ? `ENGINE HOST VPS (LIVE) · ${eng.symbolHealth?.state ?? "?"}`
+    : `BROWSER SESSION (EPHEMERAL)${eng.configured ? ` (engine host: ${eng.error ?? eng.symbolHealth?.state ?? "menghubungkan"})` : ""}`;
   return <section className="mx-auto mb-4 grid max-w-screen-2xl gap-3 px-4 sm:grid-cols-2 sm:px-8" aria-label="Radar observability">
     <div className="border border-border bg-card p-3">
       <h2 className="mb-2 text-xs font-semibold tracking-widest text-muted-foreground">RADAR OBSERVABILITY</h2>
       <Row k="Engine" v={engineLabel} testId="engine-source" />
       {host && <Row k="Engine update" v={`${fmtTime(eng.symbolHealth?.last_update_at)}${eng.symbolHealth?.latency_ms != null ? ` · ${eng.symbolHealth.latency_ms} ms` : ""}`} />}
+      {host && eng.symbolHealth?.clock && <Row k="Broker clock" v={eng.symbolHealth.clock.status === "UNKNOWN" ? "—" : `${eng.symbolHealth.clock.status} · drift ${eng.symbolHealth.clock.clock_drift_ms} ms`} testId="engine-clock" />}
       {host && eng.symbolHealth?.error && <Row k="Engine error" v={eng.symbolHealth.error} />}
+      {!host && <p className="mb-2 text-xs text-warn" data-testid="ephemeral-warning">Warning: refresh browser akan me-reset runtime state.</p>}
       <Row k="Symbol" v={symbol} />
       <Row k="Data Source" v={source} testId="radar-source" />
       <Row k="Radar Health" v={health?.status ?? "NOT MOUNTED"} testId="radar-health" />
