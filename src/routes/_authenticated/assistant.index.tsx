@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Radar } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { TradeReviewPanel } from "@/components/TradeReviewPanel";
+import { PerformancePanel } from "@/components/PerformancePanel";
 import { journalIntelligence, type Group, type TradeFact } from "@/lib/memory/analytics";
 
 export const Route = createFileRoute("/_authenticated/assistant/")({ component: AssistantHome });
@@ -44,6 +45,7 @@ function AssistantHome() {
           {data.intel.failure_patterns.length ? data.intel.failure_patterns.map((f) => <p key={f.category} className="text-xs">{f.category}: {f.count}</p>) : <p className="text-xs text-muted-foreground">Belum ada loss.</p>}</div>
       </div>
     </section>}
+    <PerformancePanel />
     <TradeReviewPanel />
   </div>;
 }

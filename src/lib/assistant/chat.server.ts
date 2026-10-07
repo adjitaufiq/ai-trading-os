@@ -71,7 +71,7 @@ export async function handleAssistantChat(request: Request): Promise<Response> {
 
   const scope = thread.symbol ?? "KNOWLEDGE";
   const [liveCtx, memoryCtx] = await Promise.all([buildLiveContext(scope), scope === "ENGINE" ? Promise.resolve("") : buildMemoryContext(supabase, scope)]);
-  const live = memoryCtx ? `${liveCtx}\n\n=== ${memoryCtx}\nATURAN MEMORY: boleh membandingkan kondisi sekarang dengan similar_past_states dan menjelaskan statistik journal; sebut ukuran sampel; jangan menyimpulkan dari sampel kecil; jangan pernah mengusulkan perubahan aturan engine atau optimasi otomatis.` : liveCtx;
+  const live = memoryCtx ? `${liveCtx}\n\n=== ${memoryCtx}\nATURAN MEMORY: boleh membandingkan kondisi sekarang dengan similar_past_states dan menjelaskan statistik journal; sebut ukuran sampel; jangan menyimpulkan dari sampel kecil; jangan pernah mengusulkan perubahan aturan engine atau optimasi otomatis. PERFORMANCE: untuk pertanyaan kelemahan/regime tersulit/setup paling konsisten, peran = Performance Analyst; jawab hanya dari blok performance (win rate per regime/approach/setup, avg R, compliance_vs_outcome, failure_distribution); sebut n tiap grup; grup dengan sufficient=false wajib disebut belum layak disimpulkan; kalau 0 trade, bilang belum ada data; tidak ada sinyal BUY/SELL, tidak ada usulan ubah parameter/aturan.` : liveCtx;
   const lastText = last.role === "user" ? last.parts.map((p) => (p.type === "text" ? p.text : "")).join(" ") : "";
   const briefing = (scope === "XAUUSD" || scope === "BTCUSD") && isBriefingRequest(lastText);
   // Phase 4C: intent classifier picks the task tier; tier scales reasoning only, never permissions.
