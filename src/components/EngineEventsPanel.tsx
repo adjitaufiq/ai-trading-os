@@ -16,23 +16,40 @@ export function EngineEventsPanel() {
     queryKey: ["engine-events"], refetchInterval: 30_000,
     queryFn: async () => {
       const since = new Date(Date.now() - 72 * 3600_000).toISOString();
-      const [e, n] = await Promise.all([
+      const [e, n, h] = await Promise.all([
         supabase.from("engine_events").select("id,symbol,event_type,stage,signal_id,occurred_at,direction,confidence,reason,entry,stop_loss,take_profit").gte("occurred_at", since).order("occurred_at", { ascending: false }).limit(1000),
         supabase.from("engine_notifications").select("event_id,delivery_status,note,attempted_at").order("attempted_at", { ascending: false }).limit(500),
+        supabase.from("execution_agent_status").select("agent_id,last_heartbeat,mt5_connected").order("last_heartbeat", { ascending: false }).limit(1),
       ]);
       void supabase.rpc("log_engine_access", { _scope: "engine_events_panel" });
-      return { events: (e.data ?? []) as Ev[], notes: (n.data ?? []) as Note[], error: e.error?.message ?? null };
+      return { hb: (h.data?.[0] ?? null) as { agent_id: string; last_heartbeat: string | null; mt5_connected: boolean } | null, events: (e.data ?? []) as Ev[], notes: (n.data ?? []) as Note[], error: e.error?.message ?? null };
     },
   });
   const events = q.data?.events ?? [];
   const noteOf = new Map<string, Note>();
   for (const n of q.data?.notes ?? []) if (!noteOf.has(n.event_id)) noteOf.set(n.event_id, n);
   const symbols = ["XAUUSD", "BTCUSD"];
+  const tradeEv = events.filter((e) => e.symbol !== "ALL");
+  const lastExec = tradeEv.find((e) => e.event_type === "EXECUTION" || e.event_type === "EXIT");
+  const lastEv = tradeEv[0];
+  const health = events.find((e) => e.event_type === "ENGINE_OFFLINE" || e.event_type === "ENGINE_ONLINE");
+  const hb = q.data?.hb ?? null;
+  const hbAge = hb?.last_heartbeat ? (Date.now() - new Date(hb.last_heartbeat).getTime()) / 1000 : null;
+  const hbLabel = hbAge === null ? "BELUM ADA HEARTBEAT" : hbAge < 60 ? `ONLINE · ${Math.round(hbAge)} dtk lalu` : `STALE · ${Math.round(hbAge / 60)} mnt lalu`;
 
   return <section className="mx-auto w-full max-w-3xl space-y-3">
     <div className="flex items-center justify-between gap-2">
       <h2 className="text-sm font-semibold">Engine Proof of Life (72 jam)</h2>
       <span className="text-xs text-muted-foreground">Eksekusi otomatis di VPS · akun demo saja · tanpa tombol order</span>
+    </div>
+    <div className="grid grid-cols-2 gap-2 rounded border border-border p-3 text-xs sm:grid-cols-4">
+      <div><div className="text-muted-foreground">READY</div><b>{tradeEv.filter((e) => e.event_type === "READY").length}</b></div>
+      <div><div className="text-muted-foreground">OPEN</div><b>{tradeEv.filter((e) => e.event_type === "EXECUTION" && !/REJECT|ERROR/i.test(e.reason)).length}</b></div>
+      <div><div className="text-muted-foreground">BLOCK</div><b>{tradeEv.filter((e) => e.event_type === "BLOCKED").length}</b></div>
+      <div><div className="text-muted-foreground">Heartbeat agent VPS</div><b className={hbAge !== null && hbAge < 60 ? "" : "text-destructive"}>{hbLabel}</b></div>
+      <div className="col-span-2"><div className="text-muted-foreground">Eksekusi terakhir</div>{lastExec ? `${lastExec.symbol} ${lastExec.event_type} ${lastExec.direction ?? ""} · ${fmt(lastExec.occurred_at)}` : "Belum ada"}</div>
+      <div><div className="text-muted-foreground">Event terakhir</div>{lastEv ? fmt(lastEv.occurred_at) : "—"}</div>
+      <div><div className="text-muted-foreground">Engine host</div><b className={health?.event_type === "ENGINE_OFFLINE" ? "text-destructive" : ""}>{health?.event_type === "ENGINE_OFFLINE" ? "OFFLINE" : "ONLINE"}</b></div>
     </div>
     {q.data?.error && <p className="text-xs text-destructive">{q.data.error}</p>}
     <div className="grid gap-2 sm:grid-cols-2">
