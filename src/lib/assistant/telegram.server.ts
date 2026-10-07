@@ -7,6 +7,7 @@ import { analystInstructions } from "./analyst";
 import { buildLiveContext } from "./context.server";
 import { selectLlmAdapter } from "./llm/gateway.server";
 import { buildMemoryContext } from "../memory/context.server";
+import { escapeTelegramHtml as esc, limitTelegramHtml, markdownToTelegramHtml, readableEngineText, telegramHtmlToPlainText } from "./telegramFormat";
 
 const GATEWAY = "https://connector-gateway.lovable.dev/telegram";
 /** Max AI explanations per capture run (bounded work; remaining alerts use the deterministic template). */
@@ -18,9 +19,12 @@ export interface AlertEvent {
   timeframe_context?: Record<string, unknown> | null; execution_result?: string | null; block_reason?: string | null;
 }
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
 async function adminContext(scope: string): Promise<string> {
+  if (scope === "BOTH") {
+    const contexts = await Promise.all(["XAUUSD", "BTCUSD"].map(async (symbol) =>
+      `SCOPE=${symbol}\n${await adminContext(symbol).catch(() => "LIVE_CONTEXT: UNAVAILABLE; MEMORY_CONTEXT: UNAVAILABLE")}`));
+    return `LAPORAN DUA SIMBOL: sumber dan timestamp terpisah; jangan mencampur data.\n${contexts.join("\n\n")}`;
+  }
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const [live, mem] = await Promise.all([buildLiveContext(scope), scope === "ENGINE" ? Promise.resolve("") : buildMemoryContext(supabaseAdmin as never, scope).catch(() => "MEMORY_CONTEXT: UNAVAILABLE")]);
   return mem ? `${live}\n\n=== ${mem}\nATURAN MEMORY: sebut ukuran sampel; jangan menyimpulkan dari sampel kecil; jangan usulkan perubahan aturan.` : live;
@@ -46,16 +50,17 @@ async function ask(scope: string, prompt: string, tier: "fast" | "medium"): Prom
 /** AI "Kenapa" section for an engine event. Returns null on any AI failure (caller sends facts only). */
 export async function explainEvent(ev: AlertEvent): Promise<string | null> {
   const scope = ev.symbol === "XAUUSD" || ev.symbol === "BTCUSD" ? ev.symbol : "ENGINE";
-  const prompt = `Engine baru saja mencatat event berikut (FAKTA, jangan diubah):\n${JSON.stringify(ev)}\n\nTulis penjelasan singkat untuk notifikasi HP (maks 6 bullet, Bahasa Indonesia santai, TANPA markdown tabel, tanpa heading):\n- Kenapa engine sampai ke event ini: pakai timeframe_context + reasons di LIVE_CONTEXT (H4/H1/M15/M5).\n${ev.event_type === "EXIT" ? "- Ringkas hasil trade dan kenapa TP/SL kena, plus 1 poin review kepatuhan bila ada di memory.\n" : ""}${ev.event_type === "BLOCKED" ? "- Jelaskan aturan yang memblokir (block_reason) dengan bahasa trader.\n" : ""}Jangan menyebut arah selain "${ev.direction ?? "-"}", jangan membuat entry/SL/TP baru, jangan menyarankan order.`;
+  const prompt = `Engine mencatat peristiwa berikut (FAKTA pada occurred_at, jangan diubah):\n${JSON.stringify(ev)}\n\nTulis ringkasan eksekutif untuk notifikasi HP (maks 4 bullet satu tingkat, Bahasa Indonesia profesional, tanpa tabel/blok kode):\n- Takeaway peristiwa dan alasan kunci dari timeframe_context/reason event. LIVE_CONTEXT lebih baru hanya untuk pengawasan saat ini, bukan bukti alasan historis event.\n${ev.event_type === "EXIT" ? "- Ringkas hasil dan alasan penutupan yang tercatat; review hanya bila tersedia, jangan mengarang kepatuhan atau hasil.\n" : ""}${ev.event_type === "BLOCKED" ? "- Jelaskan block_reason tanpa menebak aturan lain.\n" : ""}- Radar/pengawasan: hanya status tercatat, sebut belum tersedia bila kosong.\nJangan menyebut arah selain "${ev.direction ?? "-"}", jangan membuat entry/SL/TP baru, jangan menyarankan order.`;
   return ask(scope, prompt, "fast");
 }
 
 /** Q&A from the operator's phone: same persona + context as dashboard. */
 export async function answerQuestion(text: string): Promise<string> {
   const up = text.toUpperCase();
-  const scope = /XAU|GOLD|EMAS/.test(up) ? "XAUUSD" : /BTC|BITCOIN/.test(up) ? "BTCUSD" : /ENGINE|VPS|HEALTH|ONLINE|OFFLINE/.test(up) ? "ENGINE" : "KNOWLEDGE";
-  const out = await ask(scope, `${text}\n\n(Jawab untuk dibaca di Telegram: ringkas, bullet, tanpa tabel.)`, "medium");
-  return out ?? "AI sedang tidak tersedia. Data engine tetap jalan; coba lagi sebentar.";
+  const xau = /XAU|GOLD|EMAS/.test(up), btc = /BTC|BITCOIN/.test(up);
+  const scope = (xau && btc) || /KEDUA SIMBOL|SEMUA SIMBOL|BRIEFING|RINGKASAN PASAR/.test(up) && !xau && !btc ? "BOTH" : xau ? "XAUUSD" : btc ? "BTCUSD" : /ENGINE|VPS|HEALTH|ONLINE|OFFLINE/.test(up) ? "ENGINE" : "KNOWLEDGE";
+  const out = await ask(scope, `${text}\n\n(Sajikan sebagai briefing profesional Telegram; fakta dan keputusan hanya dari sumber yang tersedia.)`, "medium");
+  return markdownToTelegramHtml(out ?? "AI sedang tidak tersedia. Kondisi engine belum diverifikasi; silakan coba lagi sebentar.");
 }
 
 const TITLES: Record<string, string> = { READY: "🚨 ENGINE READY", BLOCKED: "⛔ EXECUTION BLOCKED", ENGINE_OFFLINE: "🚨 ENGINE OFFLINE", ENGINE_ONLINE: "✅ ENGINE BACK ONLINE" };
@@ -87,7 +92,7 @@ function rrText(entry: number | null, sl: number | null, tp: number | null): str
 /** Result taken verbatim from the engine/journal R figure inside the reason; "-" when absent. */
 function resultText(reason: string): string {
   const m = reason.match(/([+-]?\d+(?:\.\d+)?)\s*R\b/i);
-  return m ? `${m[1]!}R` : "-";
+  return m?.[1] ? `${m[1]}R` : "-";
 }
 const bulletReason = (reason: string): string[] => {
   const parts = reason.split(/\s*[;·|]\s*/).map((s) => s.trim()).filter(Boolean);
@@ -98,14 +103,14 @@ const bulletReason = (reason: string): string[] => {
 export function composeAlert(ev: AlertEvent, why: string | null): string {
   const tf = (ev.timeframe_context ?? {}) as Record<string, unknown>;
   const L: string[] = [];
-  const field = (label: string, value: string) => { L.push(`<b>${label}:</b>`, esc(value || "-")); };
+  const field = (label: string, value: string) => { L.push(`<b>${label}:</b>`, markdownToTelegramHtml(readableEngineText(value || "Belum tersedia"))); };
   const tfVal = (k: string): string => {
     const v = tf[k];
     return v === undefined || v === null || String(v).trim() === "" ? "-" : String(v);
   };
 
   if (ev.event_type === "ENGINE_OFFLINE" || ev.event_type === "ENGINE_ONLINE") {
-    L.push(`<b>${alertHeadline(ev)}</b>`, "", esc(ev.reason));
+    L.push(`<b>${esc(alertHeadline(ev))}</b>`, "", markdownToTelegramHtml(readableEngineText(ev.reason)));
   } else if (ev.event_type === "BLOCKED") {
     L.push("<b>⛔ EXECUTION BLOCKED</b>", "");
     field("Symbol", ev.symbol);
@@ -116,7 +121,7 @@ export function composeAlert(ev: AlertEvent, why: string | null): string {
     field("Blocked By", sep > 0 ? br.slice(0, sep).trim() : (ev.stage ?? "-"));
     field("Reason", sep > 0 ? br.slice(sep + 1).trim() : br);
   } else if (ev.event_type === "EXIT") {
-    L.push(`<b>${alertHeadline(ev)}</b>`, "", esc(`${ev.symbol} ${ev.direction ?? ""}`.trim()), "");
+    L.push(`<b>${esc(alertHeadline(ev))}</b>`, "", esc(`${ev.symbol} ${ev.direction ?? ""}`.trim()), "");
     const isDemo = ev.stage === "DEMO_MT5";
     field("Entry", isDemo ? "-" : numStr(ev.entry));
     field("Exit", isDemo ? numStr(ev.entry) : "-");
@@ -125,7 +130,7 @@ export function composeAlert(ev: AlertEvent, why: string | null): string {
     L.push("<b>Journal:</b>", "Saved");
   } else {
     // READY / EXECUTION — one template; execution_result decides the Execution line.
-    L.push(`<b>${ev.event_type === "READY" ? "🚨 ENGINE READY" : alertHeadline(ev)}</b>`, "");
+    L.push(`<b>${esc(ev.event_type === "READY" ? "🚨 ENGINE READY" : alertHeadline(ev))}</b>`, "");
     field("Symbol", ev.symbol);
     field("Direction", dirText(ev.direction, true));
     field("Time", fmtUtc(ev.occurred_at));
@@ -133,22 +138,22 @@ export function composeAlert(ev: AlertEvent, why: string | null): string {
     field("Confidence", ev.confidence !== null ? `${ev.confidence}/100` : "-");
     L.push("", "<b>Market Context:</b>");
     for (const [k, label] of [["h4", "H4"], ["h1", "H1"], ["m15", "M15"], ["m5", "M5"]] as const)
-      L.push(`<b>${label}:</b>`, esc(tfVal(k)));
+      field(label, tfVal(k));
     L.push("", "<b>Setup Reason:</b>");
-    for (const b of bulletReason(ev.reason)) L.push(`- ${esc(b)}`);
+    for (const b of bulletReason(ev.reason)) L.push(markdownToTelegramHtml(`• ${readableEngineText(b)}`));
     L.push("", "<b>Trade Plan:</b>");
     field("Entry", numStr(ev.entry));
     field("Stop Loss", numStr(ev.stop_loss));
     field("Take Profit", numStr(ev.take_profit));
     field("Risk/Reward", rrText(ev.entry, ev.stop_loss, ev.take_profit) ?? "-");
     const er = (ev.execution_result ?? "").trim();
-    L.push("", "<b>Execution:</b>", esc(er ? (/REJECT|ERROR/i.test(er) ? `⚠️ ${er}` : `✅ ${er}`) : "⏳ menunggu validasi Risk/TradePlan/demo"));
+    L.push("", "<b>Execution:</b>", markdownToTelegramHtml(er ? (/REJECT|ERROR/i.test(er) ? `⚠️ ${er}` : `✅ ${er}`) : "⏳ Menunggu validasi risiko, rencana trade, dan akun demo"));
     L.push("<b>Mode:</b>", "DEMO_MT5");
   }
 
-  if (why) L.push("", "<b>Kenapa:</b>", esc(why));
+  if (why) L.push("", "<b>Ringkasan Eksekutif:</b>", markdownToTelegramHtml(why));
   L.push("", `<i>${esc(fmtUtc(ev.occurred_at))} · DEMO lab · AI hanya menjelaskan</i>`);
-  return L.join("\n").slice(0, 4000);
+  return limitTelegramHtml(L.join("\n"));
 }
 
 /** Operator chats: env TELEGRAM_CHAT_ID plus explicit fallback so alerts/Q&A keep working if the env var is unreadable at runtime. */
@@ -167,12 +172,26 @@ export async function sendTelegramMessage(chatId: string | number, text: string)
   const lk = process.env["LOVABLE_API_KEY"], tk = process.env["TELEGRAM_API_KEY"];
   if (!lk || !tk || !chatId) return { status: "PENDING", note: `Telegram not configured (${[!tk && "TELEGRAM_API_KEY", !chatId && "TELEGRAM_CHAT_ID", !lk && "LOVABLE_API_KEY"].filter(Boolean).join(", ")} missing)` };
   try {
+    const deliver = async (message: string, html: boolean) => {
     const r = await fetch(`${GATEWAY}/sendMessage`, {
       method: "POST", headers: { Authorization: `Bearer ${lk}`, "X-Connection-Api-Key": tk, "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true }),
+      body: JSON.stringify({ chat_id: chatId, text: message, ...(html ? { parse_mode: "HTML" } : {}), disable_web_page_preview: true }),
     });
     const body = await r.text();
-    if (!r.ok) return { status: "FAILED", note: `[${r.status}] ${body.slice(0, 300)}` };
-    return { status: "SENT", note: "ok" };
+    let payload: { ok?: boolean; description?: string; error_code?: number } | null = null;
+    try { payload = JSON.parse(body); } catch { /* Preserve provider response below. */ }
+    const success = r.ok && payload?.ok === true;
+    if (!success) console.error(`[telegram] provider rejected message [${r.status}]: ${body}`);
+    return { success, status: payload?.error_code ?? r.status, body, description: payload?.description ?? body };
+    };
+    const first = await deliver(limitTelegramHtml(text), true);
+    if (first.success) return { status: "SENT", note: "ok" };
+    // Retry only an explicit HTML/entity parsing rejection, never auth/quota/network failures.
+    if (first.status === 400 && /can't parse entities|cannot parse entities|unsupported start tag|can't find end tag/i.test(first.description)) {
+      const fallback = await deliver(telegramHtmlToPlainText(text), false);
+      if (fallback.success) return { status: "SENT", note: "ok (plain-text fallback)" };
+      return { status: "FAILED", note: `[${fallback.status}] ${fallback.body.slice(0, 300)}` };
+    }
+    return { status: "FAILED", note: `[${first.status}] ${first.body.slice(0, 300)}` };
   } catch (e) { return { status: "FAILED", note: (e as Error).message }; }
 }

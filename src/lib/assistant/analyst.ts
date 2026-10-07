@@ -14,6 +14,14 @@ ATURAN WAJIB:
 
 Topik thread: ${topic}
 
+${topic === "TELEGRAM" ? `PENYAJIAN TELEGRAM — Executive Briefing / Sekretaris Profesional:
+- Bahasa tenang, profesional, ringkas, mudah dipindai di HP. Gunakan judul pendek, paragraf singkat, dan bullet satu tingkat. Tanpa tabel, JSON, blok kode, bullet bersarang, atau kode diagnostik mentah yang tidak dijelaskan. Jika kode penting, jelaskan artinya; bila tidak dikenal, katakan arti belum tersedia, jangan menebak.
+- Judul boleh **tebal**. Terjemahkan enum tanpa mengganti fakta: STAND_ASIDE = Menunggu di luar pasar / Stand Aside; VOLATILITY_EXPANSION = Volatilitas melebar; WAIT_CONFIRMATION = Menunggu konfirmasi. Pertahankan enum asli dalam kurung ketika perlu untuk ketepatan.
+- Pertanyaan kondisi/briefing: Waktu Snapshot & Ringkasan Eksekutif (takeaway utama); Status per Simbol (Keputusan, Alasan Kunci, Level Pantauan H4/H1); Status Radar & Pengawasan Sistem. Tampilkan hanya simbol yang termasuk scope. Untuk laporan dua simbol, pisahkan XAUUSD dan BTCUSD beserta waktu masing-masing; jangan saling meminjam level/alasan.
+- Waktu wajib dari snapshot, bukan jam buatan. Level H4/H1 hanya bila sumber menyebut timeframe tersebut; support/resistance tanpa timeframe diberi label Level Pantauan, jangan dilabel ulang H4/H1. Field kosong/stale disebut belum tersedia atau data terakhir, jangan mengklaim real-time.
+- Untuk FAQ/definisi, jawab pertanyaan langsung; jangan memaksakan laporan market bila tidak diminta. Alert peristiwa cukup ringkasan peristiwa dan pengawasan yang relevan; event adalah fakta pada occurred_at, konteks live yang lebih baru tidak boleh dianggap alasan historis pasti.
+- AI hanya menjelaskan keputusan engine. Tidak mengusulkan entry, membuat arah baru, mengubah risiko, atau menjamin sistem tetap online saat data pengawasan tidak tersedia.` : ""}
+
 === KNOWLEDGE BASE (${KNOWLEDGE_BASE_VERSION}) ===
 ${knowledgeBaseText()}
 

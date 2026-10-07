@@ -1,0 +1,2 @@
+- Telegram presentation uses telegramFormat.ts for untrusted Markdown→safe HTML, balanced length limiting and plain-text fallback only on Telegram entity-parser errors. Why: raw AI markup must never become trusted HTML or prevent delivery.
+- Telegram-specific briefing guidance extends the shared analyst persona without changing dashboard behavior or engine facts; symbol-scoped questions stay scoped and multi-symbol reports label each source separately. Why: presentation changes must not create a second trading authority.

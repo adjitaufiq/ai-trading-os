@@ -31,7 +31,8 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
         let answer: string;
         try { answer = await answerQuestion(text); }
         catch (e) { console.error("[telegram] answerQuestion failed", e); answer = "AI sedang tidak tersedia. Data engine tetap jalan; coba lagi sebentar."; }
-        try { await sendTelegramMessage(chatId, answer.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").slice(0, 4000)); }
+        // answerQuestion returns safe Telegram HTML; escaping it again exposes markup to the operator.
+        try { await sendTelegramMessage(chatId, answer); }
         catch (e) { console.error("[telegram] send failed", e); }
         return Response.json({ ok: true });
       },
