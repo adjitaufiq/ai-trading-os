@@ -114,4 +114,4 @@ class DemoExecService:
             return {"status": "ERROR", "comment": f"ORDER_SEND {n.last_error()}", "ticket": None, "price": None, "retcode": None}
         ok = int(res.retcode) == n.TRADE_RETCODE_DONE
         return {"status": "FILLED" if ok else "REJECTED", "ticket": int(res.order) if ok else None,
-                "price": float(res.price) if ok else None, "retcode": int(res.retcode), "comment": str(res.comment)}
+                "price": float(res.price) if ok else None, "volume": float(getattr(res, "volume", volume)) if ok else None, "retcode": int(res.retcode), "comment": str(res.comment)}

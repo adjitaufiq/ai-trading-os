@@ -10,6 +10,8 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Optional
 from urllib.parse import parse_qs, urlparse
@@ -17,9 +19,16 @@ from urllib.parse import parse_qs, urlparse
 from .service import AccountBlocked, DemoExecService
 
 HOST = "127.0.0.1"
+_LOG_LOCK = threading.Lock()
 
 
-def make_handler(svc: DemoExecService, token: str) -> type:
+def log_event(path: str, event: dict) -> None:
+    """Append-only JSONL execution log (request + broker response + latency) for the engine journal."""
+    with _LOG_LOCK, open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(event) + "\n")
+
+
+def make_handler(svc: DemoExecService, token: str, log_path: str = "demo-exec.log.jsonl") -> type:
     class H(BaseHTTPRequestHandler):
         def log_message(self, *_: Any) -> None:  # quiet
             pass
@@ -72,7 +81,16 @@ def make_handler(svc: DemoExecService, token: str) -> type:
                 body = json.loads(self.rfile.read(min(n, 4096)) or b"{}")
             except ValueError:
                 return self._send(400, {"error": "BAD_JSON"})
-            self._run(lambda: svc.send_order(body if isinstance(body, dict) else {}))
+            req = body if isinstance(body, dict) else {}
+            t0 = time.time()
+            def go() -> Any:
+                res = svc.send_order(req)
+                try:
+                    log_event(log_path, {"type": "DEMO_ORDER", "at": int(t0 * 1000), "latency_ms": int((time.time() - t0) * 1000), "request": req, "response": res})
+                except OSError:
+                    pass
+                return res
+            self._run(go)
 
     return H
 
@@ -92,7 +110,7 @@ def main(native: Optional[Any] = None) -> None:  # pragma: no cover - VPS entry
     svc._require_demo()  # refuse to start on a non-demo / non-whitelisted account
     port = int(os.environ.get("DEMO_EXEC_PORT", "8100"))
     print(f"[mt5-exec] DEMO execution gateway on http://{HOST}:{port}")
-    ThreadingHTTPServer((HOST, port), make_handler(svc, token)).serve_forever()
+    ThreadingHTTPServer((HOST, port), make_handler(svc, token, os.environ.get("DEMO_EXEC_LOG", "demo-exec.log.jsonl"))).serve_forever()
 
 
 if __name__ == "__main__":  # pragma: no cover
