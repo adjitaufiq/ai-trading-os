@@ -1,6 +1,7 @@
 // Phase 3 contracts: AI Context Builder payload + LLM Gateway provider interface.
 // Engine Host = SOURCE OF TRUTH. LLM = reasoning/explanation only; never calculates, never decides, never executes.
 import type { LanguageModel } from "ai";
+import type { LlmTaskTier } from "./routing";
 
 export const AI_CONTEXT_SCHEMA_VERSION = "ai-context-v1";
 
