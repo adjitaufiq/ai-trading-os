@@ -66,6 +66,8 @@ export class EngineHost {
     /** Demo lab read model for GET /v1/engine/demo. */
     demoStatus?: () => unknown;
     executionMode?: ExecutionMode;
+    /** Durable sink (VPS disk outbox) for every enriched pipeline event; observer only. */
+    onPipelineEvent?: (e: EnginePipelineEvent) => void;
   }) {
     this.startedAt = o.now();
     for (const symbol of o.symbols) this.slots.set(symbol, { symbol, stop: null, rt: null, reader: null, status: "INIT", restarts: 0, unhealthySince: null, nextRemountAt: 0, backoff: this.policy.backoff_min_ms, persistError: null, slice: null });
@@ -118,10 +120,12 @@ export class EngineHost {
 
   private recordPipeline(e: PaperPipelineEvent, reader: MarketRuntimeReader | null): void {
     const snap = reader?.radarSnapshot() ?? null, i = snap?.intelligence;
-    this.pipeline.push(Object.freeze({
+    const ev: EnginePipelineEvent = Object.freeze({
       ...e, confidence: i?.confidence ?? null, snapshot_ref: snap?.generatedAt ?? null,
       timeframe_context: Object.freeze({ bias: i?.bias ?? null, h4: i?.h4_state ?? null, h1: i?.h1_state ?? null, m15: i?.m15_condition ?? null, m5: i?.m5_condition ?? null, regime: snap?.regime.type ?? null, decision: i?.status ?? null }),
-    }));
+    });
+    this.pipeline.push(ev);
+    try { this.o.onPipelineEvent?.(ev); } catch (x) { this.log(`pipeline sink failed ${(x as Error).message}`); }
     if (this.pipeline.length > PIPELINE_RING) this.pipeline.splice(0, this.pipeline.length - PIPELINE_RING);
     this.log(`${e.symbol} pipeline ${e.type}/${e.stage} ${e.direction ?? ""} ${e.reason}`);
   }

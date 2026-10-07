@@ -34,6 +34,8 @@ import { parseWhitelist } from "../src/core/execution/demo/guards";
 import { buildDemoIntent } from "../src/core/execution/demo/intent";
 import { parseExecutionMode } from "../src/core/execution/demo/types";
 import { ControlPlaneAgent } from "../src/core/execution/control/agentSync";
+import { signRequest } from "../src/core/execution/control/contract";
+import type { EnginePipelineEvent } from "../src/core/enginehost/EngineHost";
 import type { ApprovedPaperOpen } from "../src/core/paper/LivePaperLoop";
 import type { MarketRuntimeReader } from "../src/core/runtime/MarketRuntime";
 import { ENGINE_CORS_HEADERS, buildEngineEvents, routeEngineRequest, sseFrame } from "../src/core/enginehost/api";
@@ -100,7 +102,29 @@ if (executionMode === "DEMO_STRESS_TEST") {
   log(`[demo-lab] DEMO_STRESS_TEST armed · logins ${whitelist.logins.join(",")} · servers ${whitelist.servers.join(",")}`);
 }
 
+// ---- Durable engine-event outbox: every pipeline event hits disk first, then is pushed (signed) to the cloud. ----
+// Survives VPS restart: the cursor file records the last pushed line; unpushed lines are retried every 10s.
+const outboxFile = join(dataDir, "engine-events.outbox.jsonl");
+const cursorFile = join(dataDir, "engine-events.cursor");
+const pushOutbox = async () => {
+  if (!env.CONTROL_PLANE_URL || !env.EXECUTION_AGENT_SECRET || !existsSync(outboxFile)) return;
+  const lines = readFileSync(outboxFile, "utf8").split("\n").filter(Boolean);
+  const done = existsSync(cursorFile) ? Number(readFileSync(cursorFile, "utf8")) || 0 : 0;
+  const batch = lines.slice(done, done + 200);
+  if (!batch.length) return;
+  const path = "/api/public/agent/engine-events";
+  const body = JSON.stringify({ agent_id: env.EXECUTION_AGENT_ID ?? "vps-1", events: batch.map((l) => JSON.parse(l)) });
+  const ts = String(Date.now());
+  try {
+    const r = await fetch(`${env.CONTROL_PLANE_URL.replace(/\/+$/, "")}${path}`, { method: "POST", body, headers: { "content-type": "application/json", "x-agent-timestamp": ts, "x-agent-signature": await signRequest(env.EXECUTION_AGENT_SECRET, ts, "POST", path, body) } });
+    if (r.ok) writeFileSync(cursorFile, String(done + batch.length)); else log(`[events] push HTTP ${r.status}`);
+  } catch (e) { log(`[events] push failed ${(e as Error).message}`); }
+};
+setInterval(() => { void pushOutbox(); }, 10_000);
+if (!env.CONTROL_PLANE_URL || !env.EXECUTION_AGENT_SECRET) log("[events] CONTROL_PLANE_URL/EXECUTION_AGENT_SECRET not set: events kept on disk only (5-min cloud capture still runs)");
+
 const host = new EngineHost({
+  onPipelineEvent: (e: EnginePipelineEvent) => { appendFileSync(outboxFile, `${JSON.stringify(e)}\n`); void pushOutbox(); },
   symbols, persistence: new PaperPersistence(store), now: () => Date.now(), log, executionMode,
   ...(demo ? {
     onApprovedOpen: (e: ApprovedPaperOpen, reader: MarketRuntimeReader | null) => { if (agent && !agent.current().allowedSymbols.includes(e.symbol.toUpperCase())) { log(`[demo-lab] ${e.symbol} not in cloud allowed_symbols, skipped`); return; } void demo!.handle(buildDemoIntent(e, reader?.radarSnapshot() ?? null)).catch((x) => log(`[demo-lab] handle failed ${(x as Error).message}`)); },
