@@ -18,6 +18,7 @@ User meminta session briefing. Jawab PERSIS dengan struktur markdown ini, isi ha
 
 ## ${scope} SESSION BRIEF
 _Snapshot: <timestamp payload> · Sumber: ENGINE HOST VPS · MONITOR_ONLY_
+**Harga (Engine Host):** Bid <current_price.bid> / Ask <current_price.ask> @ <current_price.at>  ← baris ini WAJIB ada, salin angka persis.
 
 ### 1. Current Market State
 WAJIB baris pertama: harga sekarang dari current_price (bid / ask + waktunya), atau "belum tersedia" bila null. Lalu regime, market_phase, bias, approach, horizon, active events penting.
