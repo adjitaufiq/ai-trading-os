@@ -20,7 +20,7 @@ User meminta session briefing. Jawab PERSIS dengan struktur markdown ini, isi ha
 _Snapshot: <timestamp payload> · Sumber: ENGINE HOST VPS · MONITOR_ONLY_
 
 ### 1. Current Market State
-regime, market_phase, bias, approach, horizon, active events penting.
+WAJIB baris pertama: harga sekarang dari current_price (bid / ask + waktunya), atau "belum tersedia" bila null. Lalu regime, market_phase, bias, approach, horizon, active events penting.
 ### 2. Engine Decision
 decision + setup + confidence apa adanya, plus reasons utama engine (jangan override).
 ### 3. Multi-Timeframe Context
