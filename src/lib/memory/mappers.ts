@@ -1,4 +1,5 @@
 // Phase 4A Trading Memory (pure). Copies Engine Host fields into storage rows — no calculation, no inference.
+import { tradingStyleOf } from "@/core/execution/demo/tradingStyle";
 // AI may compare these rows; it may never modify trading rules.
 import type { EngineSymbolBundle } from "@/core/enginehost/types";
 import type { JournalTrade } from "@/engine/journal/types";
