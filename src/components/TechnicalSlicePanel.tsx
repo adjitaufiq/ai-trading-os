@@ -408,6 +408,15 @@ function MarketContextSummary({ snapshot }: { snapshot: TradingSnapshot | null }
         <div className="mt-0.5 text-xs text-muted-foreground" data-testid="mc-h1-relation">{contextLabel(op?.h1_context)}</div>
       </div>
     </div>
+    {op?.macro?.mtf && <div className="mt-3 border-t border-border pt-3" data-testid="mc-mtf">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        <span className={`font-semibold ${toneClass(op.macro.mtf.classification)}`} data-testid="mc-mtf-class">{op.macro.mtf.classification}</span>
+        <span className="text-muted-foreground">H1: <span className="text-foreground">{op.macro.mtf.h1_state.replaceAll("_", " ")}</span></span>
+        <span className="text-muted-foreground">Aksi: <span className="text-foreground" data-testid="mc-mtf-action">{op.macro.mtf.action_context.replaceAll("_", " ")}</span></span>
+        <span className="text-muted-foreground">Confidence: <span className="font-mono text-foreground">{op.macro.mtf.confidence}</span>/100</span>
+      </div>
+      <ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{op.macro.mtf.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
+    </div>}
   </section>;
 }
 
