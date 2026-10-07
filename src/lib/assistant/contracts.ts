@@ -25,7 +25,7 @@ export interface AiContextPayload {
   readonly horizon: readonly string[];
   readonly approach: string | null;
   readonly horizon_veto: string | null;
-  readonly active_events: readonly { type: string; severity: string; timeframe: string; age_bars: number }[];
+  readonly active_events: readonly { type: string; severity: string; timeframe: string | null; age_bars: number }[];
   readonly footprint_tags: readonly string[];
   readonly timeframes: AiTimeframeContext;
   readonly bias: string | null;
