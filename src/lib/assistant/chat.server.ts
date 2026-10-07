@@ -1,20 +1,18 @@
 // AI Trading Assistant streaming handler (server-only). AI ≠ AUTHORITY: explains KB + live Engine Host facts only.
-import { createOpenAI } from "@ai-sdk/openai";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { knowledgeBaseText, KNOWLEDGE_BASE_VERSION } from "./knowledgeBase";
 import { buildLiveContext } from "./context.server";
-import { createLovableAiGatewayRunIdFetch, getLovableAiGatewayRunId, withLovableAiGatewayRunIdHeader } from "./gateway.server";
-
-const MODEL = "openai/gpt-6-astra";
+import { withLovableAiGatewayRunIdHeader } from "./gateway.server";
+import { selectLlmAdapter } from "./llm/gateway.server";
 
 function json(status: number, error: string) {
   return new Response(JSON.stringify({ error }), { status, headers: { "Content-Type": "application/json" } });
 }
 
 function instructions(scope: string, topic: string, live: string) {
-  return `Anda adalah "AI Trading Assistant" di dalam Personal AI Trading OS — asisten pengetahuan internal untuk Trading Engine, Radar, Market Structure, dan Paper Trading. Anda BUKAN chatbot umum.
+  return `PERAN: Senior Trading Analyst yang menjelaskan keputusan Engine Host. Anda adalah "AI Trading Assistant" di dalam Personal AI Trading OS — asisten pengetahuan internal untuk Trading Engine, Radar, Market Structure, dan Paper Trading. Anda BUKAN chatbot umum.
 
 ATURAN WAJIB:
 1. Definisi/arti istilah: jawab HANYA dari KNOWLEDGE BASE di bawah. Sebutkan nama enum engine aslinya bila berbeda dari istilah user (mis. TRENDING = TREND_CONTINUATION). Jika istilah tidak ada di KB, katakan belum ada di knowledge base.
@@ -22,7 +20,7 @@ ATURAN WAJIB:
 3. Jangan pernah mencampur data simbol. Thread ini scope=${scope}${scope === "XAUUSD" || scope === "BTCUSD" ? `; hanya bahas data live ${scope}. Jika user menanyakan simbol lain, minta buka thread simbol tersebut.` : "."}
 4. AI ≠ AUTHORITY: jangan menyarankan kirim order, jangan menghitung ulang indikator, jangan mengubah risiko, jangan membuat sinyal BUY/SELL sendiri. Sistem MONITOR_ONLY; semua trade adalah simulasi paper.
 5. Bahasa: ikuti bahasa user (Bahasa Indonesia santai bila user pakai Indonesia, English bila English). Ringkas, terstruktur, pakai markdown dan bullet. Maksimal ~250 kata kecuali diminta detail.
-6. Format jawaban kondisi live: ringkasan 1 kalimat → bullet fakta engine → artinya untuk trader → apa yang ditunggu Radar.
+6. Format jawaban kondisi live (baca AI_CONTEXT_PAYLOAD): (a) kondisi market sekarang, (b) kenapa engine memilih decision ini (pakai reasons), (c) kondisi apa yang akan mengubah keputusan (confirmation_needed / invalidation / key_levels), (d) apa yang ditunggu Radar. Jangan pernah override decision engine.
 
 Topik thread: ${topic}
 
@@ -70,24 +68,15 @@ export async function handleAssistantChat(request: Request): Promise<Response> {
 
   const scope = thread.symbol ?? "KNOWLEDGE";
   const live = await buildLiveContext(scope);
-  const apiKey = process.env["LOVABLE_API_KEY"];
-  if (!apiKey) return json(500, "AI belum dikonfigurasi.");
-
-  const runIdFetch = createLovableAiGatewayRunIdFetch(getLovableAiGatewayRunId(request));
-  const provider = createOpenAI({
-    baseURL: "https://ai.gateway.lovable.dev/v1",
-    apiKey,
-    headers: { "Lovable-API-Key": apiKey, "X-Lovable-AIG-SDK": "vercel-ai-sdk" },
-    fetch: runIdFetch.fetch,
-  });
+  const adapter = selectLlmAdapter();
+  if (!adapter) return json(500, "AI belum dikonfigurasi.");
+  const sel = adapter.create(request);
   const result = streamText({
-    model: provider.responses(MODEL),
+    model: sel.model,
     instructions: instructions(scope, thread.topic, live),
     messages: await convertToModelMessages(messages),
     abortSignal: request.signal,
-    providerOptions: {
-      openai: { forceReasoning: true, reasoningEffort: "low", reasoningSummary: "auto", store: false, include: ["reasoning.encrypted_content"] },
-    },
+    ...(sel.providerOptions ? { providerOptions: sel.providerOptions } : {}),
   } as Parameters<typeof streamText>[0]);
 
   const response = result.toUIMessageStreamResponse({
@@ -107,5 +96,5 @@ export async function handleAssistantChat(request: Request): Promise<Response> {
       return "AI sedang tidak tersedia. Coba lagi nanti.";
     },
   });
-  return withLovableAiGatewayRunIdHeader(response, runIdFetch);
+  return sel.getRunId && sel.waitForRunId ? withLovableAiGatewayRunIdHeader(response, { getRunId: sel.getRunId, waitForRunId: sel.waitForRunId }) : response;
 }
