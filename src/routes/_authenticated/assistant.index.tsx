@@ -9,7 +9,17 @@ import { EngineEventsPanel } from "@/components/EngineEventsPanel";
 import { ExecutionControlPanel } from "@/components/ExecutionControlPanel";
 import { journalIntelligence, type Group, type TradeFact } from "@/lib/memory/analytics";
 
-export const Route = createFileRoute("/_authenticated/assistant/")({ component: AssistantHome });
+export const Route = createFileRoute("/_authenticated/assistant/")({
+  component: AssistantHome,
+  head: () => ({ meta: [
+    { title: "Journal & Pengawasan — Personal AI Trading OS" },
+    { name: "description", content: "Journal intelligence, review trade, dan pengawasan engine untuk operator Trading OS." },
+    { property: "og:title", content: "Journal & Pengawasan — Personal AI Trading OS" },
+    { property: "og:description", content: "Ringkasan historis trade, review, dan status engine tanpa keputusan trading dari AI." },
+    { property: "og:type", content: "website" },
+    { name: "twitter:card", content: "summary" },
+  ] }),
+});
 
 function Table({ title, rows }: { title: string; rows: Group[] }) {
   return <div className="rounded border border-border p-3">
