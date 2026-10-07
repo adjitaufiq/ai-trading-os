@@ -310,6 +310,135 @@ export type Database = {
         }
         Relationships: []
       }
+      execution_agent_status: {
+        Row: {
+          account_mode: string | null
+          account_number_masked: string | null
+          agent_id: string
+          agent_online: boolean
+          broker_server: string | null
+          created_at: string
+          current_version: string | null
+          execution_mode: string | null
+          id: string
+          last_error: string | null
+          last_heartbeat: string | null
+          mt5_connected: boolean
+          open_positions: number | null
+          updated_at: string
+        }
+        Insert: {
+          account_mode?: string | null
+          account_number_masked?: string | null
+          agent_id: string
+          agent_online?: boolean
+          broker_server?: string | null
+          created_at?: string
+          current_version?: string | null
+          execution_mode?: string | null
+          id?: string
+          last_error?: string | null
+          last_heartbeat?: string | null
+          mt5_connected?: boolean
+          open_positions?: number | null
+          updated_at?: string
+        }
+        Update: {
+          account_mode?: string | null
+          account_number_masked?: string | null
+          agent_id?: string
+          agent_online?: boolean
+          broker_server?: string | null
+          created_at?: string
+          current_version?: string | null
+          execution_mode?: string | null
+          id?: string
+          last_error?: string | null
+          last_heartbeat?: string | null
+          mt5_connected?: boolean
+          open_positions?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      execution_audit_log: {
+        Row: {
+          changed_by: string | null
+          event_type: string
+          id: string
+          metadata: Json
+          new_value: Json | null
+          old_value: Json | null
+          source: string
+          timestamp: string
+        }
+        Insert: {
+          changed_by?: string | null
+          event_type: string
+          id?: string
+          metadata?: Json
+          new_value?: Json | null
+          old_value?: Json | null
+          source: string
+          timestamp?: string
+        }
+        Update: {
+          changed_by?: string | null
+          event_type?: string
+          id?: string
+          metadata?: Json
+          new_value?: Json | null
+          old_value?: Json | null
+          source?: string
+          timestamp?: string
+        }
+        Relationships: []
+      }
+      execution_config: {
+        Row: {
+          allowed_symbols: string[]
+          created_at: string
+          demo_enabled: boolean
+          execution_mode: string
+          id: number
+          kill_switch: boolean
+          max_daily_loss_percent: number
+          max_daily_trades: number
+          max_open_positions: number
+          risk_percent: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          allowed_symbols?: string[]
+          created_at?: string
+          demo_enabled?: boolean
+          execution_mode?: string
+          id?: number
+          kill_switch?: boolean
+          max_daily_loss_percent?: number
+          max_daily_trades?: number
+          max_open_positions?: number
+          risk_percent?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          allowed_symbols?: string[]
+          created_at?: string
+          demo_enabled?: boolean
+          execution_mode?: string
+          id?: number
+          kill_switch?: boolean
+          max_daily_loss_percent?: number
+          max_daily_trades?: number
+          max_open_positions?: number
+          risk_percent?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       trade_reviews: {
         Row: {
           compliance: Json
@@ -397,6 +526,29 @@ export type Database = {
       log_engine_access: {
         Args: { _detail?: Json; _scope: string }
         Returns: undefined
+      }
+      update_execution_config: {
+        Args: { _patch: Json }
+        Returns: {
+          allowed_symbols: string[]
+          created_at: string
+          demo_enabled: boolean
+          execution_mode: string
+          id: number
+          kill_switch: boolean
+          max_daily_loss_percent: number
+          max_daily_trades: number
+          max_open_positions: number
+          risk_percent: number
+          updated_at: string
+          updated_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "execution_config"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
     }
     Enums: {

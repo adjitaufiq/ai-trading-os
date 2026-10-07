@@ -20,13 +20,16 @@ export class DemoExecutionBridge {
   private chain: Promise<unknown> = Promise.resolve();
   private lastAccount: { id: DemoAccountIdentity | null; ok: boolean; reason: AccountBlockReason | null } = { id: null, ok: false, reason: "IDENTITY_UNAVAILABLE" };
   private openCount = 0;
-  private readonly profile: DemoRiskProfile;
+  private readonly profileOf: () => DemoRiskProfile;
+  /** Risk limits (static, or pulled from the cloud control plane per call). The sizing/guard math is unchanged. */
+  private get profile(): DemoRiskProfile { return this.profileOf(); }
 
   constructor(private readonly o: {
     mode: ExecutionMode; gateway: DemoExecGatewayPort; whitelist: DemoWhitelist; store: DemoEventStore;
-    killSwitch: () => boolean; now: () => number; profile?: DemoRiskProfile; log?: (m: string) => void;
+    killSwitch: () => boolean; now: () => number; profile?: DemoRiskProfile | (() => DemoRiskProfile); log?: (m: string) => void;
   }) {
-    this.profile = o.profile ?? DEMO_RISK_PROFILE;
+    const p = o.profile ?? DEMO_RISK_PROFILE;
+    this.profileOf = typeof p === "function" ? p : () => p;
     for (const line of o.store.readLines()) { try { this.events.push(Object.freeze(JSON.parse(line) as DemoEvent)); } catch { /* skip torn tail line */ } }
   }
 
