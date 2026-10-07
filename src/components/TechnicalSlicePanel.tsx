@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { RadarObservabilityPanel } from "./RadarObservabilityPanel";
+import { useEngineHost } from "@/hooks/use-engine-host";
 import type { SignalAlert, SignalAlertStore } from "@/lib/signalAlerts";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Activity, ArrowDownRight, ArrowUpRight, BrainCircuit, Check, Circle, Minus, Radar, ShieldCheck, X } from "lucide-react";
@@ -384,7 +385,7 @@ function TraderRadarView({ snapshot, reader, part }: { snapshot: TradingSnapshot
 }
 
 /** MARKET CONTEXT SUMMARY (v2.5): market trend + H4/H1 bias as trader-readable card. Presentation mapping only — values come from existing operator/runtime fields, never derived in UI. */
-function MarketContextSummary({ snapshot }: { snapshot: TradingSnapshot | null }) {
+function MarketContextSummary({ snapshot, reader, symbol }: { snapshot: TradingSnapshot | null; reader: MarketRuntimeReader; symbol: string }) {
   const op = snapshot?.operator ?? null;
   const toneClass = (value: string | undefined) => value === "BULLISH" ? "text-bull" : value === "BEARISH" ? "text-bear" : "text-muted-foreground";
   const trend = trendLabel(op?.h4_primary);
@@ -408,17 +409,46 @@ function MarketContextSummary({ snapshot }: { snapshot: TradingSnapshot | null }
         <div className="mt-0.5 text-xs text-muted-foreground" data-testid="mc-h1-relation">{contextLabel(op?.h1_context)}</div>
       </div>
     </div>
-    {op?.macro?.mtf && <div className="mt-3 border-t border-border pt-3" data-testid="mc-mtf">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-        <span className={`font-semibold ${toneClass(op.macro.mtf.classification)}`} data-testid="mc-mtf-class">{op.macro.mtf.classification}</span>
-        <span className="text-muted-foreground">H1: <span className="text-foreground">{op.macro.mtf.h1_state.replaceAll("_", " ")}</span></span>
-        <span className="text-muted-foreground">Aksi: <span className="text-foreground" data-testid="mc-mtf-action">{op.macro.mtf.action_context.replaceAll("_", " ")}</span></span>
-        <span className="text-muted-foreground">Confidence: <span className="font-mono text-foreground">{op.macro.mtf.confidence}</span>/100</span>
-      </div>
-      <ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{op.macro.mtf.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
-    </div>}
+    <IntelligenceBlock reader={reader} symbol={symbol} />
   </section>;
 }
+
+/** Market Intelligence (mtf-intel-v1) projection. Source: ENGINE HOST (VPS) when attached, else BROWSER FALLBACK — never mixed. */
+function IntelligenceBlock({ reader, symbol }: { reader: MarketRuntimeReader; symbol: string }) {
+  const eng = useEngineHost(symbol, 5_000);
+  const r = eng.attached ? eng.radar?.snapshot?.intelligence ?? null : reader.radarSnapshot?.()?.intelligence ?? null;
+  const tone = (v: string | undefined) => v === "BULLISH" ? "text-bull" : v === "BEARISH" ? "text-bear" : "text-muted-foreground";
+  const statusCls = r?.status === "READY" ? "border-bull/50 text-bull" : r?.status === "STAND_ASIDE" ? "border-bear/50 text-bear" : "border-border text-warn";
+  const Row = ({ k, v, sub }: { k: string; v: string; sub?: string }) => <div className="border-b border-border/50 py-1.5 text-xs"><div className="flex justify-between gap-3"><span className="font-semibold text-muted-foreground">{k}</span><span className="text-right text-foreground">{v}</span></div>{sub && <div className="mt-0.5 text-muted-foreground">{sub}</div>}</div>;
+  return <div className="mt-3 border-t border-border pt-3" data-testid="mc-intel">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <span className={`border px-2 py-1 text-xs font-bold tracking-wider ${statusCls}`} data-testid="mc-intel-status">{(r?.status ?? "NO_DATA").replaceAll("_", " ")}</span>
+      <span className="text-[11px] text-muted-foreground" data-testid="mc-intel-source">{eng.attached ? "ENGINE HOST (VPS)" : "BROWSER FALLBACK MODE · Analysis computed from loaded feed"}</span>
+    </div>
+    {!r ? <p className="mt-2 text-xs text-muted-foreground">Menunggu evaluasi radar pada M5 close (histori broker). Tidak ada data yang dikarang.</p> : <>
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div><div className="text-[11px] uppercase text-muted-foreground">Bias</div><div className={`text-sm font-semibold ${tone(r.bias)}`} data-testid="mc-intel-bias">{r.bias}</div></div>
+        <div><div className="text-[11px] uppercase text-muted-foreground">Phase</div><div className="text-sm font-semibold">{r.market_phase}</div></div>
+        <div><div className="text-[11px] uppercase text-muted-foreground">Confidence</div><div className="font-mono text-sm font-semibold" data-testid="mc-intel-confidence">{r.confidence}%</div></div>
+        <div><div className="text-[11px] uppercase text-muted-foreground">Risk</div><div className={`text-sm font-semibold ${r.risk_assessment === "HIGH" ? "text-bear" : r.risk_assessment === "LOW" ? "text-bull" : "text-warn"}`}>{r.risk_assessment}</div></div>
+      </div>
+      <div className="mt-3">
+        <Row k="H4" v={r.bias} sub={`${r.h4_state} · ${r.audit_trail[0] ?? ""}`} />
+        <Row k="H1" v={r.h1_state.replaceAll("_", " ")} />
+        <Row k="M15" v={r.setup.replaceAll("_", " ")} sub={r.m15_condition} />
+        <Row k="M5" v={r.m5_condition} />
+      </div>
+      {r.confirmation_needed.length > 0 && <div className="mt-3"><div className="text-[11px] font-semibold uppercase text-muted-foreground">Confirmation needed</div>
+        <ul className="mt-1 space-y-0.5 text-xs" data-testid="mc-intel-confirm">{r.confirmation_needed.map((c) => <li key={c}>☐ {c}</li>)}</ul></div>}
+      <div className="mt-3"><div className="text-[11px] font-semibold uppercase text-muted-foreground">Audit trail</div>
+        <ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">{r.audit_trail.map((a) => <li key={a}>{a}</li>)}</ul></div>
+      {r.invalidation_conditions.length > 0 && <div className="mt-3"><div className="text-[11px] font-semibold uppercase text-bear">What invalidates this view</div>
+        <ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground" data-testid="mc-intel-invalid">{r.invalidation_conditions.map((a) => <li key={a}>{a}</li>)}</ul></div>}
+      <p className="mt-2 text-[11px] text-muted-foreground">Konteks market saja — MONITOR ONLY, tidak mengirim order. Confidence ≠ kesiapan entry.</p>
+    </>}
+  </div>;
+}
+
 
 function PaperPositions({ store, symbol, quote }: { store: PaperJournalStore; symbol: string; quote: TicketQuote | null }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
@@ -526,7 +556,7 @@ function Cockpit({ service, reader, explain, store }: { service: TechnicalSliceS
         <SignalSafetyStrip signal={snapshot?.signal ?? null} />
       </section>
 
-      <MarketContextSummary snapshot={snapshot} />
+      <MarketContextSummary snapshot={snapshot} reader={reader} symbol={view.symbol} />
       <section className="border border-border bg-card p-4 sm:p-5" aria-label="Rencana transaksi acuan" data-testid="radar-card">
         <RadarPlanView radar={snapshot?.radar_plan ?? null} signal={signal} entry={entry} projection={projection} />
         <TradeActions symbol={view.symbol} signal={signal} quote={quote} plan={plan} planFor={ticketPlan} reason={signalReason} confirmations={planConfirmations} mode={mode}

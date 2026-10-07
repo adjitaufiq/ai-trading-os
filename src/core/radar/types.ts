@@ -6,6 +6,7 @@ import type { MarketSession } from "../temporal/MarketSessionResolver";
 import type { EventSeverity, EventState, MarketEventType } from "../../engine/core/market/events/types";
 import type { MarketApproach, TradingHorizon } from "../../engine/core/market/horizon/types";
 import type { MarketRegimeType } from "../../engine/core/market/regime/types";
+import type { MarketIntelligenceReport } from "../intelligence/MarketIntelligenceEngine";
 
 export const RADAR_SCHEMA_VERSION = "radar-v1" as const;
 export const RADAR_RECENT_EVENTS_MAX = 20;
@@ -69,5 +70,7 @@ export interface RadarSnapshot {
   readonly recentEvents: readonly RadarEventReference[];
   readonly validationSource: ValidationSource;
   readonly algorithmVersions: AlgorithmVersions;
+  /** Hierarchical MTF market intelligence (separate layer, descriptive only; absent on older hosts). */
+  readonly intelligence?: MarketIntelligenceReport;
   readonly generatedAt: number;
 }

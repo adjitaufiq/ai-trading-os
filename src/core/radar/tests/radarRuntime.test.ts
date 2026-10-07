@@ -107,7 +107,7 @@ describe("radar runtime read model", () => {
     expect(x.r.radarHealth()).toMatchObject({ status: "ACTIVE", validationMode: "SYNTHETIC" });
     expect(s.recentEvents.length).toBeLessThanOrEqual(RADAR_RECENT_EVENTS_MAX);
     expect(Object.isFrozen(s) && Object.isFrozen(s.footprints.activeTags) && Object.isFrozen(s.regime)).toBe(true);
-    expect(JSON.stringify(s)).not.toMatch(/confidence|probability|score/i);
+    const { intelligence: _intel, ...radarCore } = s; expect(JSON.stringify(radarCore)).not.toMatch(/confidence|probability|score/i);
     x.clock.advanceTo(x.clock.now() + 11 * MIN);
     expect(x.r.radarHealth().status).toBe("STALE");
   });
