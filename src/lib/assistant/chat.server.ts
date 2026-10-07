@@ -1,13 +1,11 @@
 // AI Trading Assistant streaming handler (server-only). AI ≠ AUTHORITY: explains KB + live Engine Host facts only.
-import { createOpenAI } from "@ai-sdk/openai";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { knowledgeBaseText, KNOWLEDGE_BASE_VERSION } from "./knowledgeBase";
 import { buildLiveContext } from "./context.server";
-import { createLovableAiGatewayRunIdFetch, getLovableAiGatewayRunId, withLovableAiGatewayRunIdHeader } from "./gateway.server";
-
-const MODEL = "openai/gpt-6-astra";
+import { withLovableAiGatewayRunIdHeader } from "./gateway.server";
+import { selectLlmAdapter } from "./llm/gateway.server";
 
 function json(status: number, error: string) {
   return new Response(JSON.stringify({ error }), { status, headers: { "Content-Type": "application/json" } });
@@ -70,24 +68,15 @@ export async function handleAssistantChat(request: Request): Promise<Response> {
 
   const scope = thread.symbol ?? "KNOWLEDGE";
   const live = await buildLiveContext(scope);
-  const apiKey = process.env["LOVABLE_API_KEY"];
-  if (!apiKey) return json(500, "AI belum dikonfigurasi.");
-
-  const runIdFetch = createLovableAiGatewayRunIdFetch(getLovableAiGatewayRunId(request));
-  const provider = createOpenAI({
-    baseURL: "https://ai.gateway.lovable.dev/v1",
-    apiKey,
-    headers: { "Lovable-API-Key": apiKey, "X-Lovable-AIG-SDK": "vercel-ai-sdk" },
-    fetch: runIdFetch.fetch,
-  });
+  const adapter = selectLlmAdapter();
+  if (!adapter) return json(500, "AI belum dikonfigurasi.");
+  const sel = adapter.create(request);
   const result = streamText({
-    model: provider.responses(MODEL),
+    model: sel.model,
     instructions: instructions(scope, thread.topic, live),
     messages: await convertToModelMessages(messages),
     abortSignal: request.signal,
-    providerOptions: {
-      openai: { forceReasoning: true, reasoningEffort: "low", reasoningSummary: "auto", store: false, include: ["reasoning.encrypted_content"] },
-    },
+    ...(sel.providerOptions ? { providerOptions: sel.providerOptions } : {}),
   } as Parameters<typeof streamText>[0]);
 
   const response = result.toUIMessageStreamResponse({

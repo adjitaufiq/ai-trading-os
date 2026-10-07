@@ -2,6 +2,7 @@
 // read-only fact sheet. Never sends raw candles; never mixes symbols in a symbol-scoped thread.
 import { EngineHostClient } from "@/core/enginehost/client";
 import type { EngineSymbolBundle } from "@/core/enginehost/types";
+import { buildAiContextPayload } from "./contextBuilder";
 
 function engineUrl(): string | null {
   const v = (import.meta.env["VITE_ENGINE_HOST_URL"] as string | undefined) ?? process.env["VITE_ENGINE_HOST_URL"];
@@ -54,7 +55,7 @@ export async function buildLiveContext(scope: string): Promise<string> {
   const header = `LIVE_CONTEXT source=ENGINE_HOST generated_at=${iso(res.envelope.generated_at)} operating_mode=MONITOR_ONLY execution_enabled=false`;
   if (scope === "XAUUSD" || scope === "BTCUSD") {
     const b = bundles.find((x) => x.symbol === scope);
-    return `${header}\nSCOPE=${scope} (hanya simbol ini; simbol lain tidak boleh dibahas sebagai data live)\n${b ? JSON.stringify(summarizeBundle(b)) : `${scope}: NO_DATA`}`;
+    return `${header}\nSCOPE=${scope} (hanya simbol ini; simbol lain tidak boleh dibahas sebagai data live)\nAI_CONTEXT_PAYLOAD=${b ? JSON.stringify(buildAiContextPayload(b)) : `${scope}: NO_DATA`}\nTECHNICAL_DETAIL=${b ? JSON.stringify({ paper_account: summarizeBundle(b).paper_account, technical_state: summarizeBundle(b).technical_state }) : "null"}`;
   }
   if (scope === "ENGINE") {
     return `${header}\nSCOPE=ENGINE_HOST\n${JSON.stringify(bundles.map((b) => ({ symbol: b.symbol, health: b.health, radar_status: b.radar.health?.status ?? null, last_m5_close: iso(b.last_m5_close) })))}`;
