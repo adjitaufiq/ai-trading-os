@@ -2,13 +2,12 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { RadarObservabilityPanel } from "./RadarObservabilityPanel";
 import { localCockpitSource, remoteCockpitSource, type CockpitSource, type RuntimeFacts } from "@/lib/cockpitSource";
 import type { EngineHostStore } from "@/lib/engineHostStore";
-import { useEngineHost } from "@/hooks/use-engine-host";
 import type { SignalAlert, SignalAlertStore } from "@/lib/signalAlerts";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Activity, ArrowDownRight, ArrowUpRight, BrainCircuit, Check, Circle, Minus, Radar, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LiveClock } from "@/core/temporal/CanonicalClock";
-import { TechnicalSliceService } from "@/core/technical/TechnicalSliceService";
+import { TechnicalSliceService, type SliceView } from "@/core/technical/TechnicalSliceService";
 import type { MarketRuntimeReader } from "@/core/runtime/MarketRuntime";
 import type { Indicator } from "@/core/technical/indicators";
 import type { Relation, Structure } from "@/core/technical/indicators";
@@ -641,7 +640,7 @@ export function TechnicalSlicePanel(props: TechnicalSlicePanelProps) {
   return props.engine ? <EnginePanel {...props} engine={props.engine} /> : <BrowserPanel {...props} />;
 }
 
-function PanelFrame({ children }: { children: React.ReactNode }) {
+function PanelFrame({ children }: { children: import("react").ReactNode }) {
   return <section className="bg-background px-4 pb-24 sm:px-8 md:pb-8" aria-label="Kokpit trading"><div className="mx-auto max-w-screen-2xl">{children}</div></section>;
 }
 const waiting = <div className="border border-border bg-card p-4 text-sm text-muted-foreground">Menunggu pasar terpilih…</div>;
