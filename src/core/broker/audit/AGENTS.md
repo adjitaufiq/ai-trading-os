@@ -1,0 +1,1 @@
+- Real broker audit UI (src/components/BrokerAuditTerminal.tsx, /audit) reads only via BrokerGatewayClient and pure helpers in src/core/broker/audit; it never mutates, fills or ingests data. Why: audit surfaces discrepancies, it must not create evidence.
