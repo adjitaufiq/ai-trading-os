@@ -2,11 +2,13 @@
 import type { RadarHealth, RadarSnapshot } from "../radar/types";
 import type { VirtualAccountView } from "../paper/LivePaperLoop";
 import type { JournalTrade } from "../../engine/journal/types";
+import type { BrokerClockView } from "./brokerClock";
 
 export const ENGINE_HOST_SCHEMA = "engine-host-v1" as const;
 
 /** Stable lifecycle. Transitions only move along real evidence; never inferred by the UI. */
-export type EngineState = "STARTING" | "SYNCING" | "ONLINE" | "DEGRADED" | "OFFLINE";
+/** BOOTSTRAP = runtime running but closed-history baseline (ATR/volatility/radar) not ready yet; no defaults are shown. */
+export type EngineState = "STARTING" | "BOOTSTRAP" | "SYNCING" | "ONLINE" | "DEGRADED" | "OFFLINE";
 
 export interface SymbolEngineHealth {
   readonly symbol: string;
@@ -19,6 +21,8 @@ export interface SymbolEngineHealth {
   readonly radar_status: RadarHealth["status"] | "NOT_MOUNTED";
   readonly mount_status: string;
   readonly restarts: number;
+  /** Broker-anchored clock drift monitor (observational only). */
+  readonly clock: BrokerClockView;
 }
 
 export interface EngineHostHealth {
