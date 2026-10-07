@@ -238,11 +238,11 @@ export class LivePaperLoop {
     if (!o.ok) return;
     this.open = { trade: o.trade, plan, bars: [], h1Phase: bias.h1.phase, tier: loc.context.locationTier };
     this.decision = `OPEN ${plan.direction}`;
-    const ev: ApprovedPaperOpen = Object.freeze({
+    const openEv: ApprovedPaperOpen = Object.freeze({
       signalId: setup.id, planId: plan.id, symbol: sym, direction: plan.direction, entry: plan.entry, stopLoss: plan.sl!, takeProfit: plan.tp!, rr: plan.rr,
       riskDecision: "APPROVED" as const, signalSource: Object.freeze({ ...o.trade.snapshot.signalSource }), closedBarAt: bar.close_time,
     });
-    for (const l of this.openListeners) { try { l(ev); } catch { /* observers never affect the loop */ } }
+    for (const l of this.openListeners) { try { l(openEv); } catch { /* observers never affect the loop */ } }
   }
 }
 
