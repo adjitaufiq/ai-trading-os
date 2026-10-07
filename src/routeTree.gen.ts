@@ -20,6 +20,7 @@ import { Route as AuthenticatedAssistantIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedAssistantThreadIdRouteImport } from './routes/_authenticated/assistant.$threadId'
 import { Route as ApiPublicDemoControlRouteImport } from './routes/api/public/demo-control'
 import { Route as ApiPublicAgentConfigRouteImport } from './routes/api/public/agent/config'
+import { Route as ApiPublicAgentEngineEventsRouteImport } from './routes/api/public/agent/engine-events'
 import { Route as ApiPublicAgentEventsRouteImport } from './routes/api/public/agent/events'
 import { Route as ApiPublicAgentHeartbeatRouteImport } from './routes/api/public/agent/heartbeat'
 import { Route as ApiPublicHooksEngineMemoryRouteImport } from './routes/api/public/hooks/engine-memory'
@@ -80,6 +81,12 @@ const ApiPublicAgentConfigRoute = ApiPublicAgentConfigRouteImport.update({
   path: '/api/public/agent/config',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicAgentEngineEventsRoute =
+  ApiPublicAgentEngineEventsRouteImport.update({
+    id: '/api/public/agent/engine-events',
+    path: '/api/public/agent/engine-events',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicAgentEventsRoute = ApiPublicAgentEventsRouteImport.update({
   id: '/api/public/agent/events',
   path: '/api/public/agent/events',
@@ -108,6 +115,7 @@ export interface FileRoutesByFullPath {
   '/api/public/demo-control': typeof ApiPublicDemoControlRoute
   '/assistant/': typeof AuthenticatedAssistantIndexRoute
   '/api/public/agent/config': typeof ApiPublicAgentConfigRoute
+  '/api/public/agent/engine-events': typeof ApiPublicAgentEngineEventsRoute
   '/api/public/agent/events': typeof ApiPublicAgentEventsRoute
   '/api/public/agent/heartbeat': typeof ApiPublicAgentHeartbeatRoute
   '/api/public/hooks/engine-memory': typeof ApiPublicHooksEngineMemoryRoute
@@ -122,6 +130,7 @@ export interface FileRoutesByTo {
   '/api/public/demo-control': typeof ApiPublicDemoControlRoute
   '/assistant': typeof AuthenticatedAssistantIndexRoute
   '/api/public/agent/config': typeof ApiPublicAgentConfigRoute
+  '/api/public/agent/engine-events': typeof ApiPublicAgentEngineEventsRoute
   '/api/public/agent/events': typeof ApiPublicAgentEventsRoute
   '/api/public/agent/heartbeat': typeof ApiPublicAgentHeartbeatRoute
   '/api/public/hooks/engine-memory': typeof ApiPublicHooksEngineMemoryRoute
@@ -139,6 +148,7 @@ export interface FileRoutesById {
   '/api/public/demo-control': typeof ApiPublicDemoControlRoute
   '/_authenticated/assistant/': typeof AuthenticatedAssistantIndexRoute
   '/api/public/agent/config': typeof ApiPublicAgentConfigRoute
+  '/api/public/agent/engine-events': typeof ApiPublicAgentEngineEventsRoute
   '/api/public/agent/events': typeof ApiPublicAgentEventsRoute
   '/api/public/agent/heartbeat': typeof ApiPublicAgentHeartbeatRoute
   '/api/public/hooks/engine-memory': typeof ApiPublicHooksEngineMemoryRoute
@@ -156,6 +166,7 @@ export interface FileRouteTypes {
     | '/api/public/demo-control'
     | '/assistant/'
     | '/api/public/agent/config'
+    | '/api/public/agent/engine-events'
     | '/api/public/agent/events'
     | '/api/public/agent/heartbeat'
     | '/api/public/hooks/engine-memory'
@@ -170,6 +181,7 @@ export interface FileRouteTypes {
     | '/api/public/demo-control'
     | '/assistant'
     | '/api/public/agent/config'
+    | '/api/public/agent/engine-events'
     | '/api/public/agent/events'
     | '/api/public/agent/heartbeat'
     | '/api/public/hooks/engine-memory'
@@ -186,6 +198,7 @@ export interface FileRouteTypes {
     | '/api/public/demo-control'
     | '/_authenticated/assistant/'
     | '/api/public/agent/config'
+    | '/api/public/agent/engine-events'
     | '/api/public/agent/events'
     | '/api/public/agent/heartbeat'
     | '/api/public/hooks/engine-memory'
@@ -200,6 +213,7 @@ export interface RootRouteChildren {
   ApiAssistantChatRoute: typeof ApiAssistantChatRoute
   ApiPublicDemoControlRoute: typeof ApiPublicDemoControlRoute
   ApiPublicAgentConfigRoute: typeof ApiPublicAgentConfigRoute
+  ApiPublicAgentEngineEventsRoute: typeof ApiPublicAgentEngineEventsRoute
   ApiPublicAgentEventsRoute: typeof ApiPublicAgentEventsRoute
   ApiPublicAgentHeartbeatRoute: typeof ApiPublicAgentHeartbeatRoute
   ApiPublicHooksEngineMemoryRoute: typeof ApiPublicHooksEngineMemoryRoute
@@ -284,6 +298,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicAgentConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/agent/engine-events': {
+      id: '/api/public/agent/engine-events'
+      path: '/api/public/agent/engine-events'
+      fullPath: '/api/public/agent/engine-events'
+      preLoaderRoute: typeof ApiPublicAgentEngineEventsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/agent/events': {
       id: '/api/public/agent/events'
       path: '/api/public/agent/events'
@@ -344,6 +365,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAssistantChatRoute: ApiAssistantChatRoute,
   ApiPublicDemoControlRoute: ApiPublicDemoControlRoute,
   ApiPublicAgentConfigRoute: ApiPublicAgentConfigRoute,
+  ApiPublicAgentEngineEventsRoute: ApiPublicAgentEngineEventsRoute,
   ApiPublicAgentEventsRoute: ApiPublicAgentEventsRoute,
   ApiPublicAgentHeartbeatRoute: ApiPublicAgentHeartbeatRoute,
   ApiPublicHooksEngineMemoryRoute: ApiPublicHooksEngineMemoryRoute,

@@ -162,18 +162,21 @@ export type Database = {
       }
       engine_events: {
         Row: {
+          block_reason: string | null
           captured_at: string
           confidence: number | null
           direction: string | null
           entry: number | null
           event_key: string
           event_type: string
+          execution_result: string | null
           id: string
           occurred_at: string
           payload: Json
           reason: string
           signal_id: string | null
           snapshot_ref: string | null
+          source: string
           stage: string | null
           stop_loss: number | null
           symbol: string
@@ -181,18 +184,21 @@ export type Database = {
           timeframe_context: Json
         }
         Insert: {
+          block_reason?: string | null
           captured_at?: string
           confidence?: number | null
           direction?: string | null
           entry?: number | null
           event_key: string
           event_type: string
+          execution_result?: string | null
           id?: string
           occurred_at: string
           payload?: Json
           reason?: string
           signal_id?: string | null
           snapshot_ref?: string | null
+          source?: string
           stage?: string | null
           stop_loss?: number | null
           symbol: string
@@ -200,18 +206,21 @@ export type Database = {
           timeframe_context?: Json
         }
         Update: {
+          block_reason?: string | null
           captured_at?: string
           confidence?: number | null
           direction?: string | null
           entry?: number | null
           event_key?: string
           event_type?: string
+          execution_result?: string | null
           id?: string
           occurred_at?: string
           payload?: Json
           reason?: string
           signal_id?: string | null
           snapshot_ref?: string | null
+          source?: string
           stage?: string | null
           stop_loss?: number | null
           symbol?: string
