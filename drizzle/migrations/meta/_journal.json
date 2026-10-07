@@ -8,6 +8,13 @@
       "when": 1791351411409,
       "tag": "0000_assistant_threads",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791357031140,
+      "tag": "0001_engine_memory_and_trades",
+      "breakpoints": true
     }
   ]
 }

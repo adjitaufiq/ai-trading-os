@@ -82,6 +82,156 @@ export type Database = {
         }
         Relationships: []
       }
+      engine_memory: {
+        Row: {
+          active_events: string[]
+          approach: string | null
+          bias: string | null
+          captured_at: string
+          confidence: number | null
+          confirmation_needed: string[]
+          data_source: string | null
+          decision: string | null
+          engine_state: string | null
+          h1_state: string | null
+          h4_state: string | null
+          horizon: string[]
+          id: string
+          invalidation: string[]
+          m5_close_at: string
+          market_phase: string | null
+          price: number | null
+          radar_status: string | null
+          reasons: string[]
+          regime: string | null
+          resistance: number | null
+          risk: string | null
+          setup: string | null
+          support: number | null
+          symbol: string
+        }
+        Insert: {
+          active_events?: string[]
+          approach?: string | null
+          bias?: string | null
+          captured_at?: string
+          confidence?: number | null
+          confirmation_needed?: string[]
+          data_source?: string | null
+          decision?: string | null
+          engine_state?: string | null
+          h1_state?: string | null
+          h4_state?: string | null
+          horizon?: string[]
+          id?: string
+          invalidation?: string[]
+          m5_close_at: string
+          market_phase?: string | null
+          price?: number | null
+          radar_status?: string | null
+          reasons?: string[]
+          regime?: string | null
+          resistance?: number | null
+          risk?: string | null
+          setup?: string | null
+          support?: number | null
+          symbol: string
+        }
+        Update: {
+          active_events?: string[]
+          approach?: string | null
+          bias?: string | null
+          captured_at?: string
+          confidence?: number | null
+          confirmation_needed?: string[]
+          data_source?: string | null
+          decision?: string | null
+          engine_state?: string | null
+          h1_state?: string | null
+          h4_state?: string | null
+          horizon?: string[]
+          id?: string
+          invalidation?: string[]
+          m5_close_at?: string
+          market_phase?: string | null
+          price?: number | null
+          radar_status?: string | null
+          reasons?: string[]
+          regime?: string | null
+          resistance?: number | null
+          risk?: string | null
+          setup?: string | null
+          support?: number | null
+          symbol?: string
+        }
+        Relationships: []
+      }
+      engine_trades: {
+        Row: {
+          approach: string | null
+          captured_at: string
+          close_reason: string | null
+          closed_at: string
+          data_source: string | null
+          direction: string
+          failure_category: string | null
+          location: string | null
+          opened_at: string
+          payload: Json
+          profit_loss_usd: number
+          r_multiple: number | null
+          reaction_quality: string | null
+          regime: string | null
+          result: string
+          risk_usd: number
+          symbol: string
+          trade_id: string
+          trigger_pattern: string | null
+        }
+        Insert: {
+          approach?: string | null
+          captured_at?: string
+          close_reason?: string | null
+          closed_at: string
+          data_source?: string | null
+          direction: string
+          failure_category?: string | null
+          location?: string | null
+          opened_at: string
+          payload: Json
+          profit_loss_usd: number
+          r_multiple?: number | null
+          reaction_quality?: string | null
+          regime?: string | null
+          result: string
+          risk_usd: number
+          symbol: string
+          trade_id: string
+          trigger_pattern?: string | null
+        }
+        Update: {
+          approach?: string | null
+          captured_at?: string
+          close_reason?: string | null
+          closed_at?: string
+          data_source?: string | null
+          direction?: string
+          failure_category?: string | null
+          location?: string | null
+          opened_at?: string
+          payload?: Json
+          profit_loss_usd?: number
+          r_multiple?: number | null
+          reaction_quality?: string | null
+          regime?: string | null
+          result?: string
+          risk_usd?: number
+          symbol?: string
+          trade_id?: string
+          trigger_pattern?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

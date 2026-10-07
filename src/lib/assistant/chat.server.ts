@@ -6,6 +6,7 @@ import { knowledgeBaseText, KNOWLEDGE_BASE_VERSION } from "./knowledgeBase";
 import { buildLiveContext } from "./context.server";
 import { withLovableAiGatewayRunIdHeader } from "./gateway.server";
 import { selectLlmAdapter } from "./llm/gateway.server";
+import { buildMemoryContext } from "../memory/context.server";
 
 function json(status: number, error: string) {
   return new Response(JSON.stringify({ error }), { status, headers: { "Content-Type": "application/json" } });
@@ -67,7 +68,8 @@ export async function handleAssistantChat(request: Request): Promise<Response> {
   }
 
   const scope = thread.symbol ?? "KNOWLEDGE";
-  const live = await buildLiveContext(scope);
+  const [liveCtx, memoryCtx] = await Promise.all([buildLiveContext(scope), scope === "ENGINE" ? Promise.resolve("") : buildMemoryContext(supabase, scope)]);
+  const live = memoryCtx ? `${liveCtx}\n\n=== ${memoryCtx}\nATURAN MEMORY: boleh membandingkan kondisi sekarang dengan similar_past_states dan menjelaskan statistik journal; sebut ukuran sampel; jangan menyimpulkan dari sampel kecil; jangan pernah mengusulkan perubahan aturan engine atau optimasi otomatis.` : liveCtx;
   const adapter = selectLlmAdapter();
   if (!adapter) return json(500, "AI belum dikonfigurasi.");
   const sel = adapter.create(request);
