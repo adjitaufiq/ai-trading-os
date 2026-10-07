@@ -2,6 +2,7 @@
 // AI may compare these rows; it may never modify trading rules.
 import type { EngineSymbolBundle } from "@/core/enginehost/types";
 import type { JournalTrade } from "@/engine/journal/types";
+import type { DemoTradeRecord } from "@/core/execution/demo/types";
 
 const iso = (ms: number) => new Date(ms).toISOString();
 
@@ -37,7 +38,7 @@ export interface TradeRow {
   trade_id: string; symbol: string; direction: string; result: string; close_reason: string | null;
   opened_at: string; closed_at: string; profit_loss_usd: number; risk_usd: number; r_multiple: number | null;
   failure_category: string | null; data_source: string | null; regime: string | null; approach: string | null;
-  location: string | null; trigger_pattern: string | null; reaction_quality: string | null; payload: JournalTrade;
+  location: string | null; trigger_pattern: string | null; reaction_quality: string | null; payload: unknown;
 }
 
 export function tradeToRow(t: JournalTrade): TradeRow {
@@ -49,5 +50,18 @@ export function tradeToRow(t: JournalTrade): TradeRow {
     regime: t.contextSnapshot?.regime ?? null, approach: t.contextSnapshot?.marketApproach ?? null,
     location: t.context?.priceLocation ?? null, trigger_pattern: t.context?.triggerPattern ?? null,
     reaction_quality: t.context?.reactionQuality ?? null, payload: t,
+  };
+}
+
+/** Stage 10 demo lab: one engine_trades row per CLOSED demo order (data_source DEMO_MT5, never mixed with paper). */
+export function demoRecordToRow(r: DemoTradeRecord): TradeRow | null {
+  if (r.executionResult !== "FILLED" || r.closedAt === null || r.profitLossUSD === null || r.outcome === null) return null;
+  return {
+    trade_id: r.tradeId, symbol: r.symbol, direction: r.direction, result: r.outcome, close_reason: r.exitReason === "SL" ? "SL_HIT" : r.exitReason === "TP" ? "TP_HIT" : "OTHER",
+    opened_at: iso(r.sentAt), closed_at: iso(r.closedAt), profit_loss_usd: r.profitLossUSD, risk_usd: r.riskUSD,
+    r_multiple: r.riskUSD > 0 ? Math.round((r.profitLossUSD / r.riskUSD) * 10000) / 10000 : null,
+    failure_category: null, data_source: "DEMO_MT5", regime: r.context.regime, approach: null,
+    location: r.context.signalSource["location"] ?? null, trigger_pattern: r.context.signalSource["trigger"] ?? null,
+    reaction_quality: r.context.signalSource["reactionQuality"] ?? null, payload: r,
   };
 }

@@ -30,6 +30,8 @@ export interface EngineHostHealth {
   readonly execution_enabled: false;
   readonly started_at: number;
   readonly persistence: "VPS_DISK";
+  /** Stage 10 demo lab mode. MONITOR_ONLY/execution_enabled describe the REAL account, which stays absent. */
+  readonly demo_execution?: "REAL_DISABLED" | "PAPER_ONLY" | "DEMO_STRESS_TEST";
   readonly symbols: readonly SymbolEngineHealth[];
 }
 

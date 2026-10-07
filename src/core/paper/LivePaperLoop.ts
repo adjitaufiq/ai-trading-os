@@ -52,6 +52,13 @@ export interface VirtualAccountView {
   readonly balanceAfter: readonly { readonly tradeId: string; readonly balance: number }[];
 }
 
+/** Emitted once when a READY setup passed plan + M4 APPROVED and the paper trade opened. Read-only copy for observers (demo lab). */
+export interface ApprovedPaperOpen {
+  readonly signalId: string; readonly planId: string; readonly symbol: string; readonly direction: "BUY" | "SELL";
+  readonly entry: number; readonly stopLoss: number; readonly takeProfit: number; readonly rr: number | null;
+  readonly riskDecision: "APPROVED"; readonly signalSource: Readonly<Record<string, string>>; readonly closedBarAt: number;
+}
+
 interface Open { trade: PaperTrade; plan: TradePlan; bars: ArenaCandle[]; h1Phase: string; tier: string }
 
 export const PAPER_STATE_VERSION = "paper-state-v1" as const;
@@ -90,6 +97,10 @@ export class LivePaperLoop {
   private decision: string | null = null;
   private readonly spreads: number[] = [];
   private readonly after: { tradeId: string; balance: number }[] = [];
+
+  private readonly openListeners = new Set<(e: ApprovedPaperOpen) => void>();
+  /** Observer hook; listeners cannot influence the paper loop (errors are swallowed). */
+  onApprovedOpen(cb: (e: ApprovedPaperOpen) => void): () => void { this.openListeners.add(cb); return () => this.openListeners.delete(cb); }
 
   constructor(readonly symbol: string, readonly dataSource: DataSource, private readonly spec: SymbolSpecification) {}
 
@@ -227,6 +238,11 @@ export class LivePaperLoop {
     if (!o.ok) return;
     this.open = { trade: o.trade, plan, bars: [], h1Phase: bias.h1.phase, tier: loc.context.locationTier };
     this.decision = `OPEN ${plan.direction}`;
+    const openEv: ApprovedPaperOpen = Object.freeze({
+      signalId: setup.id, planId: plan.id, symbol: sym, direction: plan.direction, entry: plan.entry, stopLoss: plan.sl!, takeProfit: plan.tp!, rr: plan.rr,
+      riskDecision: "APPROVED" as const, signalSource: Object.freeze({ ...o.trade.snapshot.signalSource }), closedBarAt: bar.close_time,
+    });
+    for (const l of this.openListeners) { try { l(openEv); } catch { /* observers never affect the loop */ } }
   }
 }
 

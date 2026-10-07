@@ -30,3 +30,11 @@ and give the resulting https URL to the dashboard as `VITE_ENGINE_HOST_URL`.
 - `/v1/engine/{symbol}/radar`, `/v1/engine/{symbol}/market-context`
 - `/v1/engine/account`, `/v1/engine/journal` (all symbols) and per-symbol `/v1/engine/{symbol}/account|journal`
 - `/v1/engine/events` — SSE: HEALTH_UPDATE, RADAR_UPDATE, MARKET_CONTEXT_UPDATE (only on a new CLOSED-bar evaluation)
+
+## Stage 10 DEMO lab (optional, default off)
+1. Log the MT5 terminal into the **demo** account.
+2. Start the demo execution gateway (loopback only, never tunnel it):
+   `set DEMO_EXEC_TOKEN=<long random>` · `set DEMO_ACCOUNT_WHITELIST=<demo login>` · `set DEMO_SERVER_WHITELIST=<demo server>` · `cd vps && python -m mt5_exec.server`
+3. Start the engine host with the same token/whitelists plus `EXECUTION_MODE=DEMO_STRESS_TEST` and `DEMO_CONTROL_URL=https://ai-trading-os.lovable.app/api/public/demo-control`.
+4. Press "Jalankan demo lab" in the dashboard (starts STOPPED). Kill switch: dashboard "STOP DEMO EXECUTION" or create `engine-host/data/DEMO_KILL_SWITCH`.
+Limits: 0.5% risk, 1 open position, 5 trades/day, 2% daily loss. Status: `GET /v1/engine/demo`. Log: `engine-host/data/demo-events.jsonl` (append-only).

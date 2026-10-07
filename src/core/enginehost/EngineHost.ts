@@ -8,6 +8,8 @@ import type { PaperPersistence } from "./persistence";
 import type { EngineHostHealth, EngineSymbolBundle, SymbolEngineHealth } from "./types";
 import { TechnicalSliceService } from "../technical/TechnicalSliceService";
 import { LiveClock } from "../temporal/CanonicalClock";
+import type { ApprovedPaperOpen } from "../paper/LivePaperLoop";
+import type { ExecutionMode } from "../execution/demo/types";
 
 /** Documented supervisor policy (operator configuration). */
 export interface SupervisorPolicy { readonly tick_ms: number; readonly remount_after_ms: number; readonly backoff_min_ms: number; readonly backoff_max_ms: number }
@@ -50,6 +52,11 @@ export class EngineHost {
     now: () => number;
     log?: (msg: string) => void;
     policy?: SupervisorPolicy;
+    /** Demo lab observer (Stage 10 DEMO). Receives approved paper opens; cannot alter engine state. */
+    onApprovedOpen?: (e: ApprovedPaperOpen, reader: MarketRuntimeReader | null) => void;
+    /** Demo lab read model for GET /v1/engine/demo. */
+    demoStatus?: () => unknown;
+    executionMode?: ExecutionMode;
   }) {
     this.startedAt = o.now();
     for (const symbol of o.symbols) this.slots.set(symbol, { symbol, stop: null, rt: null, reader: null, status: "INIT", restarts: 0, unhealthySince: null, nextRemountAt: 0, backoff: this.policy.backoff_min_ms, persistError: null, slice: null });
@@ -93,6 +100,7 @@ export class EngineHost {
         const { state, error } = this.o.persistence.load(s.symbol, ds);
         if (error) { s.persistError = error; this.log(`${s.symbol} snapshot not restored: ${error}`); }
         if (state) { rt.restorePaperState(state); this.log(`${s.symbol} restored paper state (${state.journal.length} journal rows)`); }
+        if (this.o.onApprovedOpen) rt.onApprovedPaperOpen((e) => this.o.onApprovedOpen?.(e, s.reader));
         s.rt = rt;
       },
     });
@@ -134,9 +142,12 @@ export class EngineHost {
     const now = this.o.now();
     return Object.freeze({
       operating_mode: "MONITOR_ONLY", execution_enabled: false, started_at: this.startedAt, persistence: "VPS_DISK",
+      demo_execution: this.o.executionMode ?? "REAL_DISABLED",
       symbols: Object.freeze([...this.slots.values()].map((s) => this.symbolHealth(s, now))),
     });
   }
+
+  demoStatus(): unknown { return this.o.demoStatus?.() ?? { mode: this.o.executionMode ?? "REAL_DISABLED" }; }
 
   reader(symbol: string): MarketRuntimeReader | null { return this.slots.get(symbol)?.reader ?? null; }
 

@@ -18,6 +18,7 @@ import { Route as AuthenticatedAssistantRouteImport } from './routes/_authentica
 import { Route as ApiAssistantChatRouteImport } from './routes/api/assistant-chat'
 import { Route as AuthenticatedAssistantIndexRouteImport } from './routes/_authenticated/assistant.index'
 import { Route as AuthenticatedAssistantThreadIdRouteImport } from './routes/_authenticated/assistant.$threadId'
+import { Route as ApiPublicDemoControlRouteImport } from './routes/api/public/demo-control'
 import { Route as ApiPublicHooksEngineMemoryRouteImport } from './routes/api/public/hooks/engine-memory'
 
 const IndexRoute = IndexRouteImport.update({
@@ -66,6 +67,11 @@ const AuthenticatedAssistantThreadIdRoute =
     path: '/$threadId',
     getParentRoute: () => AuthenticatedAssistantRoute,
   } as any)
+const ApiPublicDemoControlRoute = ApiPublicDemoControlRouteImport.update({
+  id: '/api/public/demo-control',
+  path: '/api/public/demo-control',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHooksEngineMemoryRoute =
   ApiPublicHooksEngineMemoryRouteImport.update({
     id: '/api/public/hooks/engine-memory',
@@ -81,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/assistant': typeof AuthenticatedAssistantRouteWithChildren
   '/api/assistant-chat': typeof ApiAssistantChatRoute
   '/assistant/$threadId': typeof AuthenticatedAssistantThreadIdRoute
+  '/api/public/demo-control': typeof ApiPublicDemoControlRoute
   '/assistant/': typeof AuthenticatedAssistantIndexRoute
   '/api/public/hooks/engine-memory': typeof ApiPublicHooksEngineMemoryRoute
 }
@@ -91,6 +98,7 @@ export interface FileRoutesByTo {
   '/mt5': typeof Mt5Route
   '/api/assistant-chat': typeof ApiAssistantChatRoute
   '/assistant/$threadId': typeof AuthenticatedAssistantThreadIdRoute
+  '/api/public/demo-control': typeof ApiPublicDemoControlRoute
   '/assistant': typeof AuthenticatedAssistantIndexRoute
   '/api/public/hooks/engine-memory': typeof ApiPublicHooksEngineMemoryRoute
 }
@@ -104,6 +112,7 @@ export interface FileRoutesById {
   '/_authenticated/assistant': typeof AuthenticatedAssistantRouteWithChildren
   '/api/assistant-chat': typeof ApiAssistantChatRoute
   '/_authenticated/assistant/$threadId': typeof AuthenticatedAssistantThreadIdRoute
+  '/api/public/demo-control': typeof ApiPublicDemoControlRoute
   '/_authenticated/assistant/': typeof AuthenticatedAssistantIndexRoute
   '/api/public/hooks/engine-memory': typeof ApiPublicHooksEngineMemoryRoute
 }
@@ -117,6 +126,7 @@ export interface FileRouteTypes {
     | '/assistant'
     | '/api/assistant-chat'
     | '/assistant/$threadId'
+    | '/api/public/demo-control'
     | '/assistant/'
     | '/api/public/hooks/engine-memory'
   fileRoutesByTo: FileRoutesByTo
@@ -127,6 +137,7 @@ export interface FileRouteTypes {
     | '/mt5'
     | '/api/assistant-chat'
     | '/assistant/$threadId'
+    | '/api/public/demo-control'
     | '/assistant'
     | '/api/public/hooks/engine-memory'
   id:
@@ -139,6 +150,7 @@ export interface FileRouteTypes {
     | '/_authenticated/assistant'
     | '/api/assistant-chat'
     | '/_authenticated/assistant/$threadId'
+    | '/api/public/demo-control'
     | '/_authenticated/assistant/'
     | '/api/public/hooks/engine-memory'
   fileRoutesById: FileRoutesById
@@ -150,6 +162,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   Mt5Route: typeof Mt5Route
   ApiAssistantChatRoute: typeof ApiAssistantChatRoute
+  ApiPublicDemoControlRoute: typeof ApiPublicDemoControlRoute
   ApiPublicHooksEngineMemoryRoute: typeof ApiPublicHooksEngineMemoryRoute
 }
 
@@ -218,6 +231,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAssistantThreadIdRouteImport
       parentRoute: typeof AuthenticatedAssistantRoute
     }
+    '/api/public/demo-control': {
+      id: '/api/public/demo-control'
+      path: '/api/public/demo-control'
+      fullPath: '/api/public/demo-control'
+      preLoaderRoute: typeof ApiPublicDemoControlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/engine-memory': {
       id: '/api/public/hooks/engine-memory'
       path: '/api/public/hooks/engine-memory'
@@ -262,6 +282,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   Mt5Route: Mt5Route,
   ApiAssistantChatRoute: ApiAssistantChatRoute,
+  ApiPublicDemoControlRoute: ApiPublicDemoControlRoute,
   ApiPublicHooksEngineMemoryRoute: ApiPublicHooksEngineMemoryRoute,
 }
 export const routeTree = rootRouteImport
