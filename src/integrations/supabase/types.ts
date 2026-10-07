@@ -160,6 +160,66 @@ export type Database = {
         }
         Relationships: []
       }
+      engine_events: {
+        Row: {
+          captured_at: string
+          confidence: number | null
+          direction: string | null
+          entry: number | null
+          event_key: string
+          event_type: string
+          id: string
+          occurred_at: string
+          payload: Json
+          reason: string
+          signal_id: string | null
+          snapshot_ref: string | null
+          stage: string | null
+          stop_loss: number | null
+          symbol: string
+          take_profit: number | null
+          timeframe_context: Json
+        }
+        Insert: {
+          captured_at?: string
+          confidence?: number | null
+          direction?: string | null
+          entry?: number | null
+          event_key: string
+          event_type: string
+          id?: string
+          occurred_at: string
+          payload?: Json
+          reason?: string
+          signal_id?: string | null
+          snapshot_ref?: string | null
+          stage?: string | null
+          stop_loss?: number | null
+          symbol: string
+          take_profit?: number | null
+          timeframe_context?: Json
+        }
+        Update: {
+          captured_at?: string
+          confidence?: number | null
+          direction?: string | null
+          entry?: number | null
+          event_key?: string
+          event_type?: string
+          id?: string
+          occurred_at?: string
+          payload?: Json
+          reason?: string
+          signal_id?: string | null
+          snapshot_ref?: string | null
+          stage?: string | null
+          stop_loss?: number | null
+          symbol?: string
+          take_profit?: number | null
+          timeframe_context?: Json
+        }
+        Relationships: []
+      }
       engine_memory: {
         Row: {
           active_events: string[]
@@ -243,6 +303,41 @@ export type Database = {
           symbol?: string
         }
         Relationships: []
+      }
+      engine_notifications: {
+        Row: {
+          attempted_at: string
+          channel: string
+          delivery_status: string
+          event_id: string
+          id: string
+          note: string | null
+        }
+        Insert: {
+          attempted_at?: string
+          channel?: string
+          delivery_status: string
+          event_id: string
+          id?: string
+          note?: string | null
+        }
+        Update: {
+          attempted_at?: string
+          channel?: string
+          delivery_status?: string
+          event_id?: string
+          id?: string
+          note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "engine_notifications_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "engine_events"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       engine_trades: {
         Row: {
