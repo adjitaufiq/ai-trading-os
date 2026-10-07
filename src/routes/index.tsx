@@ -76,6 +76,7 @@ function Terminal() {
     <div className="mx-auto flex max-w-screen-2xl gap-1 px-4 pb-3 sm:px-8" role="tablist">
       <Button size="sm" role="tab" aria-selected={tab === "COCKPIT"} variant={tab === "COCKPIT" ? "secondary" : "ghost"} onClick={() => setTab("COCKPIT")}>Kokpit</Button>
       <Button size="sm" role="tab" aria-selected={tab === "JOURNAL"} variant={tab === "JOURNAL" ? "secondary" : "ghost"} onClick={() => setTab("JOURNAL")}>Jurnal &amp; Backtest</Button>
+      <Button size="sm" variant="ghost" asChild><a href="/assistant">AI Assistant</a></Button>
       <AlertCenter store={alerts} alarm={alarm} notificationApi={notificationApi} onSelect={focusAlert} />
     </div>
     {/* Cockpit stays mounted (hidden) so paper marks and signal journaling keep running. */}
