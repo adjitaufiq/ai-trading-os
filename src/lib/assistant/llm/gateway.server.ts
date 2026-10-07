@@ -27,11 +27,17 @@ const lovableAdapter: LlmProviderAdapter = {
   },
 };
 
+// OpenRouter tier models via env (OPENROUTER_MODEL_FAST / _MEDIUM / _REASONING); falls back to OPENROUTER_MODEL.
+const openRouterModel = (tier: LlmTaskTier): string => {
+  const byTier = process.env[`OPENROUTER_MODEL_${tier.toUpperCase()}`]?.trim();
+  return byTier || process.env["OPENROUTER_MODEL"]?.trim() || "openrouter/free";
+};
+
 const openRouterAdapter: LlmProviderAdapter = {
   id: "openrouter",
   isConfigured: () => !!process.env["OPENROUTER_API_KEY"],
-  create() {
-    const modelId = process.env["OPENROUTER_MODEL"]?.trim() || "openrouter/free";
+  create(_request, tier = "medium") {
+    const modelId = openRouterModel(tier);
     const p = createOpenAI({
       baseURL: "https://openrouter.ai/api/v1", apiKey: process.env["OPENROUTER_API_KEY"]!,
       headers: { "X-Title": "Personal AI Trading OS" },
