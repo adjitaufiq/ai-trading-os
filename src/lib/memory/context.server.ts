@@ -7,7 +7,8 @@ import { journalIntelligence, similarStates, type MemoryFact, type TradeFact } f
 
 export async function buildMemoryContext(sb: SupabaseClient<Database>, scope: string): Promise<string> {
   const symbols = scope === "XAUUSD" || scope === "BTCUSD" ? [scope] : ["XAUUSD", "BTCUSD"];
-  const [mem, tr, rv] = await Promise.all([
+  const [, mem, tr, rv] = await Promise.all([
+    sb.rpc("log_engine_access", { _scope: `assistant_context:${scope}` }),
     sb.from("engine_memory").select("symbol,m5_close_at,regime,approach,decision,setup,bias,market_phase,confidence").in("symbol", symbols).order("m5_close_at", { ascending: false }).limit(2000),
     sb.from("engine_trades").select("trade_id,symbol,result,r_multiple,profit_loss_usd,regime,approach,location,trigger_pattern,failure_category,data_source,opened_at").in("symbol", symbols).order("opened_at", { ascending: false }).limit(1000),
     sb.from("trade_reviews").select("trade_id,compliance_status,review_version").in("symbol", symbols).limit(5000),
