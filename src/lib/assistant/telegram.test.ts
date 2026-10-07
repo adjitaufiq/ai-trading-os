@@ -88,7 +88,9 @@ describe("Telegram presentation", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
     vi.stubGlobal("fetch", fetcher);
     expect((await sendTelegramMessage("test-chat", "<b>Title</b>\n• Clean")).status).toBe("SENT");
-    const second = JSON.parse(fetcher.mock.calls[1][1].body);
+    const call = fetcher.mock.calls.at(1);
+    if (!call?.[1]) throw new Error("Expected plain-text retry");
+    const second = JSON.parse(call[1].body);
     expect(second.parse_mode).toBeUndefined();
     expect(second.text).toBe("Title\n• Clean");
   });
