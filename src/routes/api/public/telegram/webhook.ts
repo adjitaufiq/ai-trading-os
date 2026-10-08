@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createHash, timingSafeEqual } from "crypto";
-import { answerQuestion, isOperatorChat, sendTelegramMessage } from "@/lib/assistant/telegram.server";
+import { answerQuestion, isOperatorChat, sendTelegramMessage, telegramWebhookSeed } from "@/lib/assistant/telegram.server";
 
 const derive = (k: string) => createHash("sha256").update(`telegram-webhook:${k}`).digest("base64url");
 const safeEqual = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
@@ -12,8 +12,8 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
     handlers: {
       POST: async ({ request }) => {
         // Always 200 to Telegram so it never retries forever; unverified requests are dropped, never processed.
-        const tk = process.env["TELEGRAM_API_KEY"];
-        if (!tk) { console.error("[telegram] TELEGRAM_API_KEY missing at runtime; update dropped"); return Response.json({ ok: true, ignored: "not_configured" }); }
+        const tk = telegramWebhookSeed();
+        if (!tk) { console.error("[telegram] TELEGRAM_BOT_TOKEN/TELEGRAM_API_KEY missing at runtime; update dropped"); return Response.json({ ok: true, ignored: "not_configured" }); }
         if (!safeEqual(request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "", derive(tk))) return Response.json({ ok: true, ignored: "unauthorized" });
         const update = await request.json().catch(() => null) as { message?: { chat?: { id?: number }; text?: string } } | null;
         const chatId = update?.message?.chat?.id, text = update?.message?.text?.trim();

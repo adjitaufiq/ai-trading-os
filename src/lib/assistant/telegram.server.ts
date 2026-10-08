@@ -168,15 +168,23 @@ export function isOperatorChat(chatId: string | number): boolean {
   return (!!env && id === env) || OPERATOR_CHAT_IDS.includes(id);
 }
 
+/** Webhook secret seed: direct bot token (survives workspace moves) first, connector key as fallback. */
+export function telegramWebhookSeed(): string | undefined {
+  return process.env["TELEGRAM_BOT_TOKEN"]?.trim() || process.env["TELEGRAM_API_KEY"] || undefined;
+}
+
 export async function sendTelegramMessage(chatId: string | number, text: string): Promise<{ status: "SENT" | "FAILED" | "PENDING"; note: string }> {
+  const bot = process.env["TELEGRAM_BOT_TOKEN"]?.trim();
   const lk = process.env["LOVABLE_API_KEY"], tk = process.env["TELEGRAM_API_KEY"];
-  if (!lk || !tk || !chatId) return { status: "PENDING", note: `Telegram not configured (${[!tk && "TELEGRAM_API_KEY", !chatId && "TELEGRAM_CHAT_ID", !lk && "LOVABLE_API_KEY"].filter(Boolean).join(", ")} missing)` };
+  if (!chatId || (!bot && (!lk || !tk))) return { status: "PENDING", note: `Telegram not configured (${[!bot && !tk && "TELEGRAM_BOT_TOKEN", !chatId && "TELEGRAM_CHAT_ID"].filter(Boolean).join(", ")} missing)` };
   try {
     const deliver = async (message: string, html: boolean) => {
-    const r = await fetch(`${GATEWAY}/sendMessage`, {
-      method: "POST", headers: { Authorization: `Bearer ${lk}`, "X-Connection-Api-Key": tk, "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text: message, ...(html ? { parse_mode: "HTML" } : {}), disable_web_page_preview: true }),
-    });
+    const body0 = JSON.stringify({ chat_id: chatId, text: message, ...(html ? { parse_mode: "HTML" } : {}), disable_web_page_preview: true });
+    const r = bot
+      ? await fetch(`https://api.telegram.org/bot${bot}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: body0 })
+      : await fetch(`${GATEWAY}/sendMessage`, {
+          method: "POST", headers: { Authorization: `Bearer ${lk}`, "X-Connection-Api-Key": tk!, "Content-Type": "application/json" }, body: body0,
+        });
     const body = await r.text();
     let payload: { ok?: boolean; description?: string; error_code?: number } | null = null;
     try { payload = JSON.parse(body); } catch { /* Preserve provider response below. */ }
