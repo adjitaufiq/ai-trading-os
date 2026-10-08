@@ -5,7 +5,7 @@ import { PaperJournalStore } from "@/lib/paperJournal";
 import type { TradingSnapshot } from "@/core/technical/tradingState";
 
 const snapshot = (entry: TradingSnapshot["entry"]["state"]): TradingSnapshot => ({
-  symbol: "XAUUSD", as_of: 1, label: "CURRENT", availability: entry === "NOT_EVALUABLE" ? "UNAVAILABLE" : "AVAILABLE", availability_reason: "OBSERVED", primary_bias: null, setup_bias: "WAIT", counter_trend_condition: "NONE",
+  symbol: "XAUUSD", as_of: 1, label: "CURRENT", availability: entry === "NOT_EVALUABLE" ? "UNAVAILABLE" : "AVAILABLE", availability_reason: "OBSERVED", primary_bias: "NONE", setup_bias: "WAIT", counter_trend_condition: "NONE",
   quote: { bid: 100, ask: 101, spread: 1, tick_time_ms: 1, observed_at: 1 }, evidence: null, last3_m5: [], engulfing: null,
   bias: { state: "NEUTRAL", reason: "TEST" }, setup: { state: "INACTIVE", reason: "TEST" }, signal: { state: "WAITING", reason: "TEST", triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED" },
   execution: { state: "BLOCKED", reasons: ["CAPABILITY_UNAUTHORIZED"] }, entry: { state: entry, reason: "TEST" }, why: [],

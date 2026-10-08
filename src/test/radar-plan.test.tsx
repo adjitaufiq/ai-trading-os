@@ -18,7 +18,7 @@ const WAIT = { state: "WAIT" as const, reason: "NO_CLOSED_TRIGGER" };
 const NOREF = { status: "NOT_AVAILABLE" as const, policy_version: "reference-plan-v3-p0.6-local-swing-structural-clamp" as const, reason: "WAIT" };
 
 const snap = (o: never, quote: ReturnType<typeof q>): TradingSnapshot => ({
-  symbol: "BTCUSD", as_of: 1, label: "CURRENT", availability: "AVAILABLE", availability_reason: "OBSERVED", primary_bias: null, setup_bias: "WAIT", counter_trend_condition: "NONE", quote, evidence, last3_m5: [], engulfing: null,
+  symbol: "BTCUSD", as_of: 1, label: "CURRENT", availability: "AVAILABLE", availability_reason: "OBSERVED", primary_bias: "NONE", setup_bias: "WAIT", counter_trend_condition: "NONE", quote, evidence, last3_m5: [], engulfing: null,
   bias: { state: "BUY", reason: "T" }, setup: { state: "INACTIVE", reason: "T" },
   signal: { state: "WAITING", reason: "T", triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED" },
   execution: { state: "BLOCKED", reasons: ["CAPABILITY_UNAUTHORIZED"] }, entry: WAIT, why: [], reference_plan: NOREF, operator: o,

@@ -9,7 +9,7 @@ import type { TradingSnapshot } from "@/core/technical/tradingState";
 import * as tech from "@/core/technical/tradingState";
 
 const snap = (entry: TradingSnapshot["entry"]["state"], plan?: { side: "BUY" | "SELL"; sl: number; tp1: number; tp2: number }): TradingSnapshot => ({
-  symbol: "XAUUSD", as_of: 1, label: "CURRENT", availability: "AVAILABLE", availability_reason: "OBSERVED", primary_bias: null, setup_bias: "WAIT", counter_trend_condition: "NONE",
+  symbol: "XAUUSD", as_of: 1, label: "CURRENT", availability: "AVAILABLE", availability_reason: "OBSERVED", primary_bias: "NONE", setup_bias: "WAIT", counter_trend_condition: "NONE",
   quote: { bid: 100, ask: 101, spread: 1, tick_time_ms: 1, observed_at: 1 }, evidence: null, last3_m5: [], engulfing: null,
   bias: { state: "NEUTRAL", reason: "T" }, setup: { state: "INACTIVE", reason: "T" },
   signal: { state: "WAITING", reason: "T", triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED" },
