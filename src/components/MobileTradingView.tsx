@@ -200,6 +200,20 @@ export function MobileTradingView({ onWhy }: { onWhy: () => void }) {
         ))}
       </div>
       <section className="rounded-md border border-border p-4">
+        <div className="mb-3 flex items-baseline justify-between">
+          <h2 className="mobile-label">Primary bias</h2>
+          <span
+            className={`font-mono text-sm font-semibold ${s?.primary_bias === "BUY" ? "text-bull" : s?.primary_bias === "SELL" ? "text-bear" : "text-muted-foreground"}`}
+            data-testid="mobile-primary-bias"
+          >
+            {s?.primary_bias === "BUY" ? "↗ BUY" : s?.primary_bias === "SELL" ? "↘ SELL" : "— NONE"}
+          </span>
+        </div>
+        {s && s.counter_trend_condition !== "NONE" ? (
+          <p className="mb-3 text-[11px] font-semibold text-warn" data-testid="mobile-counter-trend-warning">
+            COUNTER TREND WARNING: {s.counter_trend_condition} — pullback melawan arah utama, bukan sinyal
+          </p>
+        ) : null}
         <div className="mb-3 flex justify-between">
           <h2 className="mobile-label">Setup</h2>
           <span className={ready ? "text-bull text-[10px]" : "text-warn text-[10px]"}>
