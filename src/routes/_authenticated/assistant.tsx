@@ -15,9 +15,6 @@ import {
   LogOut,
   ArrowLeft,
   PanelLeft,
-  BookOpen,
-  SlidersHorizontal,
-  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -66,6 +63,11 @@ function AssistantLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const reportPage = pathname === "/assistant/control" || pathname === "/assistant/research";
+  const pageTitle = pathname === "/assistant/control"
+    ? "Kontrol"
+    : pathname === "/assistant/research"
+      ? "Riset"
+      : "AI Trading Assistant";
 
   const create = async (scope: ThreadScope, topic: string) => {
     setBusy(true);
@@ -169,7 +171,7 @@ function AssistantLayout() {
     <div className="assistant-cockpit flex h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground">
       <header className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-border px-3 py-3 md:px-5">
         <div className="flex min-w-0 items-center gap-2">
-          <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+          {!reportPage && <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
             <SheetTrigger asChild>
               <Button
                 variant="ghost"
@@ -191,59 +193,30 @@ function AssistantLayout() {
               </div>
               {navigation}
             </SheetContent>
-          </Sheet>
+          </Sheet>}
           <Radar className="hidden size-6 shrink-0 text-bull sm:block" aria-hidden />
           <div className="min-w-0">
-            <h1 className="truncate text-sm font-semibold sm:text-base">AI Trading Assistant</h1>
+            <h1 className="truncate text-sm font-semibold sm:text-base">{pageTitle}</h1>
             <p className="text-[10px] text-muted-foreground sm:text-xs">
               Engine Host · AI MONITOR_ONLY
             </p>
           </div>
         </div>
+        {reportPage && (
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/">
+              <ArrowLeft className="size-4" />
+              Terminal
+            </Link>
+          </Button>
+        )}
       </header>
-      <nav
-        aria-label="Halaman asisten"
-        className="flex shrink-0 gap-1 border-b border-border px-3 py-2 md:px-5"
-      >
-        <Button asChild size="sm" variant={!reportPage ? "secondary" : "ghost"}>
-          <Link to="/assistant" aria-current={!reportPage ? "page" : undefined}>
-            <MessageSquare />
-            Chat
-          </Link>
-        </Button>
-        <Button
-          asChild
-          size="sm"
-          variant={pathname === "/assistant/control" ? "secondary" : "ghost"}
-        >
-          <Link
-            to="/assistant/control"
-            aria-current={pathname === "/assistant/control" ? "page" : undefined}
-          >
-            <SlidersHorizontal />
-            Kontrol
-          </Link>
-        </Button>
-        <Button
-          asChild
-          size="sm"
-          variant={pathname === "/assistant/research" ? "secondary" : "ghost"}
-        >
-          <Link
-            to="/assistant/research"
-            aria-current={pathname === "/assistant/research" ? "page" : undefined}
-          >
-            <BookOpen />
-            Riset
-          </Link>
-        </Button>
-      </nav>
       <div className="flex min-h-0 flex-1">
-        <aside
-          className={`hidden w-72 shrink-0 flex-col border-r border-border ${reportPage ? "" : "md:flex"}`}
+        {!reportPage && <aside
+          className="hidden w-72 shrink-0 flex-col border-r border-border md:flex"
         >
           {navigation}
-        </aside>
+        </aside>}
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <Outlet />
         </main>
