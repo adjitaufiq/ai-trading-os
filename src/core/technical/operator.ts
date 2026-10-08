@@ -440,16 +440,24 @@ export function operatorAnalysis(closed: Readonly<Record<Timeframe, readonly Tec
   const bounded = h1Zones.some((z) => z.role === "SUPPORT" && z.touches >= P.range_min_touches) && h1Zones.some((z) => z.role === "RESISTANCE" && z.touches >= P.range_min_touches);
   const regime: Regime = h4 === "INSUFFICIENT" ? "INSUFFICIENT" : h4 === "UP" || h4 === "DOWN" ? "TREND" : bounded ? "RANGE" : "CHOPPY";
 
+  // v0.5: primaryBias is the ONLY direction source (H4 structure + EMA, CLOSED H4 bars only).
+  // M5/M15 momentum is timing/pullback evidence; an opposing local momentum is recorded as a
+  // counter-trend warning + LOCAL_MOMENTUM_CONFLICT diagnostic, never a side flip.
+  const primaryBias: PrimaryBias = h4 === "UP" ? "BUY" : h4 === "DOWN" ? "SELL" : null;
+  const momentumConflict = primaryBias !== null && mSide !== null && mSide !== primaryBias;
+  const counterTrend: CounterTrendCondition = !momentumConflict ? "NONE"
+    : primaryBias === "SELL" ? "BULLISH_PULLBACK" : "BEARISH_PULLBACK";
+
   let status: OperatorStatus = "HOLD", candidateSide: "BUY" | "SELL" | null = null;
   let checks: OperatorAnalysis["checks"] = { context: false, location: false, rsi: null, trigger: false };
   let reason: string;
   // Legacy veto (documented P0.x blocker): regime INSUFFICIENT / CHOPPY still ⇒ HOLD. They veto, never pick a side.
   if (regime === "INSUFFICIENT") reason = "H4_TREND_INSUFFICIENT_HISTORY";
   else if (regime === "CHOPPY") reason = "REGIME_CHOPPY_NO_CLEAR_BOUNDS";
-  else if (!mSide) reason = `SCALP_MOMENTUM_${combined}`;
+  else if (!primaryBias) reason = "NO_PRIMARY_BIAS_H4_MIXED";
   else {
-    // P0.2: side comes ONLY from combined M5/M15 momentum. H4/H1 never pick BUY/SELL.
-    const side = mSide;
+    // v0.5: side = primaryBias (H4). Local momentum never picks or flips the side.
+    const side = primaryBias;
     const zoneOk = side === "BUY" ? location === "AT_SUPPORT" : location === "AT_RESISTANCE";
     const trig = trigger === (side === "BUY" ? "BULLISH" : "BEARISH");
     const dirTag = side === "BUY" ? "BULLISH" : "BEARISH";
@@ -471,14 +479,9 @@ export function operatorAnalysis(closed: Readonly<Record<Timeframe, readonly Tec
         else { candidateSide = side; reason = `SCALP_${side}_${combined}_${zoneOk ? "SR_ZONE" : `EMA_${emaConf.zone}_${emaTf}`}_RSI_TRIGGER`; }
       }
     } else {
-      // RANGE: static S/R edge on the momentum side is required; RSI gate not applied.
-      checks = { context: true, location: zoneOk, rsi: null, trigger: trig };
-      if (!zoneOk) reason = location === "AMBIGUOUS" ? "RANGE_LOCATION_AMBIGUOUS" : location === "MID" ? "RANGE_MIDDLE" : `RANGE_${side}_NOT_AT_${side === "BUY" ? "SUPPORT" : "RESISTANCE"}`;
-      else {
-        status = side === "BUY" ? "CARI_BUY" : "CARI_SELL";
-        if (trig) { candidateSide = side; reason = `RANGE_${side}_${combined}_${side === "BUY" ? "SUPPORT" : "RESISTANCE"}_TRIGGER`; }
-        else reason = `NO_CLOSED_${dirTag}_TRIGGER`;
-      }
+      // RANGE (H4 MIXED ⇒ primaryBias NONE): no primary direction ⇒ no side. Range scalping against
+      // a macro direction is disabled in v0.5; bounded S/R stays evidence only.
+      reason = bounded ? "RANGE_NO_PRIMARY_BIAS_STAND_ASIDE" : "RANGE_MIDDLE";
     }
   }
   const setupReady = status !== "HOLD" && checks.location && checks.rsi !== false && reason !== "H1_COUNTER_TREND_WAIT_CONFIRMATION";
