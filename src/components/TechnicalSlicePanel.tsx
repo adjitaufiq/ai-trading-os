@@ -455,7 +455,7 @@ function IntelligenceBlock({ facts }: { facts: RuntimeFacts }) {
 }
 
 
-function PaperPositions({ store, symbol, quote }: { store: PaperJournalStore; symbol: string; quote: TicketQuote | null }) {
+export function PaperPositions({ store, symbol, quote }: { store: PaperJournalStore; symbol: string; quote: TicketQuote | null }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const open = state.positions.filter((p) => p.symbol === symbol && p.status === "OPEN");
   if (open.length === 0) return null;
@@ -493,9 +493,9 @@ type CockpitTab = "TRADE" | "RADAR" | "ANALYSIS";
 
 /** Guarded entry: renders only when the slice view and runtime facts come from the SAME source and symbol. */
 function Cockpit({ source, explain, store, fallbackReason }: { source: CockpitSource; explain?: TechnicalSlicePanelProps["explain"]; store: PaperJournalStore; fallbackReason?: string | null }) {
-  useSyncExternalStore(source.subscribe, source.getVersion, source.getVersion);
-  const view = source.view();
-  const facts = source.facts();
+  const sourceVersion = useSyncExternalStore(source.subscribe, source.getVersion, source.getVersion);
+  const view = useMemo(() => source.view(), [source, sourceVersion]);
+  const facts = useMemo(() => source.facts(), [source, sourceVersion]);
   if (facts.source !== source.source || facts.symbol !== source.symbol || (view && view.symbol !== source.symbol)) return <SourceMismatch detail={`view ${source.source}/${view?.symbol ?? "—"} · facts ${facts.source}/${facts.symbol}`} />;
   if (!view) return <div className="border border-border bg-card p-4 text-sm text-muted-foreground" data-testid="engine-snapshot-pending">ENGINE HOST VPS (LIVE) · menunggu snapshot {source.symbol} dari engine host…</div>;
   return <CockpitBody view={view} facts={facts} explain={explain} store={store} fallbackReason={fallbackReason ?? null} />;

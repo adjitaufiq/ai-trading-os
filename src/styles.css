@@ -206,7 +206,7 @@ body { font-family: var(--font-sans); background: var(--background); color: var(
   .mobile-nav-button small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 8px; }
   .mobile-nav-active { border-top-color: var(--mobile-active); color: var(--mobile-active); box-shadow: var(--mobile-glow); background: transparent; }
   .mobile-execution-bar { position: fixed; left: 0; right: 0; bottom: calc(71px + env(safe-area-inset-bottom)); height: 44px; z-index: 40; display: flex; align-items: center; gap: 12px; padding: 0 16px; font-size: 10px; background: var(--background); border-top: 1px solid var(--border); }
-  .mobile-menu-dialog { left: 0; top: 0; transform: none; width: min(86vw,360px); height: 100dvh; max-height: 100dvh; overflow-y: auto; display: block; border-radius: 0; }
+  .mobile-menu-dialog { left: 0; top: 0; transform: none; translate: 0 0; width: min(86vw,360px); height: 100dvh; max-height: 100dvh; overflow-y: auto; display: block; border-radius: 0; }
   .mobile-menu-dialog > div { margin-top: 24px; }
   .mobile-robot-bubble { position: fixed; bottom: 140px; left: 12px; z-index: 45; width: 52px; height: 52px; padding: 0; border-radius: 50%; border: 1px solid var(--border); background: var(--card); touch-action: none; }
   .mobile-robot-bubble img { height: 48px; width: 48px; object-fit: contain; border-radius: 50%; pointer-events: none; }
