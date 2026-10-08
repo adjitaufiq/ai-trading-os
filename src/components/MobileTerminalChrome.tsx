@@ -145,7 +145,7 @@ export function MobileTerminalChrome({
         )}
       </header>
       <Dialog open={drawer} onOpenChange={setDrawer}>
-        <DialogContent className="mobile-menu-dialog">
+        <DialogContent className="mobile-menu-dialog left-0 top-0 translate-x-0 translate-y-0">
           <DialogTitle>Personal AI Trader</DialogTitle>
           <DialogDescription>MONITOR_ONLY · terminal baca-saja</DialogDescription>
           <div className="space-y-5">
