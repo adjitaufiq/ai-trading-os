@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowLeft, Expand, Settings2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarketCandles } from "@/components/MarketCandles";
+import { useMobileTerminal } from "./MobileTerminalContext";
 import { TIMEFRAME_MS, type Timeframe } from "@/core/contracts";
 import type { MarketRuntimeReader } from "@/core/runtime/MarketRuntime";
 import type { BrokerGatewayClient } from "@/core/broker/gateway/BrokerGatewayClient";
@@ -90,6 +91,7 @@ export interface RealMarketTerminalProps {
 }
 
 export function RealMarketTerminal({ client, selectedSymbol: selected, onSelectedSymbolChange, now = Date.now, pollMs = 1000, liveReaders }: RealMarketTerminalProps) {
+  const mobile = useMobileTerminal();
   const [live, setLive] = useState<Record<string, readonly LiveBar[]>>({});
   const liveSeq = useRef<Record<string, number>>({});
   const [timeframe, setTimeframe] = useState<Timeframe>("M5");
@@ -238,9 +240,13 @@ export function RealMarketTerminal({ client, selectedSymbol: selected, onSelecte
   const terminalLine = terminal.value ? `Terminal MT5 ${terminal.value.connected ? "terhubung" : "terputus"} · ping ${terminal.value.terminal_ping_ms.toFixed(1)} ms · ${terminal.value.authority}${terminal.failed ? " · VALIDASI TERAKHIR" : ""}` : terminal.failed ? `Status terminal MT5 tidak tersedia · ${terminal.error ?? ""}` : "Menunggu status terminal MT5";
   const price = (n: number | null) => formatMarketPrice(n, digits);
   const ohlc = ([{ label: "OPEN", key: "open" }, { label: "HIGH", key: "high" }, { label: "LOW", key: "low" }, { label: "CLOSE", key: "close" }] as const).map(({ label, key }) => ({ label, key, value: candle ? price(candle[key]) : "—" }));
+  const publishObservation = mobile?.setObservation;
+  useEffect(() => {
+    publishObservation?.({ symbol: selected, bid: formatMarketPrice(quote?.bid ?? null, digits), ask: formatMarketPrice(quote?.ask ?? null, digits), spread: formatMarketPrice(quote ? quote.ask - quote.bid : null, digits), connected: connection === "TERHUBUNG", fresh: freshness === "FRESH", detail: `${terminalLine} · ${freshnessLabel(freshness)}` });
+  }, [publishObservation, selected, quote, digits, connection, freshness, terminalLine]);
 
   return (
-    <div className="overflow-x-clip bg-background text-foreground">
+    <div className={`real-market-terminal overflow-x-clip bg-background text-foreground ${mobile?.tab !== "TRADE" || mobile?.accessory ? "mobile-market-hidden" : ""}`}>
       <header className="border-b border-border px-4 py-3 sm:px-8">
         <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-4">
           <div className="min-w-0"><div className="truncate text-sm font-semibold uppercase tracking-widest sm:text-base">PERSONAL AI TRADING OS</div><div className="mt-0.5 text-[11px] text-muted-foreground">TARGET: EXNESS DEMO <span className="text-border">/</span> BACA SAJA</div></div>
