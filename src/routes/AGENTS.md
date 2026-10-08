@@ -1,0 +1,1 @@
+- Assistant navigation uses a mobile drawer and desktop sidebar around the same route-driven conversation pages; reports remain available separately. Why: history and monitoring must not compress the active chat or introduce trading authority.
