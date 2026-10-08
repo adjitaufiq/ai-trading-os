@@ -758,6 +758,14 @@ export function RadarPlanView({
           PROYEKSI — BELUM SIGNAL ENTRY
         </p>
       ) : null}
+      {projection && projection.counterTrend !== "NONE" ? (
+        <p
+          className="mt-1 text-[11px] font-semibold text-attention"
+          data-testid="counter-trend-warning"
+        >
+          COUNTER TREND WARNING: {projection.counterTrend} — pullback melawan arah utama, bukan sinyal
+        </p>
+      ) : null}
       <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-3 text-sm">
         <div className="col-span-2">
           <div className="text-xs text-muted-foreground">Area entry</div>
