@@ -54,35 +54,37 @@ export function JournalIntelligencePanel() {
       };
     },
   });
-  return <>
-          {data && (
-            <section className="mx-auto w-full max-w-3xl space-y-3 pb-4">
-              <h2 className="text-sm font-semibold">Journal Intelligence (REAL_MT5, deskriptif)</h2>
-              <p className="text-xs text-muted-foreground">
-                Memory tersimpan: {data.memoryCount} snapshot · Trade:{" "}
-                {data.intel.overall?.trades ?? 0} · Avg R: {data.intel.overall?.avgR ?? "—"}
-                {data.intel.sample_note ? ` · ${data.intel.sample_note}` : ""}
-              </p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Table title="Hasil per regime" rows={data.intel.by_regime} />
-                <Table title="Hasil per approach" rows={data.intel.by_approach} />
-                <Table title="Kualitas setup (lokasi + trigger)" rows={data.intel.by_setup} />
-                <div className="rounded border border-border p-3">
-                  <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
-                    Pola kegagalan
-                  </h3>
-                  {data.intel.failure_patterns.length ? (
-                    data.intel.failure_patterns.map((f) => (
-                      <p key={f.category} className="text-xs">
-                        {f.category}: {f.count}
-                      </p>
-                    ))
-                  ) : (
-                    <p className="text-xs text-muted-foreground">Belum ada loss.</p>
-                  )}
-                </div>
-              </div>
-            </section>
-          )}
-  </>;
+  return (
+    <>
+      {data && (
+        <section className="mx-auto w-full max-w-3xl space-y-3 pb-4">
+          <h2 className="text-sm font-semibold">Journal Intelligence (REAL_MT5, deskriptif)</h2>
+          <p className="text-xs text-muted-foreground">
+            Memory tersimpan: {data.memoryCount} snapshot · Trade: {data.intel.overall?.trades ?? 0}{" "}
+            · Avg R: {data.intel.overall?.avgR ?? "—"}
+            {data.intel.sample_note ? ` · ${data.intel.sample_note}` : ""}
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Table title="Hasil per regime" rows={data.intel.by_regime} />
+            <Table title="Hasil per approach" rows={data.intel.by_approach} />
+            <Table title="Kualitas setup (lokasi + trigger)" rows={data.intel.by_setup} />
+            <div className="rounded border border-border p-3">
+              <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+                Pola kegagalan
+              </h3>
+              {data.intel.failure_patterns.length ? (
+                data.intel.failure_patterns.map((f) => (
+                  <p key={f.category} className="text-xs">
+                    {f.category}: {f.count}
+                  </p>
+                ))
+              ) : (
+                <p className="text-xs text-muted-foreground">Belum ada loss.</p>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+    </>
+  );
 }

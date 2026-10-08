@@ -1,7 +1,24 @@
-import { createFileRoute, Link, Outlet, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  Outlet,
+  useNavigate,
+  useParams,
+  useRouterState,
+} from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Plus, Radar, Trash2, LogOut, ArrowLeft, PanelLeft, BookOpen, SlidersHorizontal, MessageSquare } from "lucide-react";
+import {
+  Plus,
+  Radar,
+  Trash2,
+  LogOut,
+  ArrowLeft,
+  PanelLeft,
+  BookOpen,
+  SlidersHorizontal,
+  MessageSquare,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -184,19 +201,47 @@ function AssistantLayout() {
           </div>
         </div>
       </header>
-      <nav aria-label="Halaman asisten" className="flex shrink-0 gap-1 border-b border-border px-3 py-2 md:px-5">
+      <nav
+        aria-label="Halaman asisten"
+        className="flex shrink-0 gap-1 border-b border-border px-3 py-2 md:px-5"
+      >
         <Button asChild size="sm" variant={!reportPage ? "secondary" : "ghost"}>
-          <Link to="/assistant" aria-current={!reportPage ? "page" : undefined}><MessageSquare />Chat</Link>
+          <Link to="/assistant" aria-current={!reportPage ? "page" : undefined}>
+            <MessageSquare />
+            Chat
+          </Link>
         </Button>
-        <Button asChild size="sm" variant={pathname === "/assistant/control" ? "secondary" : "ghost"}>
-          <Link to="/assistant/control" aria-current={pathname === "/assistant/control" ? "page" : undefined}><SlidersHorizontal />Kontrol</Link>
+        <Button
+          asChild
+          size="sm"
+          variant={pathname === "/assistant/control" ? "secondary" : "ghost"}
+        >
+          <Link
+            to="/assistant/control"
+            aria-current={pathname === "/assistant/control" ? "page" : undefined}
+          >
+            <SlidersHorizontal />
+            Kontrol
+          </Link>
         </Button>
-        <Button asChild size="sm" variant={pathname === "/assistant/research" ? "secondary" : "ghost"}>
-          <Link to="/assistant/research" aria-current={pathname === "/assistant/research" ? "page" : undefined}><BookOpen />Riset</Link>
+        <Button
+          asChild
+          size="sm"
+          variant={pathname === "/assistant/research" ? "secondary" : "ghost"}
+        >
+          <Link
+            to="/assistant/research"
+            aria-current={pathname === "/assistant/research" ? "page" : undefined}
+          >
+            <BookOpen />
+            Riset
+          </Link>
         </Button>
       </nav>
       <div className="flex min-h-0 flex-1">
-        <aside className={`hidden w-72 shrink-0 flex-col border-r border-border ${reportPage ? "" : "md:flex"}`}>
+        <aside
+          className={`hidden w-72 shrink-0 flex-col border-r border-border ${reportPage ? "" : "md:flex"}`}
+        >
           {navigation}
         </aside>
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

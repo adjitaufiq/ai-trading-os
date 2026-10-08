@@ -5,7 +5,6 @@ import { Radar, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createThread, threadsQueryKey } from "@/lib/assistant/threads";
 
-
 export const Route = createFileRoute("/_authenticated/assistant/")({
   component: AssistantHome,
   head: () => ({
@@ -13,8 +12,7 @@ export const Route = createFileRoute("/_authenticated/assistant/")({
       { title: "Chat Analis — Personal AI Trading OS" },
       {
         name: "description",
-        content:
-          "Percakapan asisten per simbol dan topik berdasarkan fakta Engine Host.",
+        content: "Percakapan asisten per simbol dan topik berdasarkan fakta Engine Host.",
       },
       { property: "og:title", content: "Chat Analis — Personal AI Trading OS" },
       {
