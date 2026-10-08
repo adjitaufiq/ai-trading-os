@@ -28,6 +28,14 @@ Bukan: M5 momentum → BUY/SELL → cari pembenaran timeframe besar.
 - BUY → SELL hanya jika: H4 break bullish structure + terbentuk LH_LL + EMA H4 sejajar bearish.
 - Tidak boleh mengubah primaryBias: RSI rebound, beberapa candle hijau, EMA bounce M5/M15, reaksi support lokal.
 
+## 2A. PrimaryBias persistence rule
+- primaryBias tidak berubah karena fluktuasi candle intraday.
+- Setelah H4 menghasilkan primaryBias valid, nilainya dipertahankan sampai ada invalidation atau struktur H4 berlawanan yang valid.
+- primaryBias dihitung ulang hanya dari candle H4 yang sudah CLOSE.
+- Candle H4 yang masih berjalan tidak boleh membalik primaryBias.
+- Alur: H4 close → update bias; M5/M15 → cari timing. Bukan: tick berjalan → ubah bias.
+- Tambahan test: candle H4 berjalan naik saat primaryBias SELL ⇒ primaryBias tetap SELL sampai H4 close dengan struktur HH_HL + EMA bullish.
+
 ## 3. Counter trend = informasi risiko saja
 - Field `counterTrendCondition`: NONE | BULLISH_PULLBACK | BEARISH_PULLBACK.
 - Tampil sebagai "COUNTER TREND WARNING: BULLISH_PULLBACK" (harga sedang retracement melawan trend utama).
