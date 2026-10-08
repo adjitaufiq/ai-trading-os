@@ -104,10 +104,13 @@ export type TradeProjection = {
   readonly actionable: boolean;
   readonly headline: "BUY READY" | "SELL READY" | "BUY BIAS" | "SELL BIAS" | "HOLD";
   readonly status: "READY SETUP" | "WAIT TRIGGER" | "WAIT CONFIRMATION";
+  /** v0.5: counter-trend risk warning (risk info only, never a direction). */
+  readonly counterTrend: "NONE" | "BULLISH_PULLBACK" | "BEARISH_PULLBACK";
 };
 
 /** One presentation projection shared by Signal State and Rencana Acuan. */
 export function tradeProjection(snapshot: TradingSnapshot | null): TradeProjection {
+  const counterTrend = snapshot?.counter_trend_condition ?? "NONE";
   const signal = cockpitSignal(snapshot);
   if (signal === "BUY" || signal === "SELL")
     return {
@@ -115,6 +118,7 @@ export function tradeProjection(snapshot: TradingSnapshot | null): TradeProjecti
       actionable: true,
       headline: `${signal} READY`,
       status: "READY SETUP",
+      counterTrend,
     };
   const direction =
     snapshot?.radar_plan?.side ??
@@ -126,9 +130,9 @@ export function tradeProjection(snapshot: TradingSnapshot | null): TradeProjecti
   if (direction) {
     const status =
       snapshot?.radar_plan?.status === "WAITING_FOR_AREA" ? "WAIT CONFIRMATION" : "WAIT TRIGGER";
-    return { direction, actionable: false, headline: `${direction} BIAS`, status };
+    return { direction, actionable: false, headline: `${direction} BIAS`, status, counterTrend };
   }
-  return { direction: null, actionable: false, headline: "HOLD", status: "WAIT CONFIRMATION" };
+  return { direction: null, actionable: false, headline: "HOLD", status: "WAIT CONFIRMATION", counterTrend };
 }
 
 /** Trader-language read of the operator-v2 evidence. Pure presentation mapping; never derives a signal. */
@@ -752,6 +756,14 @@ export function RadarPlanView({
           data-testid="radar-projection-label"
         >
           PROYEKSI — BELUM SIGNAL ENTRY
+        </p>
+      ) : null}
+      {projection && projection.counterTrend !== "NONE" ? (
+        <p
+          className="mt-1 text-[11px] font-semibold text-attention"
+          data-testid="counter-trend-warning"
+        >
+          COUNTER TREND WARNING: {projection.counterTrend} — pullback melawan arah utama, bukan sinyal
         </p>
       ) : null}
       <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-3 text-sm">

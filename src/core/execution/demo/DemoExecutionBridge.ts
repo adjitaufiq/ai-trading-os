@@ -73,6 +73,11 @@ export class DemoExecutionBridge {
       if (this.o.mode !== "DEMO_STRESS_TEST") return block("MODE_NOT_DEMO");
       if (this.consumed().has(intent.signalId)) return block("DUPLICATE_SIGNAL");
       if (!(intent.stopLoss > 0 && intent.takeProfit > 0 && intent.plannedEntry > 0 && intent.stopLoss !== intent.plannedEntry)) return block("INVALID_PLAN");
+      // v0.5 hard block (backup layer): order side must match the H4 primary bias frozen in the intent context.
+      // Decision-layer block happens before intent creation; this guard catches any stale/foreign intent.
+      const h4b = intent.context.h4Bias;
+      if ((h4b === "BULLISH" && intent.direction !== "BUY") || (h4b === "BEARISH" && intent.direction !== "SELL"))
+        return block("COUNTER_PRIMARY_BIAS", `primaryBias=${h4b === "BULLISH" ? "BUY" : "SELL"} attemptedSide=${intent.direction}`);
       const id = await this.refreshAccount();
       if (!id) return block(this.lastAccount.reason ?? "IDENTITY_UNAVAILABLE");
       let positions;

@@ -17,13 +17,13 @@ export type ExecutionState = "ALLOWED" | "INHIBITED" | "BLOCKED";
 
 export const ALL_SIGNAL_STATES: readonly SignalState[] = ["READY", "WAITING", "EXPIRED", "INVALIDATED", "NOT_EVALUABLE"];
 
-export const SETUP_POLICY_VERSION = "setup-v2.1-p0.1-scalp-location-macro-metadata";
+export const SETUP_POLICY_VERSION = "setup-v2.2-p0.5-h4-primary-bias";
 export const SIGNAL_POLICY_VERSION = "signal-v3-p0.3-frozen-origin-ttl-invalidation-chasing";
 export const REFERENCE_PLAN_POLICY_VERSION = "reference-plan-v3-p0.6-local-swing-structural-clamp";
 export const GUARD_POLICY_VERSION = "guard-v0-monitor-only";
 export const POLICIES = Object.freeze({
   bias: "H4 primary trend (EMA21/EMA50 + confirmed structure): UP → BUY, DOWN → SELL, MIXED → NEUTRAL, insufficient → NOT_EVALUABLE",
-  setup: `${OPERATOR_POLICY_VERSION}: ACTIVE when operator status is CARI_BUY/CARI_SELL with local location (+ H1 RSI gate in TREND) satisfied; H1 alignment is metadata only (P0.1); H1 REVERSAL_CANDIDATE → INACTIVE (WAIT_CONFIRMATION, mtf-classification-v1); otherwise INACTIVE`,
+  setup: `${OPERATOR_POLICY_VERSION}: side = primaryBias (H4 structure+EMA, the only direction source); M5/M15 momentum is timing evidence only and never picks/flips BUY/SELL; opposing local momentum ⇒ counterTrendCondition warning + LOCAL_MOMENTUM_CONFLICT diagnostic. ACTIVE when operator status is CARI_BUY/CARI_SELL with local location (+ H1 RSI gate in TREND) satisfied; H1 REVERSAL_CANDIDATE → INACTIVE (WAIT_CONFIRMATION, mtf-classification-v1); otherwise INACTIVE`,
   signal: "Setup ACTIVE + fresh CLOSED M5/M15 trigger (new identity) → READY with frozen origin; READY carried until TTL / early invalidation / chasing (signal-ttl-v0.4-p0.3-v1); consumed triggers never resurrect",
   reference_plan: "BUY ASK / SELL BID; SL = latest confirmed M15 swing (fallback M5) on the protective side ± 0.25×ATR14(M15), no H1 fallback; raw TP1=1R/TP2=2R kept for audit; final TP2 = nearer of raw 2R and nearest M15/H1/H4 opposing zone edge − 0.20×ATR14(M15) buffer; final R:R < 1.0 ⇒ BAD_RR (TP1 null, actionable entry vetoed). Read-only analysis, never execution",
   operator: OPERATOR_RULES,
@@ -102,6 +102,12 @@ export interface TradingSnapshot {
   readonly last3_m5: readonly CandleGeometry[];
   readonly engulfing: { readonly bullish: boolean; readonly bearish: boolean; readonly definition: string; readonly bar_open_time: number | null } | null;
   readonly bias: { readonly state: BiasState; readonly reason: string };
+  /** v0.5: single direction source from H4 structure+EMA. UI/execution read this, never local momentum. */
+  readonly primary_bias: "BUY" | "SELL" | "NONE";
+  /** v0.5: setup side — can only equal primary_bias or WAIT. */
+  readonly setup_bias: "BUY" | "SELL" | "WAIT";
+  /** v0.5: counter-trend risk warning only; never enters signal state, plans, or execution. */
+  readonly counter_trend_condition: "NONE" | "BULLISH_PULLBACK" | "BEARISH_PULLBACK";
   readonly setup: { readonly state: SetupState; readonly reason: string };
   readonly signal: {
     readonly state: SignalState; readonly reason: string; readonly triggered_at: number | null; readonly trigger_bar: number | null; readonly trigger_evidence: string | null; readonly validity_policy: "RESEARCH_REQUIRED";
@@ -489,6 +495,7 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
       symbol: i.symbol, as_of: i.as_of, label: "CURRENT", availability: "UNAVAILABLE", availability_reason: "MARKET_STATE_UNAVAILABLE",
       quote: null, evidence: null, last3_m5: [], engulfing: null,
       bias: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE" },
+      primary_bias: "NONE", setup_bias: "WAIT", counter_trend_condition: "NONE",
       setup: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE" },
       signal: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE", triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED", origin: null, ttl_remaining_bars: null, chasing_guard: null, lifecycle: carryUnavailable(prevSignal, "MARKET_STATE_UNAVAILABLE") },
       execution: { state: "BLOCKED", reasons: ["MARKET_STATE_UNAVAILABLE", ...capabilityReasons] },
@@ -552,7 +559,9 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
   why.push({ ok: entry.state === "LONG_CANDIDATE" || entry.state === "SHORT_CANDIDATE", text: `Entry analysis ${entry.state}: ${entry.reason}` });
   why.push({ ok: false, text: `Execution ${execution.state}: ${execution.reasons.join(", ") || "—"}` });
 
-  return { symbol: i.symbol, as_of: i.as_of, label: "CURRENT", availability, availability_reason: availability === "STALE" ? "BAR_HISTORY_REFRESH_FAILED" : "OBSERVED", quote: i.quote, evidence, last3_m5: last3, engulfing: eng, bias, setup, signal, execution, entry, reference_plan: referencePlan, radar_plan: radarPlan, operator: op, why, versions };
+  const primaryBias = op.primary_bias ?? null;
+  const setupBias = side ?? "WAIT";
+  return { symbol: i.symbol, as_of: i.as_of, label: "CURRENT", availability, availability_reason: availability === "STALE" ? "BAR_HISTORY_REFRESH_FAILED" : "OBSERVED", quote: i.quote, evidence, last3_m5: last3, engulfing: eng, bias, primary_bias: primaryBias ?? "NONE", setup_bias: setupBias, counter_trend_condition: op.counter_trend_condition ?? "NONE", setup, signal, execution, entry, reference_plan: referencePlan, radar_plan: radarPlan, operator: op, why, versions };
 }
 
 /** A stored previous snapshot can never be labelled CURRENT. */

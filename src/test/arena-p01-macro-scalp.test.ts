@@ -52,13 +52,15 @@ describe("ARENA v0.4 P0.1 — macro/scalp split", () => {
     expect(aiSummaryPayload(s).length).toBeLessThanOrEqual(AI_SUMMARY_MAX_CHARS);
   });
 
-  it("H4 mixed (range) local candidate ⇒ NEUTRAL_MACRO", () => {
+  it("H4 mixed (range) ⇒ primaryBias NONE, no candidate (v0.5: local momentum never picks a side)", () => {
     const range = (k: number) => Array.from({ length: k }, (_, i) => 100 + 2 * ZIG[i % 8]!);
     const base = { M15: series("M15", range(60)), H1: series("H1", range(60)), H4: series("H4", range(60)) };
     const op = operatorAnalysis({ ...base, M5: withLast(series("M5", Array.from({ length: 50 }, (_, i) => 95 + 0.1 * i)), [99.8, 100.1, 98.6, 100]) }, 100);
     expect(op.macro.macro_direction).toBe("NEUTRAL_OR_MIXED");
-    expect(op.candidate).toBe("BUY");
-    expect(op.alignment).toBe("NEUTRAL_MACRO");
+    expect(op.primary_bias).toBeNull();
+    expect(op.candidate).toBeNull();
+    expect(op.status).toBe("HOLD");
+    expect(op.counter_trend_condition).toBe("NONE");
   });
 
   const range = (k: number) => Array.from({ length: k }, (_, i) => 100 + 2 * ZIG[i % 8]!);
@@ -79,15 +81,23 @@ describe("ARENA v0.4 P0.1 — macro/scalp split", () => {
     expect(s.execution.state).toBe("BLOCKED");
   });
 
-  it("H4 bearish + local BUY at support with H1 pullback ⇒ COUNTER_MACRO candidate", () => {
+  it("H4 bearish + local BUY pullback ⇒ primaryBias SELL, BULLISH_PULLBACK warning, no BUY anywhere (v0.5)", () => {
     const s = evaluate(input({ M5: trig(), M15: series("M15", up(60)), H1: series("H1", range(60)), H4: series("H4", down(60)) }, 100));
     const op = s.operator!;
     expect(op.macro.macro_direction).toBe("BEARISH");
     expect(op.h1_context).toBe("PULLBACK_AGAINST_H4");
     expect(op.location).toBe("AT_SUPPORT");
-    expect(op.candidate).toBe("BUY");
-    expect(op.alignment).toBe("COUNTER_MACRO");
-    expect(compactSummary(s).alignment).toBe("COUNTER_MACRO");
+    // v0.5: local bullish momentum is a counter-trend warning, never a BUY side.
+    expect(op.primary_bias).toBe("SELL");
+    expect(op.momentum_conflict).toBe(true);
+    expect(op.counter_trend_condition).toBe("BULLISH_PULLBACK");
+    expect(op.candidate).not.toBe("BUY");
+    expect(op.status).not.toBe("CARI_BUY");
+    expect(s.primary_bias).toBe("SELL");
+    expect(s.counter_trend_condition).toBe("BULLISH_PULLBACK");
+    expect(s.setup_bias).not.toBe("BUY");
+    expect(s.radar_plan?.side ?? null).not.toBe("BUY");
+    expect(s.reference_plan.status === "AVAILABLE" ? s.reference_plan.side : null).not.toBe("BUY");
   });
 
   it("no lookahead: future bars do not change analysis of the prefix; safety unchanged", () => {
