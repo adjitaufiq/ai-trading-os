@@ -18,6 +18,8 @@ import { Route as AuthenticatedAssistantRouteImport } from './routes/_authentica
 import { Route as ApiAssistantChatRouteImport } from './routes/api/assistant-chat'
 import { Route as AuthenticatedAssistantIndexRouteImport } from './routes/_authenticated/assistant.index'
 import { Route as AuthenticatedAssistantThreadIdRouteImport } from './routes/_authenticated/assistant.$threadId'
+import { Route as AuthenticatedAssistantControlRouteImport } from './routes/_authenticated/assistant.control'
+import { Route as AuthenticatedAssistantResearchRouteImport } from './routes/_authenticated/assistant.research'
 import { Route as ApiPublicDemoControlRouteImport } from './routes/api/public/demo-control'
 import { Route as ApiPublicAgentConfigRouteImport } from './routes/api/public/agent/config'
 import { Route as ApiPublicAgentEngineEventsRouteImport } from './routes/api/public/agent/engine-events'
@@ -72,6 +74,18 @@ const AuthenticatedAssistantThreadIdRoute =
     path: '/$threadId',
     getParentRoute: () => AuthenticatedAssistantRoute,
   } as any)
+const AuthenticatedAssistantControlRoute =
+  AuthenticatedAssistantControlRouteImport.update({
+    id: '/control',
+    path: '/control',
+    getParentRoute: () => AuthenticatedAssistantRoute,
+  } as any)
+const AuthenticatedAssistantResearchRoute =
+  AuthenticatedAssistantResearchRouteImport.update({
+    id: '/research',
+    path: '/research',
+    getParentRoute: () => AuthenticatedAssistantRoute,
+  } as any)
 const ApiPublicDemoControlRoute = ApiPublicDemoControlRouteImport.update({
   id: '/api/public/demo-control',
   path: '/api/public/demo-control',
@@ -119,6 +133,8 @@ export interface FileRoutesByFullPath {
   '/assistant': typeof AuthenticatedAssistantRouteWithChildren
   '/api/assistant-chat': typeof ApiAssistantChatRoute
   '/assistant/$threadId': typeof AuthenticatedAssistantThreadIdRoute
+  '/assistant/control': typeof AuthenticatedAssistantControlRoute
+  '/assistant/research': typeof AuthenticatedAssistantResearchRoute
   '/api/public/demo-control': typeof ApiPublicDemoControlRoute
   '/assistant/': typeof AuthenticatedAssistantIndexRoute
   '/api/public/agent/config': typeof ApiPublicAgentConfigRoute
@@ -135,6 +151,8 @@ export interface FileRoutesByTo {
   '/mt5': typeof Mt5Route
   '/api/assistant-chat': typeof ApiAssistantChatRoute
   '/assistant/$threadId': typeof AuthenticatedAssistantThreadIdRoute
+  '/assistant/control': typeof AuthenticatedAssistantControlRoute
+  '/assistant/research': typeof AuthenticatedAssistantResearchRoute
   '/api/public/demo-control': typeof ApiPublicDemoControlRoute
   '/assistant': typeof AuthenticatedAssistantIndexRoute
   '/api/public/agent/config': typeof ApiPublicAgentConfigRoute
@@ -154,6 +172,8 @@ export interface FileRoutesById {
   '/_authenticated/assistant': typeof AuthenticatedAssistantRouteWithChildren
   '/api/assistant-chat': typeof ApiAssistantChatRoute
   '/_authenticated/assistant/$threadId': typeof AuthenticatedAssistantThreadIdRoute
+  '/_authenticated/assistant/control': typeof AuthenticatedAssistantControlRoute
+  '/_authenticated/assistant/research': typeof AuthenticatedAssistantResearchRoute
   '/api/public/demo-control': typeof ApiPublicDemoControlRoute
   '/_authenticated/assistant/': typeof AuthenticatedAssistantIndexRoute
   '/api/public/agent/config': typeof ApiPublicAgentConfigRoute
@@ -173,6 +193,8 @@ export interface FileRouteTypes {
     | '/assistant'
     | '/api/assistant-chat'
     | '/assistant/$threadId'
+    | '/assistant/control'
+    | '/assistant/research'
     | '/api/public/demo-control'
     | '/assistant/'
     | '/api/public/agent/config'
@@ -189,6 +211,8 @@ export interface FileRouteTypes {
     | '/mt5'
     | '/api/assistant-chat'
     | '/assistant/$threadId'
+    | '/assistant/control'
+    | '/assistant/research'
     | '/api/public/demo-control'
     | '/assistant'
     | '/api/public/agent/config'
@@ -207,6 +231,8 @@ export interface FileRouteTypes {
     | '/_authenticated/assistant'
     | '/api/assistant-chat'
     | '/_authenticated/assistant/$threadId'
+    | '/_authenticated/assistant/control'
+    | '/_authenticated/assistant/research'
     | '/api/public/demo-control'
     | '/_authenticated/assistant/'
     | '/api/public/agent/config'
@@ -298,6 +324,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAssistantThreadIdRouteImport
       parentRoute: typeof AuthenticatedAssistantRoute
     }
+    '/_authenticated/assistant/control': {
+      id: '/_authenticated/assistant/control'
+      path: '/control'
+      fullPath: '/assistant/control'
+      preLoaderRoute: typeof AuthenticatedAssistantControlRouteImport
+      parentRoute: typeof AuthenticatedAssistantRoute
+    }
+    '/_authenticated/assistant/research': {
+      id: '/_authenticated/assistant/research'
+      path: '/research'
+      fullPath: '/assistant/research'
+      preLoaderRoute: typeof AuthenticatedAssistantResearchRouteImport
+      parentRoute: typeof AuthenticatedAssistantRoute
+    }
     '/api/public/demo-control': {
       id: '/api/public/demo-control'
       path: '/api/public/demo-control'
@@ -352,12 +392,16 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedAssistantRouteChildren {
   AuthenticatedAssistantThreadIdRoute: typeof AuthenticatedAssistantThreadIdRoute
+  AuthenticatedAssistantControlRoute: typeof AuthenticatedAssistantControlRoute
+  AuthenticatedAssistantResearchRoute: typeof AuthenticatedAssistantResearchRoute
   AuthenticatedAssistantIndexRoute: typeof AuthenticatedAssistantIndexRoute
 }
 
 const AuthenticatedAssistantRouteChildren: AuthenticatedAssistantRouteChildren =
   {
     AuthenticatedAssistantThreadIdRoute: AuthenticatedAssistantThreadIdRoute,
+    AuthenticatedAssistantControlRoute: AuthenticatedAssistantControlRoute,
+    AuthenticatedAssistantResearchRoute: AuthenticatedAssistantResearchRoute,
     AuthenticatedAssistantIndexRoute: AuthenticatedAssistantIndexRoute,
   }
 
