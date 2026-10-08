@@ -4,6 +4,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FileText, Radar } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { briefingPrompt } from "@/lib/assistant/briefing";
 import { supabase } from "@/integrations/supabase/client";
 import { loadThread, threadsQueryKey, type AssistantThread } from "@/lib/assistant/threads";
@@ -78,30 +79,31 @@ function ChatWindow({ thread, initial }: { thread: AssistantThread; initial: UIM
   const onSubmit = (m: PromptInputMessage) => send(m.text);
 
   return <>
-    <header className="flex items-center gap-2 border-b border-border px-4 py-2">
+    <header className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-border px-3 py-2 sm:px-5">
+      <div className="min-w-0 space-y-1"><div className="flex min-w-0 items-center gap-2">
       <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-secondary-foreground">{SCOPE_LABEL[scope]}</span>
-      <span className="text-xs text-muted-foreground">{TOPIC_LABEL[thread.topic] ?? thread.topic}</span>
+      <span className="truncate text-xs text-muted-foreground">{TOPIC_LABEL[thread.topic] ?? thread.topic}</span>
+      </div><p className="truncate text-xs font-medium">{thread.title}</p></div>
       {scope === "XAUUSD" || scope === "BTCUSD" ? (
-        <button onClick={() => send(briefingPrompt(scope))} disabled={busy} className="flex items-center gap-1 rounded border border-border px-2 py-0.5 text-[10px] hover:bg-accent disabled:opacity-50">
-          <FileText className="size-3" /> Session Brief
-        </button>
+        <Button variant="outline" size="sm" onClick={() => send(briefingPrompt(scope))} disabled={busy} className="shrink-0">
+          <FileText className="size-3" /> Briefing
+        </Button>
       ) : null}
-      <span className="ml-auto text-[10px] text-muted-foreground">Sumber fakta: ENGINE HOST VPS · AI hanya menjelaskan</span>
     </header>
-    <Conversation className="flex-1">
-      <ConversationContent className="mx-auto w-full max-w-3xl">
+    <Conversation className="min-h-0 min-w-0 flex-1">
+      <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 py-6 sm:px-6">
         {messages.length === 0 ? (
           <ConversationEmptyState icon={<Radar className="size-8 text-bull" />} title={`Thread ${SCOPE_LABEL[scope]}`}
             description="Tanya arti istilah engine atau kondisi Radar saat ini.">
-            <div className="mt-4 flex flex-wrap justify-center gap-2">
+            <div className="flex w-full flex-col items-center gap-4"><Radar className="size-9 text-bull" /><h2 className="text-base font-semibold">{SCOPE_LABEL[scope]} · Analis pasar</h2><div className="grid w-full gap-2 sm:grid-cols-2">
               {(SUGGESTIONS[scope] ?? []).map((s) => (
-                <button key={s} onClick={() => send(s)} className="rounded-full border border-border px-3 py-1 text-xs hover:bg-accent">{s}</button>
+                <Button variant="outline" key={s} disabled={busy} onClick={() => send(s)} className="h-auto min-h-11 whitespace-normal px-3 py-2 text-xs">{s}</Button>
               ))}
-            </div>
+            </div></div>
           </ConversationEmptyState>
         ) : messages.map((m) => (
-          <Message key={m.id} from={m.role}>
-            <MessageContent>
+          <Message key={m.id} from={m.role} className="min-w-0 max-w-full">
+            <MessageContent className="break-words [overflow-wrap:anywhere] group-[.is-user]:bg-primary group-[.is-user]:text-primary-foreground">
               {m.parts.map((p, i) => p.type === "text"
                 ? (m.role === "assistant" ? <MessageResponse key={i}>{p.text}</MessageResponse> : <span key={i} className="whitespace-pre-wrap">{p.text}</span>)
                 : null)}
@@ -113,11 +115,11 @@ function ChatWindow({ thread, initial }: { thread: AssistantThread; initial: UIM
       </ConversationContent>
       <ConversationScrollButton />
     </Conversation>
-    <div className="mx-auto w-full max-w-3xl p-3">
+    <div className="mx-auto w-full max-w-3xl shrink-0 border-t border-border px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-5">
       <PromptInput onSubmit={onSubmit}>
-        <PromptInputTextarea ref={taRef} placeholder={scope === "KNOWLEDGE" ? "Tanya arti istilah… (mis. Apa arti TRANSITION?)" : `Tanya kondisi ${SCOPE_LABEL[scope]} sekarang…`} />
+        <PromptInputTextarea ref={taRef} aria-label="Pesan untuk asisten" className="max-h-32 min-h-14 text-base" placeholder={scope === "KNOWLEDGE" ? "Tanya asisten…" : `Tanya kondisi ${SCOPE_LABEL[scope]}…`} />
         <PromptInputFooter className="justify-end">
-          <PromptInputSubmit status={status} onStop={stop} />
+          <PromptInputSubmit status={status} onStop={stop} aria-label={busy ? "Hentikan jawaban" : "Kirim pesan"} title={busy ? "Hentikan jawaban" : "Kirim pesan"} />
         </PromptInputFooter>
       </PromptInput>
     </div>
