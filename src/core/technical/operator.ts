@@ -501,10 +501,11 @@ export function operatorAnalysis(closed: Readonly<Record<Timeframe, readonly Tec
     ema_confluence: emaConf, patterns, trigger,
     momentum_policy_version: SCALP_MOMENTUM_POLICY_VERSION, combined_momentum: combined, momentum_side: mSide,
   };
-  // Alignment derived AFTER the local side exists.
-  const searchSide = candidateSide ?? (status === "CARI_BUY" ? "BUY" : status === "CARI_SELL" ? "SELL" : mSide);
+  // v0.5: search side is always the primaryBias side (never local momentum).
+  const searchSide = candidateSide ?? (status === "CARI_BUY" ? "BUY" : status === "CARI_SELL" ? "SELL" : primaryBias);
   return {
     policy_version: OPERATOR_POLICY_VERSION, architecture_version: ARCHITECTURE_VERSION, macro, scalp, alignment: macroAlignment(searchSide, macro.macro_direction),
+    primary_bias: primaryBias, counter_trend_condition: counterTrend, momentum_conflict: momentumConflict,
     price, per_tf: per, h4_primary: h4, h1_context: ctx, zones, nearest_support: ns, nearest_resistance: nr,
     location, ema_confluence: emaConf, patterns, trigger, regime, status, candidate: candidateSide, checks, setup_ready: setupReady, reason, trigger_bar: triggerBar,
   };
