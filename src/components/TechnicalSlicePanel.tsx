@@ -15,6 +15,7 @@ import { buildSidePlan, type RadarPlan, type TradingSnapshot, type WhyFact } fro
 import type { AiWhyResult } from "@/lib/ai-why.functions";
 import { sharedPaperJournal, type PaperJournalStore } from "@/lib/paperJournal";
 import { aiSummaryPayload } from "@/lib/tradeSummary";
+import { useMobileTerminal } from "./MobileTerminalContext";
 
 const uiClock = new LiveClock();
 /** Short Indonesian error for the AI section; never raw validation JSON. */
@@ -505,7 +506,13 @@ function SourceMismatch({ detail }: { detail: string }) {
 }
 
 function CockpitBody({ view, facts, explain, store, fallbackReason }: { view: SliceView; facts: RuntimeFacts; explain?: TechnicalSlicePanelProps["explain"]; store: PaperJournalStore; fallbackReason: string | null }) {
+  const mobile = useMobileTerminal();
   const snapshot = view.current;
+  const publishReport = mobile?.setReport;
+  useEffect(() => {
+    publishReport?.({ snapshot, facts });
+    return () => publishReport?.(null);
+  }, [publishReport, snapshot, facts]);
   const evidence = snapshot?.evidence;
   const signal = cockpitSignal(snapshot);
   const projection = tradeProjection(snapshot);

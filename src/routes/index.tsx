@@ -14,6 +14,11 @@ import { explainTradingState } from "@/lib/ai-why.functions";
 import { browserWebSocketFactory } from "@/lib/browserWebSocket";
 import { mountCanonicalRuntime, type MountedRuntime } from "@/lib/canonicalRuntimes";
 import { useEngineHostStore } from "@/hooks/use-engine-host";
+import { MobileTerminalProvider, useMobileTerminal } from "@/components/MobileTerminalContext";
+import { MobileTerminalChrome } from "@/components/MobileTerminalChrome";
+import { MobileTradingView, MobileBottomNav } from "@/components/MobileTradingView";
+import { BacktestPanel } from "@/components/JournalPanel";
+import { Link } from "@tanstack/react-router";
 
 const RealMarketTerminal = lazy(() => import("@/components/RealMarketTerminal").then((m) => ({ default: m.RealMarketTerminal })));
 
@@ -32,6 +37,7 @@ export const Route = createFileRoute("/")({
 const SYMBOLS = ["XAUUSD", "BTCUSD"] as const;
 
 function Terminal() {
+  const mobile = useMobileTerminal();
   const [selectedSymbol, setSelectedSymbol] = useState<TerminalMarket>("XAUUSD");
   const config = useMemo(() => makeGatewayConfig({ timeoutMs: 15_000 }), []);
   const client = useMemo(() => new BrokerGatewayClient({
@@ -66,27 +72,32 @@ function Terminal() {
   const fallbackReason = engineState.status === "OFFLINE" ? engineState.error ?? "UNREACHABLE" : null;
   const engineTrades = engineState.status === "LIVE" ? Object.values(engineState.bundles).flatMap((b) => b.trades) : null;
   return <>
-    <div className="mx-auto max-w-screen-2xl px-4 pt-2 sm:px-8" data-testid="state-source-banner">
+    <div className="mobile-terminal-only"><MobileTerminalChrome selectedSymbol={selectedSymbol} onSymbol={setSelectedSymbol} engineStatus={engineState.status} engineDetail={`ENGINE HOST ${engineState.status}\n${fallbackReason ?? ""}\nSOURCE ${engineState.status === "LIVE" ? "ENGINE_HOST" : "BROWSER_SESSION (EPHEMERAL)"}`} hasAlerts={false} /></div>
+    <div className="desktop-terminal-only mx-auto max-w-screen-2xl px-4 pt-2 sm:px-8" data-testid="state-source-banner">
       {engineState.status === "LIVE" ? <p className="text-xs font-semibold text-bull">SOURCE: ENGINE HOST VPS (LIVE)</p>
         : engineState.status === "CHECKING" ? <p className="text-xs text-muted-foreground">Menghubungkan engine host VPS…</p>
         : engineState.status === "OFFLINE" ? <p className="text-xs font-semibold text-warn" role="alert">ENGINE HOST OFFLINE ({fallbackReason}) · fallback BROWSER SESSION (EPHEMERAL) — refresh akan me-reset state.</p>
         : <p className="text-xs text-warn">SOURCE: BROWSER SESSION (EPHEMERAL) — engine host belum dikonfigurasi, refresh akan me-reset state.</p>}
     </div>
     <RealMarketTerminal client={client} liveReaders={liveReaders} selectedSymbol={selectedSymbol} onSelectedSymbolChange={setSelectedSymbol} />
-    <div className="mx-auto flex max-w-screen-2xl gap-1 px-4 pb-3 sm:px-8" role="tablist">
+    <div className="desktop-terminal-only mx-auto flex max-w-screen-2xl gap-1 px-4 pb-3 sm:px-8" role="tablist">
       <Button size="sm" role="tab" aria-selected={tab === "COCKPIT"} variant={tab === "COCKPIT" ? "secondary" : "ghost"} onClick={() => setTab("COCKPIT")}>Kokpit</Button>
       <Button size="sm" role="tab" aria-selected={tab === "JOURNAL"} variant={tab === "JOURNAL" ? "secondary" : "ghost"} onClick={() => setTab("JOURNAL")}>Jurnal &amp; Backtest</Button>
-      <Button size="sm" variant="ghost" asChild><a href="/assistant">AI Assistant</a></Button>
+      <Button size="sm" variant="ghost" asChild><Link to="/assistant">AI Assistant</Link></Button>
       <AlertCenter store={alerts} alarm={alarm} notificationApi={notificationApi} onSelect={focusAlert} />
     </div>
     {/* Cockpit stays mounted (hidden) so paper marks and signal journaling keep running. */}
-    <div hidden={tab !== "COCKPIT"}>{engineState.status === "CHECKING" ? <div className="mx-auto max-w-screen-2xl px-4 text-sm text-muted-foreground sm:px-8">Memuat state terakhir dari engine host…</div> : <TechnicalSlicePanel runtimes={runtimes} engine={engineState.status === "LIVE" ? engine : undefined} fallbackReason={fallbackReason} selectedSymbol={selectedSymbol} unmountedReason={`CANONICAL_RUNTIME_NOT_MOUNTED ${unmountedReason}`} explain={(snapshot) => explain({ data: { snapshot } })} alerts={alerts} onAlert={onAlert} />}</div>
+    <div className={`terminal-original-cockpit ${mobile?.accessory === "Detail Radar & Teknikal" || mobile?.accessory === "Mode & Simulasi" ? "mobile-accessory-visible" : ""}`} hidden={tab !== "COCKPIT"}>{engineState.status === "CHECKING" ? <div className="mx-auto max-w-screen-2xl px-4 text-sm text-muted-foreground sm:px-8">Memuat state terakhir dari engine host…</div> : <TechnicalSlicePanel runtimes={runtimes} engine={engineState.status === "LIVE" ? engine : undefined} fallbackReason={fallbackReason} selectedSymbol={selectedSymbol} unmountedReason={`CANONICAL_RUNTIME_NOT_MOUNTED ${unmountedReason}`} explain={(snapshot) => explain({ data: { snapshot } })} alerts={alerts} onAlert={onAlert} />}</div>
+    <div className="mobile-terminal-only mobile-content">
+      {!mobile?.accessory ? <MobileTradingView onWhy={() => { mobile?.setAccessory("Detail Radar & Teknikal"); }} /> : mobile.accessory === "Jurnal" ? <JournalPanel runtimes={runtimes} selectedSymbol={selectedSymbol} engineTrades={engineTrades} /> : mobile.accessory === "Backtest" ? <BacktestPanel runtimes={runtimes} symbol={selectedSymbol} /> : mobile.accessory === "Alert" ? <AlertCenter store={alerts} alarm={alarm} notificationApi={notificationApi} onSelect={focusAlert} /> : null}
+      <MobileBottomNav engineStatus={engineState.status} />
+    </div>
     {tab === "JOURNAL" ? <JournalPanel runtimes={runtimes} selectedSymbol={selectedSymbol} engineTrades={engineTrades} /> : null}
   </>;
 }
 
 function Index() {
   return <ClientOnly fallback={<div className="min-h-screen bg-background p-5 text-muted-foreground">Memuat terminal pasar…</div>}>
-    <Suspense fallback={<div className="min-h-screen bg-background p-5 text-muted-foreground">Memuat terminal pasar…</div>}><Terminal /></Suspense>
+    <Suspense fallback={<div className="min-h-screen bg-background p-5 text-muted-foreground">Memuat terminal pasar…</div>}><MobileTerminalProvider><Terminal /></MobileTerminalProvider></Suspense>
   </ClientOnly>;
 }
