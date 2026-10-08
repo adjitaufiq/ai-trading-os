@@ -48,9 +48,9 @@ export const OPERATOR_RULES = Object.freeze({
   ema_zone: "BAND = price inside [EMA21, EMA50]; else NEAR_EMA21 / NEAR_EMA50 within 0.25×ATR14(TF); else NOT_NEAR",
   location: "AT_SUPPORT / AT_RESISTANCE = within 0.5×ATR14(M15) of a support / resistance zone edge (inside counts); both ⇒ AMBIGUOUS; neither ⇒ MID",
   regime: "TREND = H4 UP/DOWN; RANGE = H4 not directional AND H1 has a support zone and a resistance zone each with ≥2 touches; otherwise CHOPPY",
-  trend_setup: "P0.2: scalp side = combined M5/M15 EMA5/21 momentum (STRONG_BUY/BUY ⇒ BUY, STRONG_SELL/SELL ⇒ SELL, CONFLICT/HOLD ⇒ HOLD). H4/H1 never pick a side. TREND regime: location = S/R zone on the side's entry edge OR M5/M15 EMA21/50 local confluence; retained H1 RSI14 gate (until P0.8); CLOSED M5/M15 trigger in side. Legacy vetoes: H4 INSUFFICIENT, CHOPPY, H1 REVERSAL_CANDIDATE/INSUFFICIENT ⇒ HOLD",
-  scalp_momentum: "Per M5/M15 (CLOSED): slope = (EMA_now − EMA_3barsAgo)/ATR14_now; gap = |EMA5−EMA21|/ATR14_now; gap_delta = gap − gap_3barsAgo. Sign comparisons only. M5 drives, M15 confirms/conflicts",
-  alignment: "WITH_MACRO = side matches H4 direction; COUNTER_MACRO = opposes clear H4; NEUTRAL_MACRO = H4 MIXED; NOT_APPLICABLE = no side or H4 INSUFFICIENT. Derived after the local side exists; classification only",
+  trend_setup: "P0.5: primaryBias = H4 structure+EMA (UP⇒BUY, DOWN⇒SELL, else NONE) — the ONLY direction source. M5/M15 momentum is timing evidence only, never picks BUY/SELL. TREND regime: side = primaryBias; location = S/R zone on the side's entry edge OR M5/M15 EMA21/50 local confluence; retained H1 RSI14 gate (until P0.8); CLOSED M5/M15 trigger in side. Local momentum opposing primaryBias ⇒ counterTrendCondition warning + LOCAL_MOMENTUM_CONFLICT diagnostic, never a side flip. Legacy vetoes: H4 INSUFFICIENT, CHOPPY, H1 REVERSAL_CANDIDATE/INSUFFICIENT ⇒ HOLD",
+  scalp_momentum: "Per M5/M15 (CLOSED): slope = (EMA_now − EMA_3barsAgo)/ATR14_now; gap = |EMA5−EMA21|/ATR14_now; gap_delta = gap − gap_3barsAgo. Sign comparisons only. Timing/pullback evidence only — never a direction source",
+  alignment: "WITH_MACRO = side matches H4 direction; COUNTER_MACRO = opposes clear H4; NEUTRAL_MACRO = H4 MIXED; NOT_APPLICABLE = no side or H4 INSUFFICIENT. Since side = primaryBias (H4), COUNTER_MACRO is structurally unreachable for candidates; kept for audit of legacy payloads",
   range_setup: "Momentum side required; BUY needs AT_SUPPORT + bullish CLOSED trigger, SELL AT_RESISTANCE + bearish; MID/AMBIGUOUS ⇒ HOLD. RSI gate not applied in range (RESEARCH_REQUIRED)",
   rsi_support: "M15/M5 RSI14 > 50 bullish, < 50 bearish — supporting evidence only; overbought/oversold thresholds RESEARCH_REQUIRED (not used)",
   patterns: "See candle-patterns-v1: engulfing (strict body), hammer-like, shooting-star-like, rejection wick, morning/evening-star-like on the last 3 CLOSED bars",
@@ -270,8 +270,12 @@ export interface OperatorTf {
   readonly events: StructureEvents;
 }
 
-/** ARENA v0.4 P0.1 — H4/H1 = macro context, M15/M5 = scalp decision domain. */
-export const ARCHITECTURE_VERSION = "arena-architecture-v0.4-p0.2-scalp-momentum-decision";
+/** ARENA v0.5 — H4 structure is the single direction source (primaryBias); M15/M5 = entry timing only. */
+export const ARCHITECTURE_VERSION = "arena-architecture-v0.5-h4-primary-bias";
+/** Single source of trade direction. null = no tradeable direction (H4 MIXED/INSUFFICIENT). */
+export type PrimaryBias = "BUY" | "SELL" | null;
+/** Counter-trend risk information only — never enters signal state, plans, or execution. */
+export type CounterTrendCondition = "NONE" | "BULLISH_PULLBACK" | "BEARISH_PULLBACK";
 export type MacroDirection = "BULLISH" | "BEARISH" | "NEUTRAL_OR_MIXED" | "INSUFFICIENT";
 export type MacroAlignment = "WITH_MACRO" | "COUNTER_MACRO" | "NEUTRAL_MACRO" | "NOT_APPLICABLE";
 export interface MacroContext {
