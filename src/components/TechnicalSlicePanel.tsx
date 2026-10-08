@@ -455,7 +455,7 @@ function IntelligenceBlock({ facts }: { facts: RuntimeFacts }) {
 }
 
 
-export function PaperPositions({ store, symbol, quote }: { store: PaperJournalStore; symbol: string; quote: TicketQuote | null }) {
+function PaperPositions({ store, symbol, quote }: { store: PaperJournalStore; symbol: string; quote: TicketQuote | null }) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const open = state.positions.filter((p) => p.symbol === symbol && p.status === "OPEN");
   if (open.length === 0) return null;

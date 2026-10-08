@@ -1,5 +1,5 @@
 import { createFileRoute, ClientOnly } from "@tanstack/react-router";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { TerminalMarket } from "@/components/RealMarketTerminal";
 import { BrokerGatewayClient } from "@/core/broker/gateway/BrokerGatewayClient";
 import { makeGatewayConfig } from "@/core/broker/gateway/config";
@@ -65,6 +65,7 @@ function Terminal() {
   const explain = useServerFn(explainTradingState);
   const [tab, setTab] = useState<"COCKPIT" | "JOURNAL">("COCKPIT");
   const alerts = useMemo(() => sharedSignalAlerts(), []);
+  const alertItems = useSyncExternalStore(alerts.subscribe, alerts.getAlerts, alerts.getAlerts);
   const alarm = useMemo(() => browserAlarm(), []);
   const notificationApi = useMemo(() => browserNotificationApi(), []);
   const focusAlert = (symbol: string) => { if (symbol === "XAUUSD" || symbol === "BTCUSD") setSelectedSymbol(symbol); setTab("COCKPIT"); };
@@ -72,7 +73,7 @@ function Terminal() {
   const fallbackReason = engineState.status === "OFFLINE" ? engineState.error ?? "UNREACHABLE" : null;
   const engineTrades = engineState.status === "LIVE" ? Object.values(engineState.bundles).flatMap((b) => b.trades) : null;
   return <>
-    <div className="mobile-terminal-only"><MobileTerminalChrome selectedSymbol={selectedSymbol} onSymbol={setSelectedSymbol} engineStatus={engineState.status} engineDetail={`ENGINE HOST ${engineState.status}\n${fallbackReason ?? ""}\nSOURCE ${engineState.status === "LIVE" ? "ENGINE_HOST" : "BROWSER_SESSION (EPHEMERAL)"}`} hasAlerts={false} /></div>
+    <div className="mobile-terminal-only"><MobileTerminalChrome selectedSymbol={selectedSymbol} onSymbol={setSelectedSymbol} engineStatus={engineState.status} engineDetail={`ENGINE HOST ${engineState.status}\n${fallbackReason ?? ""}\nSOURCE ${engineState.status === "LIVE" ? "ENGINE_HOST" : "BROWSER_SESSION (EPHEMERAL)"}`} hasAlerts={alertItems.some((alert) => !alert.read)} /></div>
     <div className="desktop-terminal-only mx-auto max-w-screen-2xl px-4 pt-2 sm:px-8" data-testid="state-source-banner">
       {engineState.status === "LIVE" ? <p className="text-xs font-semibold text-bull">SOURCE: ENGINE HOST VPS (LIVE)</p>
         : engineState.status === "CHECKING" ? <p className="text-xs text-muted-foreground">Menghubungkan engine host VPS…</p>
