@@ -26,4 +26,4 @@
 - Paper trading and journal (src/lib/paperJournal.ts) are local SIMULATION only, persisted in localStorage, with no broker/gateway import. Why: user research must never create an order path.
 - AI Assistant uses AI Context Builder (src/lib/assistant/contextBuilder.ts, pure field copy of Engine Host bundles into AiContextPayload) and an env-selected LLM Gateway adapter (src/lib/assistant/llm/gateway.server.ts, LLM_PROVIDER / OPENROUTER_API_KEY, Lovable AI fallback). Why: Engine Host stays source of truth, provider stays swappable, LLM only explains.
 - vite.config.ts aliases @vercel/oidc to its fs-free browser build. Why: its Node build makes the Worker bundle call createRequire(import.meta.url) at startup, which 500s every request.
-- Assistant monitoring and research live on separate authenticated child routes; chat never mounts report panels. Why: operational controls and historical analysis must not crowd conversations or change panel data authority.
+- Assistant has separate chat/control/research routes. Why: keep chat clear.

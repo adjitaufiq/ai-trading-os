@@ -80,26 +80,6 @@ function AssistantHome() {
           )}
         </div>
       </div>
-              </div>
-            </section>
-          )}
-        </details>
-        {[
-          ["Performance Intelligence", <PerformancePanel key="performance" />],
-          ["Trade Review", <TradeReviewPanel key="review" />],
-          ["Execution Control & Audit", <ExecutionControlPanel key="control" />],
-          ["Engine Proof of Life", <EngineEventsPanel key="events" />],
-          ["Demo Execution Lab", <DemoLabPanel key="demo" />],
-        ].map(([label, panel]) => (
-          <details key={String(label)} className="group border-t border-border">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-4 text-sm font-semibold">
-              {label}
-              <ChevronDown className="size-4 shrink-0 transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="min-w-0 pb-5">{panel}</div>
-          </details>
-        ))}
-      </div>
     </div>
   );
 }

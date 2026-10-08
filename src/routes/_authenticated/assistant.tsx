@@ -184,7 +184,7 @@ function AssistantLayout() {
           </div>
         </div>
       </header>
-      <nav aria-label="Pages de l’assistant" className="flex shrink-0 gap-1 border-b border-border px-3 py-2 md:px-5">
+      <nav aria-label="Halaman asisten" className="flex shrink-0 gap-1 border-b border-border px-3 py-2 md:px-5">
         <Button asChild size="sm" variant={!reportPage ? "secondary" : "ghost"}>
           <Link to="/assistant" aria-current={!reportPage ? "page" : undefined}><MessageSquare />Chat</Link>
         </Button>
