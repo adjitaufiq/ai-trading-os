@@ -26,6 +26,45 @@ import {
   type ThreadScope,
 } from "@/lib/assistant/knowledgeBase";
 
+const dayKey = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+};
+
+const dayFormatter = new Intl.DateTimeFormat("id-ID", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+/** Header gaya history Chrome: "Hari ini - 9 Okt 2026". */
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const cur = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if (cur.getTime() === today.getTime()) return `Hari ini - ${dayFormatter.format(d)}`;
+  if (cur.getTime() === yesterday.getTime()) return `Kemarin - ${dayFormatter.format(d)}`;
+  return dayFormatter.format(d);
+}
+
+/** Thread dikelompokkan per hari, terbaru dulu (konsep history Chrome). */
+function groupByDay(threads: AssistantThread[]): Array<[string, AssistantThread[]]> {
+  const sorted = [...threads].sort(
+    (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+  );
+  const groups = new Map<string, AssistantThread[]>();
+  for (const t of sorted) {
+    const key = dayKey(t.updated_at);
+    const list = groups.get(key);
+    if (list) list.push(t);
+    else groups.set(key, [t]);
+  }
+  return [...groups.entries()];
+}
+
 export const Route = createFileRoute("/_authenticated/assistant")({
   head: () => ({
     meta: [
