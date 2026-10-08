@@ -221,7 +221,8 @@ function AssistantLayout() {
                 );
               })}
             </section>
-          ))
+            );
+          })
         )}
       </nav>
       <div className="flex gap-1 border-t border-border p-2">
