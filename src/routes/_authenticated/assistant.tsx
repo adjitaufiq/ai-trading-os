@@ -83,7 +83,7 @@ function AssistantLayout() {
     <header className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-border px-3 py-3 md:px-5">
       <div className="flex min-w-0 items-center gap-2">
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-          <SheetTrigger asChild><Button variant="ghost" size="icon" className="shrink-0 md:hidden" aria-label="Ouvrir les conversations" title="Percakapan"><PanelLeft /></Button></SheetTrigger>
+          <SheetTrigger asChild><Button variant="ghost" size="icon" className="shrink-0 md:hidden" aria-label="Buka percakapan" title="Percakapan"><PanelLeft /></Button></SheetTrigger>
           <SheetContent side="left" className="flex w-[min(90vw,22rem)] max-w-none flex-col gap-0 p-0">
             <div className="border-b border-border p-4 pr-12"><SheetTitle>Percakapan</SheetTitle><SheetDescription>AI Trading Assistant</SheetDescription></div>
             {navigation}
