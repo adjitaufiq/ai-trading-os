@@ -18,7 +18,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
-import { createThread, deleteThread, listThreads, threadsQueryKey } from "@/lib/assistant/threads";
+import { createThread, deleteThread, listThreads, threadsQueryKey, type AssistantThread } from "@/lib/assistant/threads";
 import {
   SCOPE_LABEL,
   THREAD_SCOPES,
