@@ -59,22 +59,28 @@ describe("ARENA v0.4 P0.2 — scalp momentum", () => {
     expect(op2.status).toBe("HOLD");
     expect(op2.candidate).toBeNull();
   });
-  it("5: H4 bearish does not force SELL; local BUY ⇒ COUNTER_MACRO", () => {
+  it("5: H4 bearish + local BUY momentum ⇒ primaryBias SELL wins; BULLISH_PULLBACK warning, never BUY (v0.5)", () => {
     const M5 = withLast(series("M5", up(40)), [120, 120.2, 118.8, 119], [118.9, 121.2, 118.7, 121]);
     const op = operatorAnalysis({ M5, M15: series("M15", up(60)), H1: series("H1", up(60)), H4: series("H4", down(60)) }, 110);
     expect(op.macro.macro_direction).toBe("BEARISH");
     expect(["BUY", "STRONG_BUY"]).toContain(op.scalp.combined_momentum);
-    expect(op.status).not.toBe("CARI_SELL");
-    expect(op.candidate).not.toBe("SELL");
-    expect(op.alignment).toBe("COUNTER_MACRO");
+    expect(op.primary_bias).toBe("SELL");
+    expect(op.momentum_conflict).toBe(true);
+    expect(op.counter_trend_condition).toBe("BULLISH_PULLBACK");
+    expect(op.status).not.toBe("CARI_BUY");
+    expect(op.candidate).not.toBe("BUY");
+    expect(op.alignment).not.toBe("COUNTER_MACRO"); // side = primaryBias ⇒ structurally unreachable
   });
-  it("6: H4 bullish does not force BUY; local SELL ⇒ COUNTER_MACRO", () => {
+  it("6: H4 bullish + local SELL momentum ⇒ primaryBias BUY wins; BEARISH_PULLBACK warning, never SELL (v0.5)", () => {
     const op = operatorAnalysis({ M5: series("M5", down(60)), M15: series("M15", down(60)), H1: series("H1", down(60)), H4: series("H4", up(60)) }, 180);
     expect(op.macro.macro_direction).toBe("BULLISH");
     expect(["SELL", "STRONG_SELL"]).toContain(op.scalp.combined_momentum);
-    expect(op.status).not.toBe("CARI_BUY");
-    expect(op.candidate).not.toBe("BUY");
-    expect(op.alignment).toBe("COUNTER_MACRO");
+    expect(op.primary_bias).toBe("BUY");
+    expect(op.momentum_conflict).toBe(true);
+    expect(op.counter_trend_condition).toBe("BEARISH_PULLBACK");
+    expect(op.status).not.toBe("CARI_SELL");
+    expect(op.candidate).not.toBe("SELL");
+    expect(op.alignment).not.toBe("COUNTER_MACRO");
   });
   it("7: metrics use only the closed prefix (future bars do not leak)", () => {
     const bars = series("M5", up(80));
