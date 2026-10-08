@@ -495,6 +495,7 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
       symbol: i.symbol, as_of: i.as_of, label: "CURRENT", availability: "UNAVAILABLE", availability_reason: "MARKET_STATE_UNAVAILABLE",
       quote: null, evidence: null, last3_m5: [], engulfing: null,
       bias: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE" },
+      primary_bias: "NONE", setup_bias: "WAIT", counter_trend_condition: "NONE",
       setup: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE" },
       signal: { state: "NOT_EVALUABLE", reason: "MARKET_STATE_UNAVAILABLE", triggered_at: null, trigger_bar: null, trigger_evidence: null, validity_policy: "RESEARCH_REQUIRED", origin: null, ttl_remaining_bars: null, chasing_guard: null, lifecycle: carryUnavailable(prevSignal, "MARKET_STATE_UNAVAILABLE") },
       execution: { state: "BLOCKED", reasons: ["MARKET_STATE_UNAVAILABLE", ...capabilityReasons] },
@@ -558,7 +559,9 @@ export function evaluate(i: EvaluationInput, prevSignal: TradingSnapshot["signal
   why.push({ ok: entry.state === "LONG_CANDIDATE" || entry.state === "SHORT_CANDIDATE", text: `Entry analysis ${entry.state}: ${entry.reason}` });
   why.push({ ok: false, text: `Execution ${execution.state}: ${execution.reasons.join(", ") || "—"}` });
 
-  return { symbol: i.symbol, as_of: i.as_of, label: "CURRENT", availability, availability_reason: availability === "STALE" ? "BAR_HISTORY_REFRESH_FAILED" : "OBSERVED", quote: i.quote, evidence, last3_m5: last3, engulfing: eng, bias, setup, signal, execution, entry, reference_plan: referencePlan, radar_plan: radarPlan, operator: op, why, versions };
+  const primaryBias = op.primary_bias ?? null;
+  const setupBias = side ?? "WAIT";
+  return { symbol: i.symbol, as_of: i.as_of, label: "CURRENT", availability, availability_reason: availability === "STALE" ? "BAR_HISTORY_REFRESH_FAILED" : "OBSERVED", quote: i.quote, evidence, last3_m5: last3, engulfing: eng, bias, primary_bias: primaryBias ?? "NONE", setup_bias: setupBias, counter_trend_condition: op.counter_trend_condition ?? "NONE", setup, signal, execution, entry, reference_plan: referencePlan, radar_plan: radarPlan, operator: op, why, versions };
 }
 
 /** A stored previous snapshot can never be labelled CURRENT. */
