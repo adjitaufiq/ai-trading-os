@@ -21,6 +21,7 @@
 ```text
 H4 STRUCTURE → PRIMARY BIAS → H1 CONFIRMATION → M15 SETUP → M5 TRIGGER → EXECUTION
 ```
+Bukan: M5 momentum → BUY/SELL → cari pembenaran timeframe besar.
 
 ## 2. Aturan perubahan arah H4
 - SELL → BUY hanya jika: H4 break bearish structure + terbentuk HH_HL + EMA H4 sejajar bullish.
@@ -62,7 +63,7 @@ COUNTER TREND WARNING   BULLISH_PULLBACK
 - Case 4: execution berlawanan primaryBias ⇒ BLOCKED_COUNTER_PRIMARY_BIAS dengan payload audit lengkap.
 
 - Case 5: H4 SELL valid + momentum BUY kuat di M5/M15 ⇒ primaryBias SELL, setupBias WAIT, counterTrendCondition BULLISH_PULLBACK; UI "SELL BIAS / WAIT SELL TRIGGER"; tidak ada BUY intent yang dibuat sama sekali.
-- Case 6: H4 SELL valid + M5/M15 BUY pullback + RSI bullish + EMA bounce ⇒ primaryBias SELL, setupBias WAIT, counterTrendCondition BULLISH_PULLBACK. Dilarang: BUY signal, BUY plan, BUY intent, BUY execution. Alasan: indikator timeframe kecil menggambarkan pergerakan, bukan arah.
+- Case 6: H4 SELL valid + M5/M15 BUY pullback + RSI bullish + EMA bounce ⇒ primaryBias SELL, setupBias WAIT, counterTrendCondition BULLISH_PULLBACK. Dilarang: BUY signal, BUY plan, BUY intent, BUY execution. Alasan: indikator timeframe rendah menjelaskan pergerakan, bukan arah. Override primaryBias oleh RSI atau modul lain tidak diizinkan.
 
 ## Dampak
 - Versi kebijakan dinaikkan; statistik journal dipisah per versi. Jumlah sinyal kemungkinan turun. Backtest cepat otomatis memakai aturan baru.
