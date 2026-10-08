@@ -83,7 +83,7 @@ describe("Telegram presentation", () => {
   });
 
   it("falls back without parse_mode only when Telegram rejects HTML", async () => {
-    vi.stubEnv("LOVABLE_API_KEY", "test-key"); vi.stubEnv("TELEGRAM_API_KEY", "test-connection");
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-bot");
     const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, error_code: 400, description: "Bad Request: can't parse entities" }), { status: 400 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
     vi.stubGlobal("fetch", fetcher);
@@ -96,7 +96,7 @@ describe("Telegram presentation", () => {
   });
 
   it("handles ok:false in HTTP 200 and does not retry unrelated failures", async () => {
-    vi.stubEnv("LOVABLE_API_KEY", "test-key"); vi.stubEnv("TELEGRAM_API_KEY", "test-connection");
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-bot");
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: false, error_code: 403, description: "Forbidden" })));
     vi.stubGlobal("fetch", fetcher);
     expect((await sendTelegramMessage("test-chat", "Clean")).status).toBe("FAILED");
