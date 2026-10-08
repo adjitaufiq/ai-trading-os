@@ -1,4 +1,6 @@
 # Stage 3 PRE-2D gap closure
+- [ ] Mobile-only terminal cockpit: TRADE/RADAR/ANALISIS, grouped drawer, honest status lamps, robot chat bubble; preserve desktop and all existing features; do not repair offline engine.
+- [ ] Fresh workspace Telegram connection (blocked: connection approval interrupted; project bot-token secrets already present).
 - [x] Separate assistant chat, control and research pages; preserved panel logic; verified panel order and navigation at 320/390/1280 widths without overflow or page errors; 14 targeted tests and lint passed; automatic build OK.
 - [x] Assistant mobile cockpit: full-width chat, conversation drawer, all reports/audit retained; verified 320/390/768/1280 widths, composer typing, 16 assistant tests, lint and automatic build/typecheck; historical demo audit is compatible with AI-only MONITOR_ONLY, old unqualified header was ambiguous; no trading changes.
 - [x] Telegram presentation: safe Markdown→HTML, professional briefing prompt, clean alerts/Q&A, parser fallback; 913 regression tests passed and automatic build/typecheck OK.
