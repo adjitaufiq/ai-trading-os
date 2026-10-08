@@ -119,19 +119,33 @@ function AssistantLayout() {
     if (params.threadId === id) navigate({ to: "/assistant" });
   };
 
-  const navigation = (
-    <>
-      <nav aria-label="Daftar percakapan" className="min-h-0 flex-1 overflow-y-auto p-3">
-        {(Object.keys(THREAD_SCOPES) as ThreadScope[]).map((scope) => {
-          const items = threads.filter((t) => (t.symbol ?? "KNOWLEDGE") === scope);
-          return (
-            <section key={scope} className="mb-3">
-              <div className="flex items-center justify-between px-2 py-1">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {SCOPE_LABEL[scope]}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1 px-2 pb-1">
+  const [newChatOpen, setNewChatOpen] = useState(false);
+  const historyGroups = useMemo(() => groupByDay(threads), [threads]);
+
+  const newChatPanel = (
+    <div className="border-b border-border pb-1">
+      <button
+        type="button"
+        onClick={() => setNewChatOpen((v) => !v)}
+        aria-expanded={newChatOpen}
+        aria-label="Buat percakapan baru"
+        className="flex w-full items-center justify-between rounded px-3 py-2.5 text-sm font-medium hover:bg-accent/50"
+      >
+        <span className="flex items-center gap-2">
+          <Plus className="size-4 text-bull" /> Percakapan baru
+        </span>
+        <ChevronDown
+          className={`size-4 text-muted-foreground transition-transform ${newChatOpen ? "rotate-180" : ""}`}
+        />
+      </button>
+      {newChatOpen ? (
+        <div className="space-y-2 px-2 pb-2">
+          {(Object.keys(THREAD_SCOPES) as ThreadScope[]).map((scope) => (
+            <div key={scope}>
+              <p className="px-1 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {SCOPE_LABEL[scope]}
+              </p>
+              <div className="flex flex-wrap gap-1">
                 {THREAD_SCOPES[scope].map((topic) => (
                   <Button
                     variant="outline"
@@ -141,41 +155,70 @@ function AssistantLayout() {
                     onClick={() => create(scope, topic)}
                     className="h-auto min-h-9 whitespace-normal px-2 py-1 text-xs text-muted-foreground"
                   >
-                    <Plus className="size-3" />
                     {TOPIC_LABEL[topic]}
                   </Button>
                 ))}
               </div>
-              {items.map((t) => (
-                <div
-                  key={t.id}
-                  className={`group flex items-center rounded ${params.threadId === t.id ? "bg-accent" : "hover:bg-accent/50"}`}
-                >
-                  <Link
-                    to="/assistant/$threadId"
-                    params={{ threadId: t.id }}
-                    onClick={() => setMenuOpen(false)}
-                    className="min-w-0 flex-1 px-2 py-2.5"
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const navigation = (
+    <>
+      {newChatPanel}
+      <nav aria-label="Histori percakapan" className="min-h-0 flex-1 overflow-y-auto p-3">
+        <p className="flex items-center gap-1.5 px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <History className="size-3.5" /> Histori
+        </p>
+        {historyGroups.length === 0 ? (
+          <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+            Belum ada percakapan.
+          </p>
+        ) : (
+          historyGroups.map(([key, items]) => (
+            <section key={key} className="mb-2">
+              <p className="px-2 py-1.5 text-xs font-semibold text-foreground/80">
+                {dayLabel(items[0].updated_at)}
+              </p>
+              {items.map((t) => {
+                const scope = (t.symbol ?? "KNOWLEDGE") as ThreadScope;
+                return (
+                  <div
+                    key={t.id}
+                    className={`group flex items-center rounded ${params.threadId === t.id ? "bg-accent" : "hover:bg-accent/50"}`}
                   >
-                    <p className="truncate text-sm">{t.title}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {TOPIC_LABEL[t.topic] ?? t.topic}
-                    </p>
-                  </Link>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Hapus percakapan ${t.title}`}
-                    onClick={() => remove(t.id)}
-                    className="shrink-0 text-muted-foreground md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-              ))}
+                    <span className="ml-2 shrink-0 rounded bg-secondary px-1.5 py-0.5 text-[9px] font-semibold text-secondary-foreground">
+                      {SCOPE_LABEL[scope]}
+                    </span>
+                    <Link
+                      to="/assistant/$threadId"
+                      params={{ threadId: t.id }}
+                      onClick={() => setMenuOpen(false)}
+                      className="min-w-0 flex-1 px-2 py-2.5"
+                    >
+                      <p className="truncate text-sm">{t.title}</p>
+                      <p className="truncate text-[10px] text-muted-foreground">
+                        {TOPIC_LABEL[t.topic] ?? t.topic}
+                      </p>
+                    </Link>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Hapus percakapan ${t.title}`}
+                      onClick={() => remove(t.id)}
+                      className="shrink-0 text-muted-foreground md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                );
+              })}
             </section>
-          );
-        })}
+          ))
+        )}
       </nav>
       <div className="flex gap-1 border-t border-border p-2">
         <Button asChild variant="ghost" size="sm" className="flex-1">
