@@ -7,8 +7,8 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Plus, Radar, Trash2, LogOut, ArrowLeft, PanelLeft } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Plus, Radar, Trash2, LogOut, ArrowLeft, PanelLeft, ChevronDown, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
