@@ -27,4 +27,4 @@
 - AI Assistant uses AI Context Builder (src/lib/assistant/contextBuilder.ts, pure field copy of Engine Host bundles into AiContextPayload) and an env-selected LLM Gateway adapter (src/lib/assistant/llm/gateway.server.ts, LLM_PROVIDER / OPENROUTER_API_KEY, Lovable AI fallback). Why: Engine Host stays source of truth, provider stays swappable, LLM only explains.
 - vite.config.ts aliases @vercel/oidc to its fs-free browser build. Why: its Node build makes the Worker bundle call createRequire(import.meta.url) at startup, which 500s every request.
 - Separate chat/control/research routes keep chat clear.
-- Mobile terminal projections share existing quote and cockpit outputs through a presentation context; never add market polling or evaluation there. Why: mobile and desktop must share the same source authority.
+- Mobile context projects existing quote/cockpit outputs, without polling or evaluation. Why: shared source authority.
