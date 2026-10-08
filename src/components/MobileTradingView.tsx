@@ -17,7 +17,7 @@ export function mobileLamps(snapshot: TradingSnapshot | null, facts: RuntimeFact
     { label: "FEED", tone: connected ? "healthy" : "attention", detail: connected ? "Feed broker tervalidasi" : "Feed belum terhubung / tidak terkini" },
     { label: "ENG", tone: engineStatus === "LIVE" && facts?.engineHealth?.state === "ONLINE" ? "healthy" : engineStatus === "OFFLINE" ? "attention" : "waiting", detail: `Engine Host ${engineStatus} · ${facts?.source ?? "belum tersedia"}` },
     { label: "EMA", tone: indicatorTone(ev?.H1.ema21.status), detail: `EMA21 H1 ${ev?.H1.ema21.status ?? "belum dievaluasi"}` },
-    { label: "STR", tone: ev && ev.H1.structure.summary !== "INSUFFICIENT" ? "healthy" : "unknown", detail: text(ev?.H1.structure.summary) },
+    { label: "STR", tone: ev && ev.H1.structure.summary !== "INSUFFICIENT_HISTORY" ? "healthy" : "unknown", detail: text(ev?.H1.structure.summary) },
     { label: "SNR", tone: ev?.H1.snr ? "healthy" : "unknown", detail: `Lokasi ${text(snapshot?.operator?.location)}` },
     { label: "RSI", tone: indicatorTone(ev?.H1.rsi14.status), detail: `RSI14 H1 ${ev?.H1.rsi14.status === "OK" ? fmt(ev.H1.rsi14.value) : "belum dievaluasi"} · gate ${checks?.rsi == null ? "—" : checks.rsi ? "✓" : "✗"}` },
     { label: "ATR", tone: indicatorTone(ev?.M15.atr14.status), detail: `ATR14 M15 ${ev?.M15.atr14.status === "OK" ? fmt(ev.M15.atr14.value) : "belum dievaluasi"}` },
