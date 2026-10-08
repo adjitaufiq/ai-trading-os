@@ -178,11 +178,15 @@ function AssistantLayout() {
             Belum ada percakapan.
           </p>
         ) : (
-          historyGroups.map(([key, items]) => (
+          historyGroups.map(([key, items]) => {
+            const first = items[0];
+            return (
             <section key={key} className="mb-2">
-              <p className="px-2 py-1.5 text-xs font-semibold text-foreground/80">
-                {dayLabel(items[0].updated_at)}
-              </p>
+              {first ? (
+                <p className="px-2 py-1.5 text-xs font-semibold text-foreground/80">
+                  {dayLabel(first.updated_at)}
+                </p>
+              ) : null}
               {items.map((t) => {
                 const scope = (t.symbol ?? "KNOWLEDGE") as ThreadScope;
                 return (
