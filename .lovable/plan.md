@@ -12,6 +12,16 @@
 - Tidak ada modul sesudahnya yang boleh override: radar, momentum engine, RSI evaluator, setup generator, signal aggregator, execution planner.
 - Semua modul downstream hanya boleh: (1) menerima primaryBias, (2) memberi status valid/invalid, (3) memberi timing readiness.
 
+### Pipeline ownership rule
+- Market structure layer adalah pemilik tunggal primaryBias; semua layer setelahnya consumer, bukan decision maker.
+- Jika ada konflik antar modul, primaryBias dari H4 selalu menang.
+- Konflik dicatat sebagai diagnostic event, tidak mengubah arah trade.
+- Contoh: H4 primaryBias = SELL, momentum module = BUY ⇒ primaryBias SELL, counterTrendCondition BULLISH_PULLBACK, diagnostic LOCAL_MOMENTUM_CONFLICT.
+
+```text
+H4 STRUCTURE → PRIMARY BIAS → H1 CONFIRMATION → M15 SETUP → M5 TRIGGER → EXECUTION
+```
+
 ## 2. Aturan perubahan arah H4
 - SELL → BUY hanya jika: H4 break bearish structure + terbentuk HH_HL + EMA H4 sejajar bullish.
 - BUY → SELL hanya jika: H4 break bullish structure + terbentuk LH_LL + EMA H4 sejajar bearish.
@@ -52,6 +62,7 @@ COUNTER TREND WARNING   BULLISH_PULLBACK
 - Case 4: execution berlawanan primaryBias ⇒ BLOCKED_COUNTER_PRIMARY_BIAS dengan payload audit lengkap.
 
 - Case 5: H4 SELL valid + momentum BUY kuat di M5/M15 ⇒ primaryBias SELL, setupBias WAIT, counterTrendCondition BULLISH_PULLBACK; UI "SELL BIAS / WAIT SELL TRIGGER"; tidak ada BUY intent yang dibuat sama sekali.
+- Case 6: H4 SELL valid + M5/M15 BUY pullback + RSI bullish + EMA bounce ⇒ primaryBias SELL, setupBias WAIT, counterTrendCondition BULLISH_PULLBACK. Dilarang: BUY signal, BUY plan, BUY intent, BUY execution. Alasan: indikator timeframe kecil menggambarkan pergerakan, bukan arah.
 
 ## Dampak
 - Versi kebijakan dinaikkan; statistik journal dipisah per versi. Jumlah sinyal kemungkinan turun. Backtest cepat otomatis memakai aturan baru.
