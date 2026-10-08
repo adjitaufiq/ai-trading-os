@@ -1,5 +1,5 @@
 # Stage 3 PRE-2D gap closure
-- [ ] Mobile-only terminal cockpit: TRADE/RADAR/ANALISIS, grouped drawer, honest status lamps, robot chat bubble; preserve desktop and all existing features; do not repair offline engine.
+- [x] Mobile terminal: TRADE/RADAR/ANALISIS, grouped drawer, honest lamps and robot chat shortcut; desktop and existing detail views retained; 29 targeted tests passed, mobile overflow/page errors absent, automatic build OK; offline engine untouched.
 - [x] Fresh workspace Telegram connection linked; getMe verified @AITraderKerjaku_bot successfully.
 - [x] Separate assistant chat, control and research pages; preserved panel logic; verified panel order and navigation at 320/390/1280 widths without overflow or page errors; 14 targeted tests and lint passed; automatic build OK.
 - [x] Assistant mobile cockpit: full-width chat, conversation drawer, all reports/audit retained; verified 320/390/768/1280 widths, composer typing, 16 assistant tests, lint and automatic build/typecheck; historical demo audit is compatible with AI-only MONITOR_ONLY, old unqualified header was ambiguous; no trading changes.
