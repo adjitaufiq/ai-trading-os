@@ -8,7 +8,16 @@ import {
 } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Plus, Radar, Trash2, LogOut, ArrowLeft, PanelLeft, ChevronDown, History } from "lucide-react";
+import {
+  Plus,
+  Radar,
+  Trash2,
+  LogOut,
+  ArrowLeft,
+  PanelLeft,
+  ChevronDown,
+  History,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -18,7 +27,13 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
-import { createThread, deleteThread, listThreads, threadsQueryKey, type AssistantThread } from "@/lib/assistant/threads";
+import {
+  createThread,
+  deleteThread,
+  listThreads,
+  threadsQueryKey,
+  type AssistantThread,
+} from "@/lib/assistant/threads";
 import {
   SCOPE_LABEL,
   THREAD_SCOPES,
@@ -181,46 +196,46 @@ function AssistantLayout() {
           historyGroups.map(([key, items]) => {
             const first = items[0];
             return (
-            <section key={key} className="mb-2">
-              {first ? (
-                <p className="px-2 py-1.5 text-xs font-semibold text-foreground/80">
-                  {dayLabel(first.updated_at)}
-                </p>
-              ) : null}
-              {items.map((t) => {
-                const scope = (t.symbol ?? "KNOWLEDGE") as ThreadScope;
-                return (
-                  <div
-                    key={t.id}
-                    className={`group flex items-center rounded ${params.threadId === t.id ? "bg-accent" : "hover:bg-accent/50"}`}
-                  >
-                    <span className="ml-2 shrink-0 rounded bg-secondary px-1.5 py-0.5 text-[9px] font-semibold text-secondary-foreground">
-                      {SCOPE_LABEL[scope]}
-                    </span>
-                    <Link
-                      to="/assistant/$threadId"
-                      params={{ threadId: t.id }}
-                      onClick={() => setMenuOpen(false)}
-                      className="min-w-0 flex-1 px-2 py-2.5"
+              <section key={key} className="mb-2">
+                {first ? (
+                  <p className="px-2 py-1.5 text-xs font-semibold text-foreground/80">
+                    {dayLabel(first.updated_at)}
+                  </p>
+                ) : null}
+                {items.map((t) => {
+                  const scope = (t.symbol ?? "KNOWLEDGE") as ThreadScope;
+                  return (
+                    <div
+                      key={t.id}
+                      className={`group flex items-center rounded ${params.threadId === t.id ? "bg-accent" : "hover:bg-accent/50"}`}
                     >
-                      <p className="truncate text-sm">{t.title}</p>
-                      <p className="truncate text-[10px] text-muted-foreground">
-                        {TOPIC_LABEL[t.topic] ?? t.topic}
-                      </p>
-                    </Link>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Hapus percakapan ${t.title}`}
-                      onClick={() => remove(t.id)}
-                      className="shrink-0 text-muted-foreground md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  </div>
-                );
-              })}
-            </section>
+                      <span className="ml-2 shrink-0 rounded bg-secondary px-1.5 py-0.5 text-[9px] font-semibold text-secondary-foreground">
+                        {SCOPE_LABEL[scope]}
+                      </span>
+                      <Link
+                        to="/assistant/$threadId"
+                        params={{ threadId: t.id }}
+                        onClick={() => setMenuOpen(false)}
+                        className="min-w-0 flex-1 px-2 py-2.5"
+                      >
+                        <p className="truncate text-sm">{t.title}</p>
+                        <p className="truncate text-[10px] text-muted-foreground">
+                          {TOPIC_LABEL[t.topic] ?? t.topic}
+                        </p>
+                      </Link>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Hapus percakapan ${t.title}`}
+                        onClick={() => remove(t.id)}
+                        className="shrink-0 text-muted-foreground md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </section>
             );
           })
         )}
