@@ -8,14 +8,7 @@ import {
 } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import {
-  Plus,
-  Radar,
-  Trash2,
-  LogOut,
-  ArrowLeft,
-  PanelLeft,
-} from "lucide-react";
+import { Plus, Radar, Trash2, LogOut, ArrowLeft, PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -63,11 +56,12 @@ function AssistantLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const reportPage = pathname === "/assistant/control" || pathname === "/assistant/research";
-  const pageTitle = pathname === "/assistant/control"
-    ? "Kontrol"
-    : pathname === "/assistant/research"
-      ? "Riset"
-      : "AI Trading Assistant";
+  const pageTitle =
+    pathname === "/assistant/control"
+      ? "Kontrol"
+      : pathname === "/assistant/research"
+        ? "Riset"
+        : "AI Trading Assistant";
 
   const create = async (scope: ThreadScope, topic: string) => {
     setBusy(true);
@@ -171,29 +165,31 @@ function AssistantLayout() {
     <div className="assistant-cockpit flex h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground">
       <header className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-border px-3 py-3 md:px-5">
         <div className="flex min-w-0 items-center gap-2">
-          {!reportPage && <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-            <SheetTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0 md:hidden"
-                aria-label="Buka percakapan"
-                title="Percakapan"
+          {!reportPage && (
+            <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+              <SheetTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0 md:hidden"
+                  aria-label="Buka percakapan"
+                  title="Percakapan"
+                >
+                  <PanelLeft />
+                </Button>
+              </SheetTrigger>
+              <SheetContent
+                side="left"
+                className="flex w-[min(90vw,22rem)] max-w-none flex-col gap-0 p-0"
               >
-                <PanelLeft />
-              </Button>
-            </SheetTrigger>
-            <SheetContent
-              side="left"
-              className="flex w-[min(90vw,22rem)] max-w-none flex-col gap-0 p-0"
-            >
-              <div className="border-b border-border p-4 pr-12">
-                <SheetTitle>Percakapan</SheetTitle>
-                <SheetDescription>AI Trading Assistant</SheetDescription>
-              </div>
-              {navigation}
-            </SheetContent>
-          </Sheet>}
+                <div className="border-b border-border p-4 pr-12">
+                  <SheetTitle>Percakapan</SheetTitle>
+                  <SheetDescription>AI Trading Assistant</SheetDescription>
+                </div>
+                {navigation}
+              </SheetContent>
+            </Sheet>
+          )}
           <Radar className="hidden size-6 shrink-0 text-bull sm:block" aria-hidden />
           <div className="min-w-0">
             <h1 className="truncate text-sm font-semibold sm:text-base">{pageTitle}</h1>
@@ -212,11 +208,11 @@ function AssistantLayout() {
         )}
       </header>
       <div className="flex min-h-0 flex-1">
-        {!reportPage && <aside
-          className="hidden w-72 shrink-0 flex-col border-r border-border md:flex"
-        >
-          {navigation}
-        </aside>}
+        {!reportPage && (
+          <aside className="hidden w-72 shrink-0 flex-col border-r border-border md:flex">
+            {navigation}
+          </aside>
+        )}
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <Outlet />
         </main>
