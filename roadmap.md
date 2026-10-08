@@ -1,4 +1,5 @@
 # Stage 3 PRE-2D gap closure
+- [x] Isolate Chat, Control and Research navigation; removed cross-page tabs and report conversation drawers, retained panels and terminal entry links; verified at 390/1280 widths, no page errors or overflow, 6 assistant tests passed and automatic build OK.
 - [x] Mobile terminal: TRADE/RADAR/ANALISIS, grouped drawer, honest lamps and robot chat shortcut; desktop and existing detail views retained; 29 targeted tests passed, mobile overflow/page errors absent, automatic build OK; offline engine untouched.
 - [x] Fresh workspace Telegram connection linked; getMe verified @AITraderKerjaku_bot successfully.
 - [x] Separate assistant chat, control and research pages; preserved panel logic; verified panel order and navigation at 320/390/1280 widths without overflow or page errors; 14 targeted tests and lint passed; automatic build OK.
