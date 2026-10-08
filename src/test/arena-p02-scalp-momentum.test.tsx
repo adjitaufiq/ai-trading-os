@@ -56,7 +56,9 @@ describe("ARENA v0.4 P0.2 — scalp momentum", () => {
     expect(op.scalp.combined_momentum).toBe("STRONG_BUY");
     const op2 = operatorAnalysis({ M5: series("M5", rising(60)), M15: series("M15", falling(60)), H1: series("H1", up(60)), H4: series("H4", up(60)) }, 101);
     expect(op2.scalp.combined_momentum).toBe("CONFLICT");
-    expect(op2.status).toBe("HOLD");
+    // v0.5: H4 bullish owns the side; conflicting local momentum waits for an aligned trigger.
+    expect(op2.primary_bias).toBe("BUY");
+    expect(op2.status).toBe("CARI_BUY");
     expect(op2.candidate).toBeNull();
   });
   it("5: H4 bearish + local BUY momentum ⇒ primaryBias SELL wins; BULLISH_PULLBACK warning, never BUY (v0.5)", () => {
