@@ -365,6 +365,12 @@ export interface OperatorAnalysis {
   readonly macro: MacroContext;
   readonly scalp: ScalpContext;
   readonly alignment: MacroAlignment;
+  /** v0.5: single direction source (H4 structure+EMA). All downstream layers consume this; none may override. */
+  readonly primary_bias: PrimaryBias;
+  /** v0.5: counter-trend risk info only. Never enters signal state, plans, or execution. */
+  readonly counter_trend_condition: CounterTrendCondition;
+  /** v0.5: diagnostic when local M5/M15 momentum opposes primaryBias. Recorded, never changes direction. */
+  readonly momentum_conflict: boolean;
   // ---- LEGACY/COMPAT fields below (pre-P0.1 flat read model; still used by UI/tests) ----
   readonly price: number;
   readonly per_tf: Readonly<Record<Timeframe, OperatorTf>>;
