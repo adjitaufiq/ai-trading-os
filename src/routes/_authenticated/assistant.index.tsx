@@ -64,7 +64,7 @@ function AssistantHome() {
       <Radar className="size-10 text-bull" aria-hidden />
       <h2 className="text-lg font-semibold">Cockpit Analis</h2>
       <div className="grid w-full gap-2 sm:grid-cols-2">
-        {[["XAUUSD", "RADAR_EXPLAIN", "Chat XAUUSD"], ["BTCUSD", "RADAR_EXPLAIN", "Chat BTCUSD"], ["ENGINE", "ENGINE_HEALTH", "Engine Host"], ["KNOWLEDGE", "REGIME", "Knowledge Base"]].map(([scope, topic, label]) =>
+        {([["XAUUSD", "RADAR", "Chat XAUUSD"], ["BTCUSD", "RADAR", "Chat BTCUSD"], ["ENGINE", "HEALTH", "Engine Host"], ["KNOWLEDGE", "REGIME", "Knowledge Base"]] as const).map(([scope, topic, label]) =>
           <Button key={scope} variant="outline" className="h-12 justify-start" disabled={busy} onClick={() => start(scope, topic)}><MessageSquare className="text-bull" />{label}</Button>)}
       </div>
       {error && <p role="alert" className="text-sm text-warn">{error}</p>}
