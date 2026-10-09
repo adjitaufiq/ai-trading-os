@@ -29,7 +29,7 @@ describe("ARENA causalSwings — tie rule B (left strict, right allows equality)
     expect(hs[0]!.price).toBe(15);
   });
   it("B. equal LOW on the right side: mirror rule", () => {
-    const bars = Array.from({ length: 5 }, (_, i) => mk("M15", 10 - i * 0.2, [10, 9, 5, 5, 4][i]!, i));
+    const bars = Array.from({ length: 5 }, (_, i) => mk("M15", 10 - i * 0.2, [10, 9, 5, 5, 6][i]!, i));
     const ls = causalSwings(bars).filter((s) => s.kind === "LOW");
     expect(ls).toHaveLength(1);
     expect(ls[0]!.pivot_time).toBe(bars[2]!.open_time);
