@@ -74,6 +74,11 @@ export interface JournalTrade {
   readonly primaryFailureCategory?: FailureCategory;
   /** Origin of the market data; always set by fromPaperTrade. Statistics must never mix sources. */
   readonly dataSource?: DataSource;
+  /** PrimaryBias → M2: H4 primaryBias at setup gate (optional; absent on legacy rows). */
+  readonly primaryBias?: "BUY" | "SELL" | "NONE";
+  /** Epoch ms of the primaryBias evaluation. */
+  readonly primaryBiasAsOf?: number;
+  readonly primaryBiasSource?: "TECHNICAL_H4_CLOSED";
 }
 
 export type SaveError = "DUPLICATE_TRADE_ID" | "INVALID_TRADE";

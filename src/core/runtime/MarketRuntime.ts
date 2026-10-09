@@ -16,7 +16,8 @@ import { CandleStore, type CandleStoreMetrics } from "../candles/CandleStore";
 import { detectMissingIntervals, type MissingInterval } from "../candles/MissingInterval";
 import { RadarRuntimeService } from "../radar/RadarRuntimeService";
 import type { RadarHealth, RadarSnapshot } from "../radar/types";
-import { LivePaperLoop, type ApprovedPaperOpen, type PaperPipelineEvent, type PaperLoopState, type VirtualAccountView } from "../paper/LivePaperLoop";
+import { TechnicalSliceService } from "../technical/TechnicalSliceService";
+import { LivePaperLoop, type PrimaryBiasProvider, type ApprovedPaperOpen, type PaperPipelineEvent, type PaperLoopState, type VirtualAccountView } from "../paper/LivePaperLoop";
 import type { JournalTrade } from "../../engine/journal/types";
 import type { MarketDataHandlers, MarketDataStream } from "../broker/gateway/BrokerGatewayClient";
 import type {
@@ -131,6 +132,7 @@ export class MarketRuntime {
   readonly reader: MarketRuntimeReader;
   private readonly radar: RadarRuntimeService;
   private readonly paper: LivePaperLoop;
+  private biasSlice: TechnicalSliceService | null = null;
 
   constructor(private readonly o: MarketRuntimeOptions) {
     const sym = o.binding.canonical_symbol;
@@ -145,7 +147,15 @@ export class MarketRuntime {
     // Radar evidence = broker CLOSED history (strictly older than the first live closed bar) + canonical live CLOSED bars,
     // so it warms up from history instead of waiting hours for live M15 bars. History never enters CandleStore/fanout.
     this.fanout.aggregators.M5.onBar((b) => { if (b.status === "CLOSED") this.radar.onClosedM5(b, (tf) => this.radarEvidence(tf), o.clock.now()); });
-    this.paper = new LivePaperLoop(sym, o.spec.origin === "BROKER_REPORTED" ? "REAL_MT5" : "SYNTHETIC", o.spec);
+    // PrimaryBias → M2: synchronous H4 primaryBias evaluation at every CLOSED M5 (LIVE clock only).
+    // REPLAY has no ReplayPrimaryBiasProvider yet ⇒ no provider ⇒ paper loop fails closed (NO_PRIMARY_BIAS).
+    const biasProvider: PrimaryBiasProvider | undefined = o.clock.mode === "LIVE" ? () => {
+      this.biasSlice ??= new TechnicalSliceService(this.reader, sym, o.clock);
+      const asOf = o.clock.now();
+      const pb = this.biasSlice.evaluateAt(asOf).primary_bias;
+      return { bias: pb, asOf, source: "TECHNICAL_H4_CLOSED" };
+    } : undefined;
+    this.paper = new LivePaperLoop(sym, o.spec.origin === "BROKER_REPORTED" ? "REAL_MT5" : "SYNTHETIC", o.spec, biasProvider);
     // paper loop runs after the radar on the same CLOSED M5 emission over the SAME merged evidence (broker CLOSED history + live CLOSED); fills use the latest LIVE bid/ask
     this.fanout.aggregators.M5.onBar((b) => { if (b.status === "CLOSED") this.paper.onClosedM5(b, (tf) => this.radarEvidence(tf), this.lastLive); });
     const count = (r: AuditRecord) => { this.routeCounts[r.route]++; };
