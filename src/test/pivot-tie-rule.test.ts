@@ -93,8 +93,8 @@ describe("Primary bias regression — double top via tie-run under operatorAnaly
     expect(st.summary).toBe("MIXED");
 
     const ZIG = [0, 1, 2, 3, 4, 3, 2, 1];
-    const rangeSeries = (k: number) => Array.from({ length: k }, (_, i) => 100 + 2 * ZIG[i % 8]!);
-    const upSeries = (k: number) => Array.from({ length: k }, (_, i) => 100 + i * 0.3 + ZIG[i % 8]!);
+    const upSeries = (i: number) => 100 + i * 0.3 + ZIG[i % 8]!;
+    const rangeSeries = (i: number) => 100 + 2 * ZIG[i % 8]!;
     const closed = { M5: series("M5", 60, upSeries), M15: series("M15", 60, upSeries), H1: series("H1", 60, rangeSeries), H4 } as const;
     const price = 103;
     const op = operatorAnalysis(closed, price);
