@@ -73,7 +73,7 @@ export function emaRelation(e5: Indicator, e21: Indicator): Relation {
   return e5.value > e21.value ? "EMA5_ABOVE_EMA21" : e5.value < e21.value ? "EMA5_BELOW_EMA21" : "EMA5_EQUAL_EMA21";
 }
 
-// ---------------- causal swings (2 left + 2 right, strict) ----------------
+// ---------------- causal swings (2 left strict + 2 right tie-first-owner) ----------------
 
 export interface Swing {
   readonly kind: "HIGH" | "LOW";
@@ -87,13 +87,14 @@ export interface Swing {
   readonly outside_bar: boolean;
 }
 
-/** Strict 2+2 pivots. Bar i is eligible only once bars i+1 and i+2 are CLOSED. No lookahead beyond the input. */
+/** 2+2 pivots, tie-rule B: left neighbours strictly beyond the bar, right neighbours may equal (first bar of an equal run owns the pivot). Bar i is eligible only once bars i+1 and i+2 are CLOSED. No lookahead beyond the input. */
 export function causalSwings(bars: readonly TechBar[]): Swing[] {
   const out: Swing[] = [];
   for (let i = 2; i + 2 < bars.length; i++) {
-    const b = bars[i]!, n = [bars[i - 2]!, bars[i - 1]!, bars[i + 1]!, bars[i + 2]!];
-    const isH = n.every((x) => b.high > x.high);
-    const isL = n.every((x) => b.low < x.low);
+    const b = bars[i]!;
+    const left = [bars[i - 2]!, bars[i - 1]!], right = [bars[i + 1]!, bars[i + 2]!];
+    const isH = left.every((x) => b.high > x.high) && right.every((x) => b.high >= x.high);
+    const isL = left.every((x) => b.low < x.low) && right.every((x) => b.low <= x.low);
     const conf = bars[i + 2]!;
     const both = isH && isL;
     if (isH) out.push({ kind: "HIGH", price: b.high, pivot_time: b.open_time, confirmed_at: conf.close_time, available_at: conf.available_at, outside_bar: both });
