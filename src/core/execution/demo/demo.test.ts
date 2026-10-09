@@ -80,3 +80,16 @@ describe("DemoExecutionBridge", () => {
     expect(types.indexOf("SEND_ATTEMPT")).toBeLessThan(types.indexOf("FILLED"));
   });
 });
+
+describe("BLOCKED_COUNTER_PRIMARY_BIAS", () => {
+  it("blocks BUY when closed-H4 primary bias is SELL, with full audit payload, and sends nothing", async () => {
+    const { sent, lines, mk } = rig();
+    const base = intent("cx");
+    const ev = await mk().handle({ ...base, context: { ...base.context, h4Bias: "BEARISH", primaryBias: "SELL", counterTrendCondition: "BULLISH_PULLBACK" } });
+    expect(ev.type).toBe("BLOCKED");
+    expect(ev.data?.["reason"]).toBe("BLOCKED_COUNTER_PRIMARY_BIAS");
+    expect(ev.data?.["audit"]).toMatchObject({ attemptedSide: "BUY", primaryBias: "SELL", counterTrendCondition: "BULLISH_PULLBACK", timeframeConflict: { H4: "SELL", attempted: "BUY", source: "TECHNICAL_H4_CLOSED" } });
+    expect(sent).toHaveLength(0);
+    expect(lines.some((l) => l.includes("BLOCKED_COUNTER_PRIMARY_BIAS"))).toBe(true);
+  });
+});
