@@ -16,9 +16,13 @@ export interface SwingPoint {
   timeframe: SwingTimeframe;
   type: SwingType;
   price: number;
-  /** Pivot candle open time (epoch seconds). */
+  /** Pivot candle BAR OPEN time (epoch seconds). */
   timestamp: number;
-  /** Close time of the last right-bar candle (epoch seconds). */
+  /**
+   * Earliest time the swing is legally observable (epoch seconds) = close of the
+   * last right-hand bar = timestamp + (rightBars + 1) × timeframe. rightBars=2:
+   * M15 pivot open 10:00 ⇒ 10:45. Consumers must ignore it while confirmedAt > now.
+   */
   confirmedAt: number;
   strength: SwingStrength;
   leftBars: number;
