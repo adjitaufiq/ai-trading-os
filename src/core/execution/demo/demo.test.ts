@@ -8,7 +8,7 @@ const wl = { logins: [111], servers: ["Exness-MT5Trial"] };
 
 function intent(id = "sig1"): DemoOrderIntent {
   return { signalId: id, planId: "p", symbol: "XAUUSD", direction: "BUY", plannedEntry: 2000, stopLoss: 1995, takeProfit: 2010, rr: 2, closedBarAt: 0,
-    context: { regime: "TRENDING", h4Bias: "BULLISH", h1State: "PULLBACK", setup: "S", decision: "READY", confidence: 80, reasons: [], signalSource: {}, engineSnapshot: null } };
+    context: { regime: "TRENDING", h4Bias: "BULLISH", primaryBias: "BUY", h1State: "PULLBACK", setup: "S", decision: "READY", confidence: 80, reasons: [], signalSource: {}, engineSnapshot: null } };
 }
 
 function rig(over: Partial<{ acct: DemoAccountIdentity | null; positions: number; kill: boolean; mode: "DEMO_STRESS_TEST" | "REAL_DISABLED" }> = {}) {
@@ -81,15 +81,27 @@ describe("DemoExecutionBridge", () => {
   });
 });
 
-describe("BLOCKED_COUNTER_PRIMARY_BIAS", () => {
-  it("blocks BUY when closed-H4 primary bias is SELL, with full audit payload, and sends nothing", async () => {
-    const { sent, lines, mk } = rig();
-    const base = intent("cx");
-    const ev = await mk().handle({ ...base, context: { ...base.context, h4Bias: "BEARISH", primaryBias: "SELL", counterTrendCondition: "BULLISH_PULLBACK" } });
+describe("BLOCKED_COUNTER_PRIMARY_BIAS — primaryBias is the only direction authority", () => {
+  const run = async (direction: "BUY" | "SELL", ctx: Partial<DemoOrderIntent["context"]>) => {
+    const r = rig(); const base = intent(`s-${direction}-${JSON.stringify(ctx)}`);
+    const ev = await r.mk().handle({ ...base, direction, context: { ...base.context, ...ctx } });
+    return { ev, sent: r.sent };
+  };
+  it.each([["A", "SELL", "BUY"], ["B", "BUY", "SELL"]] as const)("%s primaryBias %s + attempted %s ⇒ BLOCKED with full audit", async (_k, pb, side) => {
+    const { ev, sent } = await run(side, { primaryBias: pb, counterTrendCondition: pb === "SELL" ? "BULLISH_PULLBACK" : "BEARISH_PULLBACK" });
+    expect(ev.data?.["reason"]).toBe("BLOCKED_COUNTER_PRIMARY_BIAS");
+    expect(ev.data?.["audit"]).toMatchObject({ attemptedSide: side, primaryBias: pb, counterTrendCondition: pb === "SELL" ? "BULLISH_PULLBACK" : "BEARISH_PULLBACK", timeframeConflict: { H4: pb, attempted: side, source: "TECHNICAL_H4_CLOSED" } });
+    expect(sent).toHaveLength(0);
+  });
+  it.each([["C", "BUY"], ["D", "SELL"]] as const)("%s primaryBias %s + same side ⇒ passes the guard and sends", async (_k, side) => {
+    const { ev, sent } = await run(side, { primaryBias: side });
+    expect(ev.type).toBe("FILLED"); expect(sent).toHaveLength(1);
+  });
+  it.each([["E", undefined, "BULLISH", "BUY"], ["F", "NONE", "BEARISH", "SELL"]] as const)("%s primaryBias %s + radar %s ⇒ fail closed, radar is not a fallback", async (_k, pb, radar, side) => {
+    const { ev, sent } = await run(side, { primaryBias: pb ?? null, h4Bias: radar });
     expect(ev.type).toBe("BLOCKED");
     expect(ev.data?.["reason"]).toBe("BLOCKED_COUNTER_PRIMARY_BIAS");
-    expect(ev.data?.["audit"]).toMatchObject({ attemptedSide: "BUY", primaryBias: "SELL", counterTrendCondition: "BULLISH_PULLBACK", timeframeConflict: { H4: "SELL", attempted: "BUY", source: "TECHNICAL_H4_CLOSED" } });
+    expect(ev.data?.["audit"]).toMatchObject({ attemptedSide: side, primaryBias: null, timeframeConflict: { source: "PRIMARY_BIAS_UNAVAILABLE" } });
     expect(sent).toHaveLength(0);
-    expect(lines.some((l) => l.includes("BLOCKED_COUNTER_PRIMARY_BIAS"))).toBe(true);
   });
 });

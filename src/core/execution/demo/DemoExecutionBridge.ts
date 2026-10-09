@@ -73,17 +73,18 @@ export class DemoExecutionBridge {
       if (this.o.mode !== "DEMO_STRESS_TEST") return block("MODE_NOT_DEMO");
       if (this.consumed().has(intent.signalId)) return block("DUPLICATE_SIGNAL");
       if (!(intent.stopLoss > 0 && intent.takeProfit > 0 && intent.plannedEntry > 0 && intent.stopLoss !== intent.plannedEntry)) return block("INVALID_PLAN");
-      // v0.5 hard block (backup layer): order side must match the closed-H4 primary bias frozen in the intent context.
-      // Prefer the technical slice primary_bias (closed H4 structure+EMA); fall back to radar h4_state.
+      // v0.5 hard block (final enforcement point): the ONLY direction authority is the technical-slice primaryBias
+      // (closed-H4 structure+EMA). Radar h4Bias is diagnostic context only and never decides/permits a side.
+      // primaryBias missing/NONE ⇒ fail closed before any account check, sizing or send.
       const pb = intent.context.primaryBias;
-      const h4b = intent.context.h4Bias;
-      const primaryBias = pb === "BUY" || pb === "SELL" ? pb : h4b === "BULLISH" ? "BUY" : h4b === "BEARISH" ? "SELL" : null;
-      if (primaryBias && intent.direction !== primaryBias) {
+      const primaryBias = pb === "BUY" || pb === "SELL" ? pb : null;
+      if (primaryBias !== intent.direction) {
+        const counterTrendCondition = intent.context.counterTrendCondition ?? null;
         const audit = {
-          attemptedSide: intent.direction, primaryBias, counterTrendCondition: intent.context.counterTrendCondition ?? null,
-          timeframeConflict: { H4: primaryBias, H1: intent.context.h1State, attempted: intent.direction, source: pb === "BUY" || pb === "SELL" ? "TECHNICAL_H4_CLOSED" : "RADAR_H4_STATE" },
+          attemptedSide: intent.direction, primaryBias, counterTrendCondition,
+          timeframeConflict: { H4: primaryBias, H1: intent.context.h1State, attempted: intent.direction, source: primaryBias ? "TECHNICAL_H4_CLOSED" : "PRIMARY_BIAS_UNAVAILABLE" },
         };
-        return block("BLOCKED_COUNTER_PRIMARY_BIAS", `primaryBias=${primaryBias} attemptedSide=${intent.direction} counterTrend=${audit.counterTrendCondition ?? "NONE"}`, audit);
+        return block("BLOCKED_COUNTER_PRIMARY_BIAS", `primaryBias=${primaryBias ?? "UNAVAILABLE"} attemptedSide=${intent.direction} counterTrend=${counterTrendCondition ?? "NONE"}`, audit);
       }
       const id = await this.refreshAccount();
       if (!id) return block(this.lastAccount.reason ?? "IDENTITY_UNAVAILABLE");

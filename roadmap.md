@@ -42,3 +42,8 @@
 - [x] Engine host (VPS): runtime per symbol, paper snapshot + append-only journal on disk, supervisor remount, GET-only API + SSE, Windows auto-start script; dashboard Radar/Account attach with BROWSER SESSION fallback. Verified booting against live gateway (XAUUSD/BTCUSD ONLINE, radar ACTIVE in <40s).
 - [ ] Install on VPS + second tunnel for port 8090 + set VITE_ENGINE_HOST_URL (blocked: needs user on VPS).
 - [ ] TRADE/ANALYSIS technical cards still computed in the browser (re-warm from broker history on refresh); host-side technical view not yet exposed.
+
+## No-VPS PR (2026-10-09)
+- [ ] Remove radar H4 fallback in DemoExecutionBridge; fail-closed on missing primaryBias; tests A–F
+- [ ] H4 closed-bar regression tests (forming H4 cannot flip primary_bias)
+- [ ] (deferred by user to next PR) RLS regression test, header projection, engine_trades=0 investigation
