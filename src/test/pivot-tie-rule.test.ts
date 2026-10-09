@@ -5,7 +5,6 @@
 import { describe, expect, it } from "vitest";
 import { causalSwings, structureOf, type TechBar } from "@/core/technical/indicators";
 import { OPERATOR_POLICY_VERSION, operatorAnalysis } from "@/core/technical/operator";
-import type { EvaluationInput } from "@/core/technical/tradingState";
 
 const TFMS = { M5: 300_000, M15: 900_000, H1: 3_600_000, H4: 14_400_000 } as const;
 type K = keyof typeof TFMS;
