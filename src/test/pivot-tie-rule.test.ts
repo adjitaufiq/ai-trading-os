@@ -101,11 +101,5 @@ describe("Primary bias regression — double top via tie-run under operatorAnaly
     expect(op.primary_bias).toBeNull();
     expect(op.candidate).toBeNull();
     expect(op.reason).toBe("NO_PRIMARY_BIAS_H4_MIXED");
-    const ev: EvaluationInput = {
-      symbol: "XAUUSD", market_current: true, bars_current: true,
-      quote: { bid: price - 0.1, ask: price + 0.1, spread: 0.2, tick_time_ms: 1, observed_at: 2 },
-      closed, as_of: 1e15, env: { operating_mode: "MONITOR_ONLY", execution_enabled: false },
-    };
-    expect(() => operatorAnalysis(ev.closed as never, price)).not.toThrow();
   });
 });
