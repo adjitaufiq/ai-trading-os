@@ -37,7 +37,7 @@ describe("ARENA causalSwings — tie rule B (left strict, right allows equality)
   it("C/D. HIGH and LOW plateau: exactly one pivot at the first bar of the run", () => {
     const hp = causalSwings(highs("M15", [10, 11, 15, 15, 15, 12, 11])).filter((s) => s.kind === "HIGH");
     expect(hp).toHaveLength(1);
-    expect(hp[0]!.pivot_time).toBe(2);
+    expect(hp[0]!.pivot_time).toBe(T0 + 2 * TFMS.M15);
     const lp = causalSwings(Array.from({ length: 7 }, (_, i) => mk("M15", 12 - i * 0.2, [10, 9, 5, 5, 5, 8, 9][i]!, i))).filter((s) => s.kind === "LOW");
     expect(lp).toHaveLength(1);
     expect(lp[0]!.pivot_time).toBe(T0 + 2 * TFMS.M15);
