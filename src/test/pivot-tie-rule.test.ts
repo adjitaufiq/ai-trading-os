@@ -40,7 +40,7 @@ describe("ARENA causalSwings — tie rule B (left strict, right allows equality)
     expect(hp[0]!.pivot_time).toBe(2);
     const lp = causalSwings(Array.from({ length: 7 }, (_, i) => mk("M15", 12 - i * 0.2, [10, 9, 5, 5, 5, 8, 9][i]!, i))).filter((s) => s.kind === "LOW");
     expect(lp).toHaveLength(1);
-    expect(lp[0]!.pivot_time).toBe(2);
+    expect(lp[0]!.pivot_time).toBe(T0 + 2 * TFMS.M15);
   });
   it("E. equal LEFT neighbour is still rejected (left stays strict)", () => {
     const bars = highs("M15", [10, 15, 15, 13, 12]);
