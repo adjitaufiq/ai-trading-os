@@ -113,6 +113,28 @@ export class TechnicalSliceService {
     return snap;
   }
 
+  /**
+   * Side-effect-free evaluation at an explicit asOf (paper loop PrimaryBias gate). Same CLOSED-only merge as tick();
+   * no freshness bookkeeping, no apply(), no listeners. Quote = latest LIVE observation when the runtime is
+   * RUNNING+SYNCHRONIZED, otherwise the snapshot is UNAVAILABLE (primary_bias NONE ⇒ fail closed).
+   */
+  evaluateAt(asOf: number): TradingSnapshot {
+    const r = this.reader;
+    const closed = { M5: [], M15: [], H1: [], H4: [] } as Record<Timeframe, TechBar[]>;
+    let running = false, quote: TradingSnapshot["quote"] = null;
+    if (r) {
+      const snap = r.snapshot();
+      running = snap.lifecycle === "RUNNING" && snap.bootstrap_state === "SYNCHRONIZED";
+      for (const tf of TIMEFRAMES) {
+        const canon = r.closedBars(tf).filter((b) => b.status === "CLOSED" && b.available_at <= asOf).map(toTechBar);
+        closed[tf] = mergeClosedHistory((r.brokerHistoryBars?.(tf) ?? []).map(toTechBar), canon, r.firstLiveEventAt?.() ?? null, asOf);
+      }
+      const live = r.latestLiveObservation();
+      if (running && live) quote = { bid: live.bid, ask: live.ask, spread: live.ask - live.bid, tick_time_ms: live.event_at, observed_at: live.ingested_at };
+    }
+    return evaluate({ symbol: this.symbol, market_current: running && quote !== null, bars_current: running, quote, closed, as_of: asOf, env: SLICE_ENV }, null);
+  }
+
   /** Exposed for tests; production path is tick(). */
   apply(snap: TradingSnapshot): void {
     this.trail.record(this.current, snap);
