@@ -38,14 +38,18 @@ Primary bias authoritative:
 ```
 Catatan risiko arsitektur: ada dua penghitung arah H4 (M1B di paper loop, operator di slice). Guard di bridge menyatukan keduanya di titik eksekusi. Menyamakan sumber arah di paper loop di luar scope; ini hanya dilaporkan.
 
-## Usulan perubahan
-- **Hapus fallback radar.** Guard hanya membaca `context.primaryBias`.
-- **primaryBias BUY/SELL tapi sisi order berlawanan:** blok dengan `BLOCKED_COUNTER_PRIMARY_BIAS`, isi audit tetap sama, source `TECHNICAL_H4_CLOSED`.
-- **primaryBias NONE atau tidak ada:** fail-closed, tanpa order. Nama alasan blokir menunggu keputusan lo:
-  - **Opsi A (rekomendasi):** pakai ulang `BLOCKED_COUNTER_PRIMARY_BIAS` dengan detail `primaryBias=UNAVAILABLE`. Tidak ada istilah baru, tapi labelnya kurang tepat.
-  - **Opsi B:** tambah satu alasan, `PRIMARY_BIAS_UNAVAILABLE`. Lebih jujur di laporan dan Telegram.
-  - Alasan blokir demo yang sudah ada tidak ada yang cocok: `INVALID_PLAN` artinya plan tidak valid, `IDENTITY_UNAVAILABLE` urusan akun.
-- **Test:** radar `h4Bias` terisi + `primaryBias` tidak ada → BLOCKED tanpa order. `primaryBias` NONE → BLOCKED tanpa order.
+## Keputusan: fallback cuma sisa lama, jadi DIHAPUS
+Audit nomor 1–4 tidak menemukan runtime yang masih bergantung pada fallback radar. Maka sesuai arahan lo:
+- **Hapus fallback radar.** Guard hanya membaca `context.primaryBias`. Radar `h4Bias` tetap ikut di intent sebagai catatan konteks, tapi tidak pernah dipakai untuk menentukan arah atau mengizinkan order.
+- **primaryBias BUY/SELL tapi sisi order berlawanan:** blok dengan `BLOCKED_COUNTER_PRIMARY_BIAS`. Isi audit tetap sama, source `TECHNICAL_H4_CLOSED`.
+- **primaryBias NONE atau tidak ada (meskipun radar h4Bias terisi):** NO ORDER, fail-closed.
+  - Pakai alasan yang sudah ada, `BLOCKED_COUNTER_PRIMARY_BIAS`, dengan detail `primaryBias=UNAVAILABLE attemptedSide=<side>`, tanpa nama alasan baru.
+  - Isi audit `primaryBias: null`, `timeframeConflict.source: "PRIMARY_BIAS_UNAVAILABLE"`.
+  - Guard dijalankan sebelum cek akun dan sebelum ukuran lot dihitung, jadi tidak ada order yang terkirim.
+- **Test:**
+  - radar `h4Bias` "BULLISH" + `primaryBias` tidak ada → BLOCKED, tidak ada order;
+  - `primaryBias` "NONE" → BLOCKED, tidak ada order;
+  - BUY saat `primaryBias` BUY → lolos guard.
 
 ## Sisa scope yang tetap jalan
 1. **Item 1:** pastikan rename ke `BLOCKED_COUNTER_PRIMARY_BIAS` sudah di semua tempat (code, test, AGENTS.md, Telegram).
