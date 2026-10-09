@@ -33,7 +33,7 @@ describe("SwingDetector tie rule B (left strict, right allows equality)", () => 
     expect(hs[0]!.price).toBe(15);
   });
   it("B. equal LOW on the right side: mirror rule", () => {
-    const rows: [number, number][] = [[10, 10], [10, 9], [12, 5], [12, 5], [12, 4]];
+    const rows: [number, number][] = [[10, 10], [9.8, 9], [9.6, 5], [9.4, 5], [9.2, 6]];
     const { out } = feed(rows);
     const ls = lowPivots(out);
     expect(ls).toHaveLength(1);
