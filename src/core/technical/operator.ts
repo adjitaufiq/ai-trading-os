@@ -11,7 +11,7 @@ import {
   type Indicator, type LabelledSwing, type Structure, type TechBar,
 } from "./indicators";
 
-export const OPERATOR_POLICY_VERSION = "operator-v2.3-mtf-classification";
+export const OPERATOR_POLICY_VERSION = "operator-v2.4-pivot-tie-first-owner";
 export const PATTERN_DEFINITION_VERSION = "candle-patterns-v1";
 export const ZONE_DEFINITION_VERSION = "sr-zone-swing-cluster-atr-v1";
 
