@@ -15,8 +15,10 @@ const mk = (tf: K, h: number, l: number, i: number): TechBar => {
   return { open_time, close_time, available_at: close_time, open: l + (h - l) * 0.3, high: h, low: l, close: l + (h - l) * 0.7 };
 };
 const highs = (tf: K, rows: number[], lo = (h: number, i: number) => h - 1) => rows.map((h, i) => mk(tf, h, lo(h, i), i));
-const series = (tf: K, k: number, f: (i: number) => number): TechBar[] =>
-  Array.from({ length: k }, (_, i) => mk(tf, f(i) + 0.5, f(i) - 0.5, i));
+const series = (tf: K, k: number, f: (i: number) => number): TechBar[] => Array.from({ length: k }, (_, i) => {
+  const open_time = T0 + i * TFMS[tf], c = f(i);
+  return { open_time, close_time: open_time + TFMS[tf], available_at: open_time + TFMS[tf], open: c, high: c + 0.5, low: c - 0.5, close: c };
+});
 
 describe("ARENA causalSwings — tie rule B (left strict, right allows equality)", () => {
   it("A. equal HIGH on the right side: the first bar of the run owns the pivot", () => {
