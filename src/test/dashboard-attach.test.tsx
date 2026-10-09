@@ -119,6 +119,13 @@ describe("Phase 2.1 dashboard full attach", () => {
     // B. ...and that same guard clears the mounted local runtime (whitespace-tolerant: proves the invariant,
     // not the source formatting). ENGINE HOST LIVE ⇒ browserSession false ⇒ no local runtime stays mounted.
     expect(idx).toMatch(/if \(!browserSession\)\s*\{\s*setMounted\(\{\}\)\s*;/);
+    // C. ...and that branch returns immediately (whitespace/comment-tolerant): the guard block is exactly
+    // setMounted({}) + return, so mountCanonicalRuntime cannot run through it; and it appears only after the guard.
+    const strip = idx.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    const guard = strip.match(/if\s*\(\s*!browserSession\s*\)\s*\{([^{}]*(?:\{\s*\}[^{}]*)*)\}/);
+    expect(guard).not.toBeNull();
+    expect(guard![1]!.replace(/\s+/g, "")).toBe("setMounted({});return;");
+    expect(strip.indexOf("mountCanonicalRuntime(", strip.indexOf(guard![0]))).toBeGreaterThan(strip.indexOf(guard![0]));
     expect(idx).toMatch(/const browserSession = engineState\.status === "DISABLED" \|\| engineState\.status === "OFFLINE"/);
     // BROWSER SESSION side of the invariant: only a browser session may consume the mounted local readers.
     expect(idx).toMatch(/browserSession \? \(mounted\[/);
