@@ -46,6 +46,4 @@
 ## No-VPS PR (2026-10-09)
 - [ ] Remove radar H4 fallback in DemoExecutionBridge; fail-closed on missing primaryBias; tests A–F
 - [ ] H4 closed-bar regression tests (forming H4 cannot flip primary_bias)
-- [ ] RLS regression test engine_memory/engine_trades (no migration)
-- [ ] Header MONITOR_ONLY → runtime projection (UI only)
-- [ ] Investigate engine_trades = 0 root cause
+- [ ] (deferred by user to next PR) RLS regression test, header projection, engine_trades=0 investigation
