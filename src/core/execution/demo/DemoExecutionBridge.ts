@@ -68,16 +68,23 @@ export class DemoExecutionBridge {
   /** Handle one approved engine plan. Resolves with the terminal event for this signal. */
   handle(intent: DemoOrderIntent): Promise<DemoEvent> {
     return this.serial(async () => {
-      const block = (reason: BlockReason, detail?: string) =>
-        this.push({ type: "BLOCKED", signalId: intent.signalId, symbol: intent.symbol, detail: detail ? `${reason} ${detail}` : reason, data: { reason, intent } });
+      const block = (reason: BlockReason, detail?: string, audit?: Record<string, unknown>) =>
+        this.push({ type: "BLOCKED", signalId: intent.signalId, symbol: intent.symbol, detail: detail ? `${reason} ${detail}` : reason, data: { reason, intent, ...(audit ? { audit } : {}) } });
       if (this.o.mode !== "DEMO_STRESS_TEST") return block("MODE_NOT_DEMO");
       if (this.consumed().has(intent.signalId)) return block("DUPLICATE_SIGNAL");
       if (!(intent.stopLoss > 0 && intent.takeProfit > 0 && intent.plannedEntry > 0 && intent.stopLoss !== intent.plannedEntry)) return block("INVALID_PLAN");
-      // v0.5 hard block (backup layer): order side must match the H4 primary bias frozen in the intent context.
-      // Decision-layer block happens before intent creation; this guard catches any stale/foreign intent.
+      // v0.5 hard block (backup layer): order side must match the closed-H4 primary bias frozen in the intent context.
+      // Prefer the technical slice primary_bias (closed H4 structure+EMA); fall back to radar h4_state.
+      const pb = intent.context.primaryBias;
       const h4b = intent.context.h4Bias;
-      if ((h4b === "BULLISH" && intent.direction !== "BUY") || (h4b === "BEARISH" && intent.direction !== "SELL"))
-        return block("COUNTER_PRIMARY_BIAS", `primaryBias=${h4b === "BULLISH" ? "BUY" : "SELL"} attemptedSide=${intent.direction}`);
+      const primaryBias = pb === "BUY" || pb === "SELL" ? pb : h4b === "BULLISH" ? "BUY" : h4b === "BEARISH" ? "SELL" : null;
+      if (primaryBias && intent.direction !== primaryBias) {
+        const audit = {
+          attemptedSide: intent.direction, primaryBias, counterTrendCondition: intent.context.counterTrendCondition ?? null,
+          timeframeConflict: { H4: primaryBias, H1: intent.context.h1State, attempted: intent.direction, source: pb === "BUY" || pb === "SELL" ? "TECHNICAL_H4_CLOSED" : "RADAR_H4_STATE" },
+        };
+        return block("BLOCKED_COUNTER_PRIMARY_BIAS", `primaryBias=${primaryBias} attemptedSide=${intent.direction} counterTrend=${audit.counterTrendCondition ?? "NONE"}`, audit);
+      }
       const id = await this.refreshAccount();
       if (!id) return block(this.lastAccount.reason ?? "IDENTITY_UNAVAILABLE");
       let positions;

@@ -28,13 +28,16 @@ export interface DemoWhitelist { readonly logins: readonly number[]; readonly se
 
 export type AccountBlockReason = "IDENTITY_UNAVAILABLE" | "ACCOUNT_NOT_DEMO" | "ACCOUNT_NOT_WHITELISTED" | "SERVER_NOT_WHITELISTED";
 export type SafetyBlockReason = "MODE_NOT_DEMO" | "KILL_SWITCH" | "DUPLICATE_SIGNAL" | "MAX_OPEN_POSITIONS" | "MAX_DAILY_TRADES" | "DAILY_LOSS_LIMIT";
-export type SizingBlockReason = "SYMBOL_INFO_UNAVAILABLE" | "LOT_BELOW_MINIMUM" | "INVALID_PLAN" | "COUNTER_PRIMARY_BIAS";
+export type SizingBlockReason = "SYMBOL_INFO_UNAVAILABLE" | "LOT_BELOW_MINIMUM" | "INVALID_PLAN" | "BLOCKED_COUNTER_PRIMARY_BIAS";
 export type BlockReason = AccountBlockReason | SafetyBlockReason | SizingBlockReason;
 
 /** Engine context frozen at the approved signal (copied from Engine Host, never computed here). */
 export interface DemoEntryContext {
   readonly regime: string | null; readonly h4Bias: string | null; readonly h1State: string | null;
   readonly setup: string | null; readonly decision: string | null; readonly confidence: number | null;
+  /** v0.5 technical slice primary_bias (closed-H4 structure+EMA): BUY | SELL | NONE. */
+  readonly primaryBias?: string | null;
+  readonly counterTrendCondition?: string | null;
   readonly reasons: readonly string[]; readonly signalSource: Readonly<Record<string, string>>;
   readonly engineSnapshot: unknown;
 }

@@ -44,7 +44,7 @@ export function demoToRows(events: readonly DemoEv[]): EventRow[] {
     out.push({
       event_key: `demo:${e.type}:${e.signalId ?? "-"}:${e.at}`, symbol: e.symbol, event_type: kind,
       stage: kind === "BLOCKED" ? "DEMO_GUARD" : "DEMO_MT5", signal_id: e.signalId, occurred_at: iso(e.at),
-      direction: (intent?.["direction"] as string | undefined) ?? null, confidence: null, timeframe_context: {},
+      direction: (intent?.["direction"] as string | undefined) ?? null, confidence: null, timeframe_context: ((e.data?.["audit"] as Record<string, unknown> | undefined) ?? {}),
       reason: `${e.type} ${e.detail ?? ""}`.trim(), snapshot_ref: null,
       entry: kind === "EXECUTION" ? num(e.data?.["price"]) : kind === "EXIT" ? num(e.data?.["price"]) : num(intent?.["plannedEntry"]),
       stop_loss: num(intent?.["stopLoss"]), take_profit: num(intent?.["takeProfit"]), payload: e,

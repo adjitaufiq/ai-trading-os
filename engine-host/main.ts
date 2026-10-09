@@ -130,7 +130,7 @@ const host = new EngineHost({
   onPipelineEvent: (e: EnginePipelineEvent) => { appendFileSync(outboxFile, `${JSON.stringify(e)}\n`); void pushOutbox(); },
   symbols, persistence: new PaperPersistence(store), now: () => Date.now(), log, executionMode,
   ...(demo ? {
-    onApprovedOpen: (e: ApprovedPaperOpen, reader: MarketRuntimeReader | null) => { if (agent && !agent.current().allowedSymbols.includes(e.symbol.toUpperCase())) { log(`[demo-lab] ${e.symbol} not in cloud allowed_symbols, skipped`); return; } void demo!.handle(buildDemoIntent(e, reader?.radarSnapshot() ?? null)).catch((x) => log(`[demo-lab] handle failed ${(x as Error).message}`)); },
+    onApprovedOpen: (e: ApprovedPaperOpen, reader: MarketRuntimeReader | null) => { if (agent && !agent.current().allowedSymbols.includes(e.symbol.toUpperCase())) { log(`[demo-lab] ${e.symbol} not in cloud allowed_symbols, skipped`); return; } void demo!.handle(buildDemoIntent(e, reader?.radarSnapshot() ?? null, host.bundle(e.symbol, Date.now())?.slice?.current ?? null)).catch((x) => log(`[demo-lab] handle failed ${(x as Error).message}`)); },
     demoStatus: () => demo!.status(),
   } : {}),
   mount: ({ symbol, onChange, onRuntime }) => mountCanonicalRuntime({ client, config, wsFactory: browserWebSocketFactory, symbol, onChange, onRuntime }),
