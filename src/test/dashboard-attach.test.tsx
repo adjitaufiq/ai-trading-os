@@ -114,8 +114,14 @@ describe("Phase 2.1 dashboard full attach", () => {
 
   it("Test D — no duplicate engine: local runtime mounts only in BROWSER SESSION; panels hold no polling", () => {
     const idx = readFileSync("src/routes/index.tsx", "utf8");
-    expect(idx).toMatch(/if \(!browserSession\) \{ setMounted\(\{\}\); return; \}/);
-    expect(idx).toMatch(/const browserSession = engineState.status === "DISABLED" \|\| engineState.status === "OFFLINE"/);
+    // A. The browser-session guard exists...
+    expect(idx).toMatch(/if \(!browserSession\)/);
+    // B. ...and that same guard clears the mounted local runtime (whitespace-tolerant: proves the invariant,
+    // not the source formatting). ENGINE HOST LIVE ⇒ browserSession false ⇒ no local runtime stays mounted.
+    expect(idx).toMatch(/if \(!browserSession\)\s*\{\s*setMounted\(\{\}\)\s*;/);
+    expect(idx).toMatch(/const browserSession = engineState\.status === "DISABLED" \|\| engineState\.status === "OFFLINE"/);
+    // BROWSER SESSION side of the invariant: only a browser session may consume the mounted local readers.
+    expect(idx).toMatch(/browserSession \? \(mounted\[/);
     const radar = readFileSync("src/components/RadarObservabilityPanel.tsx", "utf8");
     expect(radar).not.toMatch(/setInterval|useEngineHost|radarSnapshot\(/);
     const panel = readFileSync("src/components/TechnicalSlicePanel.tsx", "utf8");
