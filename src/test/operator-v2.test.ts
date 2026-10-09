@@ -76,15 +76,42 @@ describe("operator v2 — S/R zones & regime", () => {
     const short = { M5: series("M5", range(60)), M15: series("M15", range(60)), H1: series("H1", range(60).slice(0, 52)).slice(-7), H4: series("H4", range(60)) };
     expect(operatorAnalysis(short, 104).regime).toBe("CHOPPY");
   });
-  it("range BUY at support needs a CLOSED bullish trigger", () => {
+  it("range + AT_SUPPORT + bullish trigger, H4 MIXED (no primaryBias) ⇒ HOLD, no BUY", () => {
     const base = { M15: series("M15", range(60)), H1: series("H1", range(60)), H4: series("H4", range(60)) };
     const noTrig = operatorAnalysis({ ...base, M5: series("M5", range(60)) }, 100);
     expect(noTrig).toMatchObject({ regime: "RANGE", location: "AT_SUPPORT", candidate: null }); expect(noTrig.status).not.toBe("CARI_SELL");
-    // P0.2: range BUY also needs a local bullish M5 momentum side.
+    // H4 MIXED ⇒ primaryBias NONE: a bullish closed trigger at support must NOT produce a BUY.
     const hammer = withLast(series("M5", Array.from({ length: 50 }, (_, i) => 95 + 0.1 * i)), [99.8, 100.1, 98.6, 100]);
+    const a = operatorAnalysis({ ...base, M5: hammer }, 100);
+    expect(a).toMatchObject({ regime: "RANGE", location: "AT_SUPPORT", status: "HOLD", candidate: null, reason: "NO_PRIMARY_BIAS_H4_MIXED" });
     const s = evaluate(input({ ...base, M5: hammer }, 100));
     expect(s.operator!.patterns.M5.bullish).toContain("HAMMER_LIKE");
-    expect(s.signal.state).toBe("READY"); expect(s.entry.state === "LONG_CANDIDATE" || s.entry.reason === "BAD_RR_AFTER_STRUCTURAL_CLAMP").toBe(true); // P0.6 economics veto is a separate layer
+    expect(s.signal.state).toBe("WAITING");
+    expect(s.entry.state).toBe("WAIT");
+    expect(s.entry.reason).toBe("NO_PRIMARY_BIAS_H4_MIXED");
+    expect(s.primary_bias).toBe("NONE");
+  });
+  it("range + AT_RESISTANCE + bearish trigger, H4 MIXED (no primaryBias) ⇒ HOLD, no SELL", () => {
+    const base = { M15: series("M15", range(60)), H1: series("H1", range(60)), H4: series("H4", range(60)) };
+    const star = withLast(series("M5", Array.from({ length: 50 }, (_, i) => 110 - 0.1 * i)), [105, 106.4, 104.9, 105.2]);
+    const a = operatorAnalysis({ ...base, M5: star }, 108);
+    expect(a).toMatchObject({ regime: "RANGE", location: "AT_RESISTANCE", status: "HOLD", candidate: null, reason: "NO_PRIMARY_BIAS_H4_MIXED" });
+    const s = evaluate(input({ ...base, M5: star }, 108));
+    expect(s.signal.state).toBe("WAITING");
+    expect(s.entry.state).toBe("WAIT");
+    expect(s.entry.reason).toBe("NO_PRIMARY_BIAS_H4_MIXED");
+  });
+  it("H4 DOWN primary + AT_SUPPORT + bullish hammer ⇒ attempted BUY never becomes READY", () => {
+    // Support + bullish trigger must not override a bearish H4 primary direction.
+    const base = { M15: series("M15", range(60)), H1: series("H1", range(60)), H4: series("H4", down(60)) };
+    const hammer = withLast(series("M5", Array.from({ length: 50 }, (_, i) => 95 + 0.1 * i)), [99.8, 100.1, 98.6, 100]);
+    const a = operatorAnalysis({ ...base, M5: hammer }, 100);
+    expect(a.h4_primary).toBe("DOWN");
+    expect(a.candidate).not.toBe("BUY");
+    const s = evaluate(input({ ...base, M5: hammer }, 100));
+    expect(s.primary_bias).toBe("SELL");
+    expect(s.signal.state).not.toBe("READY");
+    expect(s.entry.state).toBe("WAIT");
   });
 });
 
