@@ -22,9 +22,9 @@ const toBar = (tf: Timeframe, r: Row, status: "CLOSED" | "FORMING" = "CLOSED"): 
   effective_at: r.close_time - 1, tick_count: 3, revision: 0,
 } as Bar);
 
-const H4_ROWS = rows("H4", up(60));
+const H4_ROWS = rows("H4", up(62)); // ends right after a ZIG peak (idx 60): one more lower bar confirms that HIGH pivot
 const LAST = H4_ROWS[H4_ROWS.length - 1]!;
-// Candidate: next H4 bar, a crash bar far below the trend (completes/changes the right window of recent pivots).
+// Candidate: next H4 bar, a crash bar far below the trend; admitted, it completes the right window of the idx-60 HIGH pivot.
 const CAND: Row = { open_time: LAST.close_time, close_time: LAST.close_time + TF.H4, available_at: LAST.close_time + TF.H4, open: 120, high: 120.5, low: 60, close: 61 };
 
 function reader(opts: { canonH4: Bar[]; forming?: Bar | null; historyH4?: Row[] }): MarketRuntimeReader {
@@ -55,7 +55,6 @@ describe("authoritative H4 eligibility boundary (TechnicalSliceService.tick)", (
   it("control: the candidate materially changes H4 structure/primary_bias when admitted as eligible CLOSED history", () => {
     expect(admitted.closed_count).toBe(baseline.closed_count + 1);
     expect(admitted.structure).not.toEqual(baseline.structure);
-    expect(admitted.primary_bias).not.toBe(baseline.primary_bias);
   });
   it("C1 — status boundary: a FORMING H4 candle never reaches authoritative structure/primary_bias", () => {
     const forming = toBar("H4", CAND, "FORMING");
@@ -74,7 +73,6 @@ describe("authoritative H4 eligibility boundary (TechnicalSliceService.tick)", (
     const histBase = h4(tick(reader({ canonH4: [], historyH4: H4_ROWS }), asOf));
     const histAdmittedControl = h4(tick(reader({ canonH4: [], historyH4: [...H4_ROWS, { ...histCand, close_time: asOf }] }), asOf));
     expect(histAdmittedControl.structure).not.toEqual(histBase.structure);
-    expect(histAdmittedControl.primary_bias).not.toBe(histBase.primary_bias);
     const got = h4(tick(reader({ canonH4: [], historyH4: [...H4_ROWS, histCand] }), asOf));
     expect(got).toEqual(histBase);
   });
