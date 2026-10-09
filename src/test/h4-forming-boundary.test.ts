@@ -52,11 +52,10 @@ const baseline = h4(tick(reader({ canonH4: CANON }), AS_OF));
 const admitted = h4(tick(reader({ canonH4: [...CANON, toBar("H4", CAND)] }), AS_OF));
 
 describe("authoritative H4 eligibility boundary (TechnicalSliceService.tick)", () => {
-  it("control: the candidate materially changes H4 structure/primary_bias when admitted as eligible CLOSED history", () => {
+  it("C1 — status boundary: a FORMING H4 candle never reaches authoritative structure/primary_bias", () => {
+    // Non-vacuous: admitted as eligible CLOSED history, the same candidate materially changes H4 structure (shared by C2).
     expect(admitted.closed_count).toBe(baseline.closed_count + 1);
     expect(admitted.structure).not.toEqual(baseline.structure);
-  });
-  it("C1 — status boundary: a FORMING H4 candle never reaches authoritative structure/primary_bias", () => {
     const forming = toBar("H4", CAND, "FORMING");
     const withForming = h4(tick(reader({ canonH4: [...CANON, forming], forming }), AS_OF));
     expect(withForming).toEqual(baseline);

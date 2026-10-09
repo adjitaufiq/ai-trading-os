@@ -66,6 +66,18 @@ describe("ARENA causalSwings — tie rule B (left strict, right allows equality)
     expect(causalSwings(bars)).toHaveLength(0);
     expect(causalSwings(bars.slice(0, 3))).toHaveLength(0);
   });
+  it("I. HIGH: a right neighbour STRICTLY HIGHER than the candidate rejects it", () => {
+    const bars = highs("M15", [10, 11, 15, 16, 12]);
+    expect(causalSwings(bars).filter((s) => s.kind === "HIGH" && s.pivot_time === bars[2]!.open_time)).toHaveLength(0);
+    const bars2 = highs("M15", [10, 11, 15, 12, 16]);
+    expect(causalSwings(bars2).filter((s) => s.kind === "HIGH" && s.pivot_time === bars2[2]!.open_time)).toHaveLength(0);
+  });
+  it("J. LOW: a right neighbour STRICTLY LOWER than the candidate rejects it", () => {
+    const bars = Array.from({ length: 5 }, (_, i) => mk("M15", 10 - i * 0.2, [10, 9, 5, 4, 6][i]!, i));
+    expect(causalSwings(bars).filter((s) => s.kind === "LOW" && s.pivot_time === bars[2]!.open_time)).toHaveLength(0);
+    const bars2 = Array.from({ length: 5 }, (_, i) => mk("M15", 10 - i * 0.2, [10, 9, 5, 6, 4][i]!, i));
+    expect(causalSwings(bars2).filter((s) => s.kind === "LOW" && s.pivot_time === bars2[2]!.open_time)).toHaveLength(0);
+  });
   it("structureOf: equal run produces EQUAL_HIGH, not a skipped bar", () => {
     const bars = highs("M15", [10, 11, 15, 15, 12, 13, 15, 15, 13, 12]);
     const s = structureOf(bars);

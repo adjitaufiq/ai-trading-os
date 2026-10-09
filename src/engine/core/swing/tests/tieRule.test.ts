@@ -66,6 +66,18 @@ describe("SwingDetector tie rule B (left strict, right allows equality)", () => 
     const short = feed(highs([10, 11, 15, 15]));
     expect(short.out.flat()).toHaveLength(0);
   });
+  it("I. HIGH: a right neighbour STRICTLY HIGHER than the candidate rejects it", () => {
+    for (const r of [[10, 11, 15, 16, 12], [10, 11, 15, 12, 16]]) {
+      const { out } = feed(highs(r));
+      expect(highPivots(out).filter((s) => s.timestamp === T0 + 2 * TF)).toHaveLength(0);
+    }
+  });
+  it("J. LOW: a right neighbour STRICTLY LOWER than the candidate rejects it", () => {
+    for (const lows of [[10, 9, 5, 4, 6], [10, 9, 5, 6, 4]]) {
+      const { out } = feed(lows.map((l, i) => [10 - i * 0.2 + 5, l] as [number, number]));
+      expect(lowPivots(out).filter((s) => s.timestamp === T0 + 2 * TF)).toHaveLength(0);
+    }
+  });
   it("H. FORMING right bar #2 emits nothing early; the closed bar completes the pivot", () => {
     const rows = highs([10, 11, 15, 15, 12]);
     const det = new SwingDetector("XAUUSD", "M15");
