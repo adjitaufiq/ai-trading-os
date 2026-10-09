@@ -1,84 +1,61 @@
-# H4 Primary Bias — Macro structure menentukan arah, timeframe kecil menentukan timing
+# Audit backlog project (read-only, belum ada code yang diubah)
 
-## 1. primaryBias = single source of truth
-- primaryBias bukan confidence score; ini satu-satunya arah trade yang diizinkan.
-- Selama struktur H4 belum berubah, momentum lokal tidak boleh membalik arah.
-- Contoh: H4 = SELL + momentum M5/M15 bullish ⇒ primaryBias = SELL, counterTrendCondition = BULLISH_PULLBACK, setupBias = WAIT atau SELL.
-- Dilarang: BUY plan, BUY signal card, BUY execution selama primaryBias = SELL (dan sebaliknya).
-- primaryBias = NONE jika H4 hanya EMA cross tanpa struktur, MIXED, atau data kurang.
+Sumber: isi code, roadmap.md, AGENTS.md per folder, dan query langsung ke database. Kalimat yang ditandai *inferensi* belum terbukti langsung.
 
-### Enforcement
-- primaryBias dihitung satu kali di layer market structure, lalu diteruskan ke seluruh pipeline.
-- Tidak ada modul sesudahnya yang boleh override: radar, momentum engine, RSI evaluator, setup generator, signal aggregator, execution planner.
-- Semua modul downstream hanya boleh: (1) menerima primaryBias, (2) memberi status valid/invalid, (3) memberi timing readiness.
+## ALREADY DONE
 
-### Pipeline ownership rule
-- Market structure layer adalah pemilik tunggal primaryBias; semua layer setelahnya consumer, bukan decision maker.
-- Jika ada konflik antar modul, primaryBias dari H4 selalu menang.
-- Konflik dicatat sebagai diagnostic event, tidak mengubah arah trade.
-- Contoh: H4 primaryBias = SELL, momentum module = BUY ⇒ primaryBias SELL, counterTrendCondition BULLISH_PULLBACK, diagnostic LOCAL_MOMENTUM_CONFLICT.
+- **M4 Risk Engine & Execution Guard.** Tidak ada definisi M4 di roadmap.md atau MASTER_ARCHITECTURE.md. Satu-satunya sumber resmi ada di `src/engine/risk/AGENTS.md:1` dan `src/engine/risk/types.ts:1-3`.
+  - **Tujuan:** menilai TradePlan dari M3. Yang dicek: lot dibulatkan ke bawah sesuai step, budget risiko, kondisi akun dan cooldown, exposure, margin, spread, dan slippage. Hasilnya keputusan beku APPROVED/WARNING/BLOCKED dengan audit `executable:false, orderSent:false, MONITOR_ONLY`. M4 tidak pernah mengubah plan dan tidak pernah menyentuh broker; eksekusi milik M5.
+  - **Dependency:** M1B.1–M1B.11 → M2 SignalSetup → M3 evaluator/plan → **M4** → M5 paper (buka posisi hanya kalau M4 APPROVED) → M6 journal. Rantai ini disusun di `LivePaperLoop`.
+  - **Yang sudah ada:** `riskEngine.ts`, `positionSizer.ts`, `exposureGuard.ts`, `executionGuard.ts`, `riskGuard.ts`, `accountState.ts`, dan 28 unit test di 4 file.
+  - **Yang belum ada:** dokumen acceptance resmi, test integrasi M3→M4→M5 di folder risk, dan entri M4 di roadmap.md.
+  - **Acceptance yang diharapkan** (diturunkan dari aturannya): plan tidak pernah berubah; budget/margin/spread/slippage/cooldown/exposure masing-masing menghasilkan BlockReason yang tepat; lot di bawah minimum → BLOCKED; hasil selalu MONITOR_ONLY dan beku.
+  - Executor demo memakai `calculatePositionSize` dari M4 plus guard demo sendiri. Ini lapisan terpisah dan tidak mengubah M4.
+- **Dua temuan keamanan kritis engine_memory/engine_trades: sudah tertutup.** Database saat ini:
+  - Proteksi baris aktif di tabel engine_memory, engine_trades, dan trade_reviews.
+  - Tiap tabel hanya punya satu aturan baca: user login yang `is_engine_operator(auth.uid())`. Tidak ada aturan tulis.
+  - Pengunjung tanpa login tidak punya akses sama sekali.
+  - Ada trigger yang menolak UPDATE/DELETE, dan setiap INSERT dicatat di `engine_access_audit`.
+  - Hasil scan keamanan tersimpan tidak menunjukkan temuan, tapi sudah basi. Yang perlu: jalankan scan ulang untuk mengonfirmasi, lalu tandai fixed. Fix tambahan tidak perlu.
+- **Phase 5A/5B** (`src/lib/review/compliance.ts`, `performance.ts`, beserta tesnya): sudah live. *Inferensi:* label 5A/5B hanya muncul di judul commit, bukan di dokumen.
+- **M1B.8 Institutional Footprint Radar:** selesai (roadmap.md:38), bukti pasif saja.
+- **Header MONITOR_ONLY:** perubahannya hanya label/tampilan. Teks dan tombol yang di-disable cuma memantulkan `execution.state`, `EXECUTION_ENABLED`, dan `operating_mode`; tidak ada nilai yang dibaca balik oleh engine. Rekomendasi: **KEEP**, karena label yang memisahkan AI MONITOR_ONLY dari DEMO executor membuat tampilan lebih jujur dan sesuai arsitektur.
+- **BLOCKED_COUNTER_PRIMARY_BIAS di code:** rename, detail audit, wiring ke riwayat event, dan Telegram sudah ada. Satu test di level executor lulus.
 
-```text
-H4 STRUCTURE → PRIMARY BIAS → H1 CONFIRMATION → M15 SETUP → M5 TRIGGER → EXECUTION
-```
-Bukan: M5 momentum → BUY/SELL → cari pembenaran timeframe besar.
+## CAN DO NOW (tanpa VPS)
 
-## 2. Aturan perubahan arah H4
-- SELL → BUY hanya jika: H4 break bearish structure + terbentuk HH_HL + EMA H4 sejajar bullish.
-- BUY → SELL hanya jika: H4 break bullish structure + terbentuk LH_LL + EMA H4 sejajar bearish.
-- Tidak boleh mengubah primaryBias: RSI rebound, beberapa candle hijau, EMA bounce M5/M15, reaksi support lokal.
+1. **Test eksplisit persistence H4 primaryBias.** Pengamannya sudah ada: `TechnicalSliceService.ts:91` dan `mergeClosedHistory` hanya mengambil candle CLOSED dengan `available_at <= asOf`. Tes yang ada (`technical-probe-v1c.test.ts:128-140`, `d2-runtime.test.ts:272`) menguji lapisan probe/runtime, bukan `operatorAnalysis` dan `primary_bias`. Celahnya: belum ada test yang membuktikan candle H4 yang masih berjalan tidak bisa membalik `primary_bias`, dan hanya H4 baru yang sudah close yang boleh mengubahnya. Isinya cuma test, logic tidak diubah.
+2. **Scan keamanan ulang**, lalu tandai dua temuan RLS sebagai fixed kalau hasilnya bersih.
+3. **D1 dan D3 (utang audit Patch B):** audit source plus test. D1: pastikan hanya kasus fingerprint sama tapi identity beda yang berubah ke AMBIGUOUS_COLLISION, sedangkan raw_event_id yang sama tetap EXACT_TRANSPORT_DUPLICATE. D3: urutan drain deterministik dan bukan klaim urutan pasar. Bisa dikerjakan di codebase, tapi menurut roadmap butuh instruksi eksplisit lo.
+4. **Rapikan roadmap.md:** tambah entri M-pipeline (M4 selesai, M8 diblokir) dan tandai item yang sudah obsolete (lihat di bawah).
 
-## 2A. PrimaryBias persistence rule
-- primaryBias tidak berubah karena fluktuasi candle intraday.
-- Setelah H4 menghasilkan primaryBias valid, nilainya dipertahankan sampai ada invalidation atau struktur H4 berlawanan yang valid.
-- primaryBias dihitung ulang hanya dari candle H4 yang sudah CLOSE.
-- Candle H4 yang masih berjalan tidak boleh membalik primaryBias.
-- Alur: H4 close → update bias; M5/M15 → cari timing. Bukan: tick berjalan → ubah bias.
-- Tambahan test: candle H4 berjalan naik saat primaryBias SELL ⇒ primaryBias tetap SELL sampai H4 close dengan struktur HH_HL + EMA bullish.
+## NEEDS VPS
 
-## 3. Counter trend = informasi risiko saja
-- Field `counterTrendCondition`: NONE | BULLISH_PULLBACK | BEARISH_PULLBACK.
-- Tampil sebagai "COUNTER TREND WARNING: BULLISH_PULLBACK" (harga sedang retracement melawan trend utama).
-- Tidak pernah masuk ke signal state, radar plan, side plan, atau execution.
+- **Deploy engine-host terbaru.** Ini syarat untuk tiga hal: `counter_trend_condition` muncul di live, event BLOCKED_COUNTER_PRIMARY_BIAS masuk ke cloud dan Telegram, dan executor membaca `primaryBias` dari hasil analisa teknis.
+- **Heartbeat/failover.** Yang sudah ada: heartbeat bertanda tangan dari VPS (`agentSync.ts:49-59`), config gagal-tertutup kalau umurnya lebih dari 60 detik, ENGINE_OFFLINE/ONLINE dari capture cloud tiap 5 menit, dan fallback dashboard ke BROWSER SESSION. Celahnya: route heartbeat tidak pernah menandai agent offline, dan offline baru ketahuan lewat capture 5 menit. Perlu VPS baru untuk diuji end-to-end.
+- **Bukti end-to-end demo trade:** order masuk, lalu journal, lalu EXIT.
+- **MARKET_DATA.TICK vs TICKS.** Bridge Python sudah mengirim `TICKS` yang benar. Stream live masih mengirim alias `TICK`, dan client menerimanya hanya di frame LIVE sambil menghitung jumlahnya. Perbaikannya di gateway Windows (vps/mt5_gateway), bukan di dashboard.
 
-## 4. Hard block + event audit lengkap
-- Paper loop dan demo VPS executor menolak order dengan orderSide ≠ primaryBias ⇒ BLOCKED_COUNTER_PRIMARY_BIAS (di backend, bukan hanya UI).
-- BLOCKED_COUNTER_PRIMARY_BIAS terjadi di decision layer, sebelum: pembuatan order intent, pengiriman ke DemoExecutionBridge, dan pengiriman ke MT5 executor. Tidak ada order yang dibuat lalu dibatalkan.
-- Guard di executor tetap ada sebagai lapisan cadangan.
-- Event dicatat lengkap ke engine event log, journal, dan Telegram (jika aktif):
-```text
-{ reason: "COUNTER_PRIMARY_BIAS", primaryBias: "SELL", attemptedSide: "BUY",
-  timeframeConflict: "H4/H1 bearish", counterTrendCondition: "BULLISH_PULLBACK" }
-```
+## NEEDS EXTERNAL REAL DATA
 
-## 5. UI memisahkan arah dan timing
-Jika H4 bearish, "BUY BIAS / WAIT TRIGGER" tidak boleh tampil. Format (HP + desktop, termasuk Rencana Acuan dan Radar):
-```text
-PRIMARY BIAS            SELL
-SETUP                   WAIT SELL TRIGGER
-H4 BEARISH ✓  H1 BEARISH ✓  M15 WAIT SELL SETUP  M5 WAIT REJECTION
-COUNTER TREND WARNING   BULLISH_PULLBACK
-```
+- **G2 broker-time offset:** belum terselesaikan, terlihat dari penanda `BROKER_SERVER_TIME_UNRESOLVED_G2` di `TechnicalSliceService.ts:38`. Perlu observasi offset dari broker nyata; tidak boleh diperbaiki dengan menebak offset.
+- **Validasi data nyata v1b:** diblokir G2 dan butuh gateway nyata.
+- **Audit integrasi penuh PRE-2D + audit sumber independen:** diblokir sampai lo kasih instruksi eksplisit. Sebaiknya dikerjakan setelah G2 dan v1b, supaya auditnya mencakup data nyata.
+- **M8 Optimization Laboratory:** belum ada code. Diblokir oleh verifikasi M1B.8 dari lo, dan butuh dataset trade demo yang cukup.
 
-## 6. Ganti aturan lama
-- Hapus semua referensi "macro never picks BUY/SELL" dan "scalp side comes ONLY from M5/M15 momentum" (AGENTS.md, project knowledge, memory, dokumen).
-- Ganti dengan: "Macro structure determines trade direction. Lower timeframe determines entry timing."
+## OBSOLETE (perlu ditutup di roadmap)
 
-## 7. Regression test
-- Case 1: H4 bearish, H1 bearish, M5/M15 bullish pullback ⇒ primaryBias SELL, counterTrendCondition BULLISH_PULLBACK, tidak ada BUY plan, tidak ada BUY execution.
-- Case 2: H4 bullish, pullback bearish lokal ⇒ primaryBias BUY, counterTrendCondition BEARISH_PULLBACK, tidak ada SELL plan.
-- Case 3: H4 mixed / struktur tidak cukup ⇒ primaryBias NONE, state WAIT atau NOT_EVALUABLE.
-- Case 4: execution berlawanan primaryBias ⇒ BLOCKED_COUNTER_PRIMARY_BIAS dengan payload audit lengkap.
+- **"TRADE/ANALYSIS technical cards still computed in the browser"** (roadmap.md:44): sudah tidak berlaku sejak Phase 2.1. Host sekarang menghitung hasil analisa teknis per simbol, dan browser hanya menghitung sendiri di mode BROWSER SESSION.
+- **"Install on VPS + second tunnel + set VITE_ENGINE_HOST_URL"** (roadmap.md:43): sudah dilakukan sebelumnya. Yang tersisa hanya update versi, sudah masuk NEEDS VPS.
+- **"Real Vertical Slice v1 ... tunnel NXDOMAIN"** dan **"Canonical unification ... WS 404"**: alasan tunnel/WS sudah tidak berlaku karena dashboard live sudah ter-mount. Yang masih memblokir hanya G2, jadi tulis ulang alasan blokirnya.
 
-- Case 5: H4 SELL valid + momentum BUY kuat di M5/M15 ⇒ primaryBias SELL, setupBias WAIT, counterTrendCondition BULLISH_PULLBACK; UI "SELL BIAS / WAIT SELL TRIGGER"; tidak ada BUY intent yang dibuat sama sekali.
-- Case 6: H4 SELL valid + M5/M15 BUY pullback + RSI bullish + EMA bounce ⇒ primaryBias SELL, setupBias WAIT, counterTrendCondition BULLISH_PULLBACK. Dilarang: BUY signal, BUY plan, BUY intent, BUY execution. Alasan: indikator timeframe rendah menjelaskan pergerakan, bukan arah. Override primaryBias oleh RSI atau modul lain tidak diizinkan.
+## Rekomendasi urutan kerja
 
-## Dampak
-- Versi kebijakan dinaikkan; statistik journal dipisah per versi. Jumlah sinyal kemungkinan turun. Backtest cepat otomatis memakai aturan baru.
-
-## Detail teknis
-- `operator.ts`: side = primaryBias dari H4 (struktur + EMA, dengan transisi hanya via struktur); momentumSide hanya konfirmasi searah atau sumber counterTrendCondition. Bump ARCHITECTURE_VERSION.
-- `tradingState.ts`: field `primaryBias`, `setupBias`, `counterTrendCondition`; buildSidePlan / radar plan / signal lifecycle hanya dengan primaryBias.
-- `LivePaperLoop.ts`, engine-host DemoExecutionBridge, `vps/mt5_exec`: guard + event audit; paket deploy VPS dibangun ulang.
-- UI (`MobileTradingView.tsx`, `TechnicalSlicePanel.tsx`): hanya menampilkan field baru.
-- Update tes arena-p01/p02/p03/mtf; jalankan seluruh suite, typecheck, dan tes VPS.
+1. **Scan keamanan ulang dan tandai RLS fixed.** Murah dan menutup risiko keamanan paling atas.
+2. **Test eksplisit persistence H4 primaryBias.** Cuma test, tanpa ubah logic, dan mengunci aturan yang baru dideploy sebelum VPS jalan versi baru.
+3. **Rapikan roadmap.md.** Status M4/M8 jadi tercatat, item obsolete ditutup.
+4. **Deploy VPS engine-host terbaru** (dijalankan oleh lo). Setelah itu verifikasi `counter_trend_condition`, event BLOCKED di cloud dan Telegram, lalu bukti demo trade end-to-end.
+5. **Heartbeat/failover**, setelah runtime VPS stabil.
+6. **D1/D3 dan audit PRE-2D**, menunggu instruksi eksplisit lo.
+7. **G2 lalu v1b**, saat data broker nyata bisa diobservasi.
+8. **M8**, setelah M1B.8 diverifikasi dan dataset demo cukup.
