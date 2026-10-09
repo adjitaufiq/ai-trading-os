@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import type { ArenaCandle } from "../../normalizer/types";
 import { SwingDetector } from "../swingDetector";
 
-const TF = 900_000; // M15
-const T0 = 1_700_000_000_000;
+const TF = 900; // M15, seconds (ArenaCandle timestamp = bar open, seconds epoch)
+const T0 = 1_700_000_000;
 let seq = 0;
 const bar = (h: number, l: number, i: number, closed = true): ArenaCandle => {
   const timestamp = T0 + i * TF;
