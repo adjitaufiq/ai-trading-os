@@ -73,7 +73,7 @@ export function emaRelation(e5: Indicator, e21: Indicator): Relation {
   return e5.value > e21.value ? "EMA5_ABOVE_EMA21" : e5.value < e21.value ? "EMA5_BELOW_EMA21" : "EMA5_EQUAL_EMA21";
 }
 
-// ---------------- causal swings (2 left + 2 right, strict) ----------------
+// ---------------- causal swings (2 left strict + 2 right tie-first-owner) ----------------
 
 export interface Swing {
   readonly kind: "HIGH" | "LOW";
