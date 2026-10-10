@@ -1,3 +1,4 @@
+// @deprecated for strategy validation: ARENA-only replay, does not run M1B/Decision Gate/M3/M4. Use runAlignedReplay.
 // QUICK BACKTEST — replays the SAME deterministic evaluate() over bounded broker CLOSED history.
 // No second strategy: entries come only from evaluate().entry / reference_plan. No lookahead: at step T only bars
 // with available_at <= T and close_time <= T are visible; forming bars never exist here.
