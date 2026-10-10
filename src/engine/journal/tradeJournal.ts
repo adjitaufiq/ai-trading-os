@@ -8,7 +8,7 @@ const toJournalContext = (m: MarketContextSnapshot) => ({
   regime: m.regime?.regime ?? null, horizon: m.horizon?.recommendedHorizon ?? null, marketApproach: m.horizon?.marketApproach ?? null,
   footprintTags: footprintTags(m.footprints), eventReferences: m.activeEvents.map((e) => ({ ...e })),
 });
-import type { ExcursionMetrics, JournalContext, JournalFilter, JournalTrade, SaveResult, TradeOutcome } from "./types";
+import type { EntryDecisionSnapshot, ExcursionMetrics, JournalContext, JournalFilter, JournalTrade, SaveResult, TradeOutcome } from "./types";
 import { defaultSymbolRegistry, type SymbolRegistry } from "../../core/broker/SymbolRegistry";
 import { resolveMarketSession } from "../../core/temporal/MarketSessionResolver";
 
