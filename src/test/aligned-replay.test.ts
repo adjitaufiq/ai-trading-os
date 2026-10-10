@@ -36,7 +36,6 @@ describe("aligned replay (paper path over native CLOSED bars)", () => {
     expect(r.summary.gateAllow).toBe(0);
     expect(r.trades).toHaveLength(0);
     expect(r.rows.every((x) => x.primaryBias === null || x.primaryBias === "NONE" || x.decision !== null)).toBe(true);
-  });
     expect(r.decisionTiming).toBe("CANDLE_CLOSE_M5");
     expect(r.costModel.spread).toBe(0.2);
   });
