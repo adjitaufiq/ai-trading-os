@@ -101,7 +101,7 @@ export interface PaperReadinessView {
   readonly m3: { readonly at: number; readonly status: string; readonly holdReason: string | null; readonly signalId: string } | null;
   readonly m4: { readonly at: number; readonly decision: string; readonly reasons: readonly string[]; readonly signalId: string } | null;
   readonly openPosition: boolean;
-  readonly gate: DecisionGateResult | null;
+  readonly gate?: DecisionGateResult | null;
 }
 
 interface Open { trade: PaperTrade; plan: TradePlan; bars: ArenaCandle[]; h1Phase: string; tier: string; primaryBias?: PrimaryBiasReading; entryDecision?: EntryDecisionSnapshot }
