@@ -21,7 +21,7 @@ export function slippagePoints(direction: "BUY" | "SELL", planned: number, actua
 }
 
 /** Map a CLOSED M5 paper trade to a journal row. Copies values; never recalculates them. */
-export function fromPaperTrade(t: PaperTrade, extra: { h1Phase: string; locationTier: string; rr: number; dataSource?: DataSource; primaryBias?: { bias: "BUY" | "SELL" | "NONE"; asOf: number; source: "TECHNICAL_H4_CLOSED" } }, excursion?: ExcursionMetrics, footprints?: FootprintSnapshot, registry: SymbolRegistry = defaultSymbolRegistry): JournalTrade | null {
+export function fromPaperTrade(t: PaperTrade, extra: { h1Phase: string; locationTier: string; rr: number; dataSource?: DataSource; primaryBias?: { bias: "BUY" | "SELL" | "NONE"; asOf: number; source: "TECHNICAL_H4_CLOSED" }; entryDecision?: EntryDecisionSnapshot }, excursion?: ExcursionMetrics, footprints?: FootprintSnapshot, registry: SymbolRegistry = defaultSymbolRegistry): JournalTrade | null {
   if (t.state !== "CLOSED" || !t.result || t.openedAt === null || t.closedAt === null) return null;
   const s = t.snapshot;
   const meta = registry.require(s.symbol);
@@ -45,6 +45,7 @@ export function fromPaperTrade(t: PaperTrade, extra: { h1Phase: string; location
     latencyMs: 0,
     dataSource: extra.dataSource ?? "SYNTHETIC",
     ...(extra.primaryBias ? { primaryBias: extra.primaryBias.bias, primaryBiasAsOf: extra.primaryBias.asOf, primaryBiasSource: extra.primaryBias.source } : {}),
+    ...(extra.entryDecision ? { entryDecision: extra.entryDecision } : {}),
   };
 }
 

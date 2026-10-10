@@ -79,6 +79,33 @@ export interface JournalTrade {
   /** Epoch ms of the primaryBias evaluation. */
   readonly primaryBiasAsOf?: number;
   readonly primaryBiasSource?: "TECHNICAL_H4_CLOSED";
+  /** Decision Gate snapshot frozen at OPEN (copy of existing outputs; null = not available). Optional, append-only. */
+  readonly entryDecision?: EntryDecisionSnapshot;
+}
+
+/** Facts available at entry, copied verbatim. No field is recomputed; missing values stay null. */
+export interface EntryDecisionSnapshot {
+  readonly gatePolicyVersion: string;
+  readonly decision: "ALLOW";
+  readonly reason: string;
+  readonly arenaStatus: string | null;
+  readonly candidateDirection: "BUY" | "SELL";
+  readonly signalId: string;
+  readonly decidedAt: number;
+  readonly primaryBias: "BUY" | "SELL" | "NONE" | null;
+  readonly m1bBias: string | null;
+  readonly m15Structure: string | null;
+  readonly m15StructureShift: string | null;
+  readonly priceLocation: string | null;
+  readonly locationTier: string | null;
+  readonly trigger: string | null;
+  readonly reactionQuality: string | null;
+  readonly plannedEntry: number | null;
+  readonly stopLoss: number | null;
+  readonly takeProfit: number | null;
+  readonly plannedRr: number | null;
+  readonly lot: number | null;
+  readonly riskUSD: number | null;
 }
 
 export type SaveError = "DUPLICATE_TRADE_ID" | "INVALID_TRADE";
