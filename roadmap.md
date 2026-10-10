@@ -1,4 +1,8 @@
 # Stage 3 PRE-2D gap closure
+## Approved SNR overlay Phase 1
+- [x] Dashboard SNR endpoint consumer, strict validation, shaded ranges/timeframe, toggle and focus chart; 23 targeted tests passed, automatic build/typecheck OK, browser verified with isolated test responses and zero page errors; no trading changes.
+- [ ] Live SNR zones — blocked: external Engine Host GET /v1/analysis/snr/{symbol} currently returns 404; dashboard honestly shows SNR unavailable. No VPS deployment/restart authorized.
+
 - [x] Isolate Chat, Control and Research navigation; removed cross-page tabs and report conversation drawers, retained panels and terminal entry links; verified at 390/1280 widths, no page errors or overflow, 6 assistant tests passed and automatic build OK.
 - [x] Mobile terminal: TRADE/RADAR/ANALISIS, grouped drawer, honest lamps and robot chat shortcut; desktop and existing detail views retained; 29 targeted tests passed, mobile overflow/page errors absent, automatic build OK; offline engine untouched.
 - [x] Fresh workspace Telegram connection linked; getMe verified @AITraderKerjaku_bot successfully.

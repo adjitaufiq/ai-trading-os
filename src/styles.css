@@ -172,6 +172,8 @@
   --canvas-up: #62c991;
   --canvas-down: #e27272;
   --canvas-border: #424a50;
+  --canvas-snr-support-fill: rgba(98, 201, 145, 0.12);
+  --canvas-snr-resistance-fill: rgba(226, 114, 114, 0.12);
 }
 body {
   font-family: var(--font-sans);

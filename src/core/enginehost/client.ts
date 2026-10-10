@@ -3,6 +3,7 @@
 import type { RadarHealth, RadarSnapshot } from "../radar/types";
 import type { VirtualAccountView } from "../paper/LivePaperLoop";
 import { ENGINE_HOST_SCHEMA, type EngineEnvelope, type EngineHostHealth, type EngineSymbolBundle } from "./types";
+import { parseSnrSnapshot, type SnrSnapshot } from "@/lib/snrOverlay";
 
 export type EngineResult<T> = { readonly ok: true; readonly envelope: EngineEnvelope<T> } | { readonly ok: false; readonly error: string };
 
@@ -58,6 +59,20 @@ export class EngineHostClient {
   }
 
   health() { return this.get<EngineHostHealth>("/v1/engine/health", isEngineHostHealth); }
+  /** Dedicated visual SNR contract; accept raw response or the standard host envelope, never another source. */
+  async snr(symbol: string): Promise<{ ok: true; data: SnrSnapshot } | { ok: false; error: string }> {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), this.o.timeoutMs ?? 5_000);
+    try {
+      const res = await (this.o.fetchImpl ?? fetch)(`${this.base}/v1/analysis/snr/${encodeURIComponent(symbol)}`, { method: "GET", signal: ctl.signal });
+      if (!res.ok) return { ok: false, error: `HTTP_${res.status}` };
+      const body: unknown = await res.json();
+      const data = parseSnrSnapshot(isEnvelope(body) ? body.data : body, symbol);
+      return data ? { ok: true, data } : { ok: false, error: "INVALID_SNR_RESPONSE" };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error && error.name === "AbortError" ? "TIMEOUT" : "UNREACHABLE" };
+    } finally { clearTimeout(timer); }
+  }
   radar(symbol: string) {
     return this.get<{ symbol: string; snapshot: Readonly<RadarSnapshot> | null; health: Readonly<RadarHealth> | null }>(
       `/v1/engine/${encodeURIComponent(symbol)}/radar`, (d) => (d as { symbol?: unknown })?.symbol === symbol);
