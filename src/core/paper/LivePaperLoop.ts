@@ -73,6 +73,17 @@ export interface PrimaryBiasReading { readonly bias: "BUY" | "SELL" | "NONE"; re
 export type PrimaryBiasProvider = () => PrimaryBiasReading | null;
 export type PrimaryBiasGateReason = "COUNTER_PRIMARY_BIAS" | "NO_PRIMARY_BIAS";
 
+/** Read-only copy of the last pipeline outcome per stage (observability only; never read by the loop's decisions). */
+export interface PaperReadinessView {
+  readonly lastEvaluatedAt: number | null;
+  readonly decision: string | null;
+  readonly primaryBias: Readonly<PrimaryBiasReading> | null;
+  readonly m2: { readonly at: number; readonly state: string; readonly direction: "BUY" | "SELL" | "NONE" | null } | null;
+  readonly m3: { readonly at: number; readonly status: string; readonly holdReason: string | null; readonly signalId: string } | null;
+  readonly m4: { readonly at: number; readonly decision: string; readonly reasons: readonly string[]; readonly signalId: string } | null;
+  readonly openPosition: boolean;
+}
+
 interface Open { trade: PaperTrade; plan: TradePlan; bars: ArenaCandle[]; h1Phase: string; tier: string; primaryBias?: PrimaryBiasReading }
 
 export const PAPER_STATE_VERSION = "paper-state-v1" as const;
@@ -111,6 +122,7 @@ export class LivePaperLoop {
   private decision: string | null = null;
   private readonly spreads: number[] = [];
   private readonly after: { tradeId: string; balance: number }[] = [];
+  private obs: { at: number | null; pb: PrimaryBiasReading | null; m2: PaperReadinessView["m2"]; m3: PaperReadinessView["m3"]; m4: PaperReadinessView["m4"] } = { at: null, pb: null, m2: null, m3: null, m4: null };
 
   private readonly openListeners = new Set<(e: ApprovedPaperOpen) => void>();
   /** Observer hook; listeners cannot influence the paper loop (errors are swallowed). */
@@ -148,6 +160,12 @@ export class LivePaperLoop {
 
   trades(): readonly Readonly<JournalTrade>[] { return this.journal.getAll(); }
 
+  /** Copy of recorded outcomes; no evaluation happens here. */
+  readiness(): PaperReadinessView {
+    const o = this.obs;
+    return Object.freeze({ lastEvaluatedAt: o.at, decision: this.decision, primaryBias: o.pb ? Object.freeze({ ...o.pb }) : null, m2: o.m2, m3: o.m3, m4: o.m4, openPosition: this.open !== null });
+  }
+
   /** Plain-data snapshot of the virtual account for host persistence. Journal rows are exported verbatim (append-only). */
   exportState(): PaperLoopState {
     return structuredClone({
@@ -177,6 +195,7 @@ export class LivePaperLoop {
   onClosedM5(bar: Bar, closed: (tf: Timeframe) => readonly Bar[], live: BrokerMarketEvent | null): void {
     if (bar.status !== "CLOSED" || bar.timeframe !== "M5" || bar.symbol !== this.symbol || bar.close_time <= this.lastClose) return;
     this.lastClose = bar.close_time;
+    this.obs.at = bar.close_time;
     try { this.step(bar, closed, live); } catch (e) { this.decision = `ERROR ${(e as Error).message}`; }
   }
 
@@ -236,6 +255,7 @@ export class LivePaperLoop {
     this.decision = ev.kind === "NO_SETUP" ? `NO_SETUP ${ev.reason}` : ev.kind;
     // PrimaryBias → M2 gate: H4 primaryBias is the only direction authority. S/R location only proposes candidates.
     const pb = this.readPrimaryBias();
+    this.obs.pb = pb;
     const side: "BUY" | "SELL" | null = pb && pb.bias !== "NONE" ? pb.bias : null;
     const gate = (dir: "BUY" | "SELL" | "NONE"): PrimaryBiasGateReason | null => side === null ? "NO_PRIMARY_BIAS" : dir !== side ? "COUNTER_PRIMARY_BIAS" : null;
     if (this.setup && !isTerminal(this.setup)) {
@@ -249,6 +269,7 @@ export class LivePaperLoop {
       if (isTerminal(this.setup)) { this.decision = `SETUP ${this.setup.state}`; this.setup = null; }
     }
     if (!this.setup && reaction && !evGate) { const cr = createSetup(ev, input, reaction, c, c.close); if (cr) this.setup = cr.setup; }
+    this.obs.m2 = Object.freeze({ at: bar.close_time, state: this.setup ? this.setup.state : (this.decision ?? "NO_SETUP"), direction: this.setup ? this.setup.direction : (ev.kind === "CANDIDATE" ? ev.direction : null) });
     if (!this.setup || this.setup.state !== "READY") return;
     if (!pb || gate(this.setup.direction)) { this.decision = `SETUP_INVALIDATED ${gate(this.setup.direction) ?? "NO_PRIMARY_BIAS"}`; this.setup = null; return; }
 
@@ -258,6 +279,7 @@ export class LivePaperLoop {
     const blocked = (stage: "PLAN" | "RISK" | "PAPER", reason: string, p?: TradePlan) => this.emit({ ...base, type: "BLOCKED", stage, reason, entry: p?.entry ?? null, stopLoss: p?.sl ?? null, takeProfit: p?.tp ?? null });
     const bid = live ? live.bid : c.close, ask = live ? live.ask : c.close + spread;
     const plan = buildTradePlan({ setup, entry: setup.direction === "BUY" ? ask : bid, m15Structure: m15S, atrM15: atr, now });
+    this.obs.m3 = Object.freeze({ at: bar.close_time, status: plan.status, holdReason: plan.holdReason ?? null, signalId: setup.id });
     if (plan.status !== "PLANNED") { this.decision = `PLAN_HOLD ${plan.holdReason ?? ""}`; blocked("PLAN", this.decision, plan); return; }
     const D = VIRTUAL_ACCOUNT_DEFAULTS;
     const contract = { tickSize: this.spec.tick_size, tickValue: this.spec.tick_size * this.spec.contract_size };
@@ -270,6 +292,7 @@ export class LivePaperLoop {
       nowSec: now, positions: [], exposureLimits: { maxSymbolRiskUSD: this.balance * D.maxSymbolRiskPercent / 100, maxTotalRiskUSD: this.balance * D.maxTotalRiskPercent / 100 },
       spread: { current: spread, history: [...this.spreads] }, quote: { ask, bid, maxSlippage: D.maxSlippage }, lossStreak: this.streak, strictRiskMode: true,
     });
+    this.obs.m4 = Object.freeze({ at: bar.close_time, decision: risk.decision, reasons: Object.freeze([...risk.reasons]), signalId: setup.id });
     if (risk.decision !== "APPROVED") { this.decision = `RISK_${risk.decision} ${risk.reasons.join(",")}`; blocked("RISK", this.decision, plan); return; }
     // fill reference = opposite side; simulateFill adds the real spread (BUY→ask, SELL→bid)
     const pt = createPaperTrade({
