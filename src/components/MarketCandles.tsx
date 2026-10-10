@@ -10,7 +10,7 @@ export interface MarketCandlesProps {
   onInspect: (bar: BridgeBar | null) => void;
   onActivate: () => void;
   focus: boolean;
-  snrZones?: readonly SnrZone[];
+  snrZones?: readonly SnrZone[] | undefined;
 }
 
 function MarketCandlesView({ bars, digits, onInspect, onActivate, focus, snrZones }: MarketCandlesProps) {
