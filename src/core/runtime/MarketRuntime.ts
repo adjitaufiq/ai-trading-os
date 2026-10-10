@@ -154,8 +154,9 @@ export class MarketRuntime {
     const biasProvider: PrimaryBiasProvider | undefined = o.clock.mode === "LIVE" ? () => {
       this.biasSlice ??= new TechnicalSliceService(this.reader, sym, o.clock);
       const asOf = o.clock.now();
-      const pb = this.biasSlice.evaluateAt(asOf).primary_bias;
-      return { bias: pb, asOf, source: "TECHNICAL_H4_CLOSED" };
+      const snap = this.biasSlice.evaluateAt(asOf);
+      // Same evaluation supplies direction (primary_bias) and ARENA permission (operator.status) for the Decision Gate.
+      return { bias: snap.primary_bias, asOf, source: "TECHNICAL_H4_CLOSED", arenaStatus: snap.operator?.status ?? null };
     } : undefined;
     this.paper = new LivePaperLoop(sym, o.spec.origin === "BROKER_REPORTED" ? "REAL_MT5" : "SYNTHETIC", o.spec, biasProvider);
     // paper loop runs after the radar on the same CLOSED M5 emission over the SAME merged evidence (broker CLOSED history + live CLOSED); fills use the latest LIVE bid/ask

@@ -64,7 +64,7 @@ describe("Execution readiness (Phase 1, read-only)", () => {
 
   it("fresh paper loop exposes an empty readiness view", () => {
     const loop = new LivePaperLoop("XAUUSD", "REAL_MT5", { tick_size: 0.01, contract_size: 100 } as never);
-    expect(loop.readiness()).toEqual({ lastEvaluatedAt: null, decision: null, primaryBias: null, m2: null, m3: null, m4: null, openPosition: false });
+    expect(loop.readiness()).toEqual({ lastEvaluatedAt: null, decision: null, primaryBias: null, m2: null, m3: null, m4: null, openPosition: false, gate: null });
   });
 
   it("serves GET-only readiness routes", () => {
