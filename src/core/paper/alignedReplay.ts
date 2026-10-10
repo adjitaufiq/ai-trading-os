@@ -8,17 +8,38 @@ import { mergeClosedHistory, toTechBar } from "../technical/TechnicalSliceServic
 import { SLICE_ENV, TIMEFRAMES, evaluate } from "../technical/tradingState";
 import type { TechBar } from "../technical/indicators";
 import type { JournalTrade } from "../../engine/journal/types";
+import type { BrokerMarketEvent } from "../broker/types";
 import { LivePaperLoop, type PaperDecisionRecord, type PaperPipelineEvent, type PrimaryBiasReading } from "./LivePaperLoop";
 
-export const ALIGNED_REPLAY_VERSION = "aligned-replay-v1" as const;
+export const ALIGNED_REPLAY_VERSION = "aligned-replay-v2-cost-model" as const;
+
+/** Decision timing (same as paper/demo): CANDLE_CLOSE — LivePaperLoop runs once per CLOSED M5 emission
+ *  (MarketRuntime.ts M5.onBar CLOSED). Ticks only supply the fill quote (lastLive); no tick-based decisions exist. */
+export const DECISION_TIMING = "CANDLE_CLOSE_M5" as const;
+
+/**
+ * Execution-cost model. No historical bid/ask exists in broker /v1/bars ⇒ spread is an EXPLICIT assumption,
+ * fed through the SAME `live` quote argument paper uses (bid = M5 close, ask = close + spread). Slippage and latency
+ * are 0 because LivePaperLoop hardcodes them to 0 for paper too (changing that would change execution). Spread 0 is
+ * rejected unless explicitly declared via allowZeroSpread.
+ */
+export interface ReplayCostModel {
+  readonly spread: number;
+  readonly source: "ASSUMED_FIXED" | "OBSERVED_LIVE_SAMPLE";
+  readonly note: string;
+  readonly slippage: 0;
+  readonly latencyMs: 0;
+  readonly allowZeroSpread?: boolean;
+}
 
 /** Documented differences vs live paper; reported with every run, never hidden. */
 export const ALIGNED_REPLAY_KNOWN_GAPS = Object.freeze([
-  "QUOTE: no historical bid/ask ⇒ live=null in LivePaperLoop ⇒ spread 0, bid=ask=M5 close (paper uses latest LIVE bid/ask)",
-  "ARENA_QUOTE: evaluate() quote = M5 close with spread 0 (live uses latest LIVE tick)",
+  "QUOTE: no historical bid/ask ⇒ fill quote = M5 close + ASSUMED fixed spread (costModel), not the real tick at emission",
+  "ARENA_QUOTE: evaluate() quote = M5 close bid, close+assumed spread ask (live uses latest LIVE tick)",
   "ASOF: asOf = M5 bar available_at (live uses clock.now() at emission, i.e. slightly later)",
   "HISTORY_MERGE: input is treated as one CLOSED history; live merges BACKFILL history + canonical live bars (no firstLiveAt)",
-  "SLIPPAGE/LATENCY: 0 in both paper and replay (not modelled)",
+  "SLIPPAGE/LATENCY: 0 in both paper and replay (LivePaperLoop hardcodes 0; not modelled anywhere)",
+  "SPREAD_VARIATION: fixed spread; session/news widening not modelled",
 ]);
 
 export interface AlignedReplayRow {
@@ -41,6 +62,10 @@ export type AlignedReplayResult =
         readonly preGateBlocks: Readonly<Record<string, number>>; readonly downstreamBlocks: Readonly<Record<string, number>>;
         readonly executed: number; readonly exits: number;
       };
+      readonly decisionTiming: typeof DECISION_TIMING;
+      readonly costModel: ReplayCostModel;
+      /** Per-trade journal annotation of the cost assumption used (trades themselves are unmodified loop output). */
+      readonly tradeCostJournal: readonly { readonly tradeId: string; readonly costModel: ReplayCostModel }[];
       readonly knownGaps: readonly string[];
     };
 
@@ -57,8 +82,11 @@ export function validateReplayInput(symbol: string, bars: Partial<Record<Timefra
   return missing;
 }
 
-export function runAlignedReplay(symbol: string, spec: SymbolSpecification, input: Partial<Record<Timeframe, readonly Bar[]>>, opts: { maxBars?: number } = {}): AlignedReplayResult {
+export function runAlignedReplay(symbol: string, spec: SymbolSpecification, input: Partial<Record<Timeframe, readonly Bar[]>>, opts: { maxBars?: number; costModel: ReplayCostModel }): AlignedReplayResult {
   const missing = validateReplayInput(symbol, input);
+  const cost = opts.costModel;
+  if (!cost || !Number.isFinite(cost.spread) || cost.spread < 0) missing.push("costModel: spread missing/invalid");
+  else if (cost.spread === 0 && !cost.allowZeroSpread) missing.push("costModel: spread 0 requires explicit allowZeroSpread");
   if (missing.length) return Object.freeze({ status: "DATA_MISSING", version: ALIGNED_REPLAY_VERSION, missing: Object.freeze(missing) });
   const bars = Object.fromEntries(TIMEFRAMES.map((tf) => [tf, [...input[tf]!].sort((a, b) => a.open_time - b.open_time)])) as Record<Timeframe, Bar[]>;
   const tech = Object.fromEntries(TIMEFRAMES.map((tf) => [tf, bars[tf].map(toTechBar)])) as Record<Timeframe, TechBar[]>;
@@ -67,7 +95,7 @@ export function runAlignedReplay(symbol: string, spec: SymbolSpecification, inpu
   const provider = (): PrimaryBiasReading => {
     const closed = Object.fromEntries(TIMEFRAMES.map((tf) => [tf, mergeClosedHistory(tech[tf], [], null, asOf)])) as Record<Timeframe, TechBar[]>;
     const px = closed.M5.at(-1)?.close ?? null;
-    const snap = evaluate({ symbol, market_current: px !== null, bars_current: true, quote: px === null ? null : { bid: px, ask: px, spread: 0, tick_time_ms: asOf, observed_at: asOf }, closed, as_of: asOf, env: SLICE_ENV }, null);
+    const snap = evaluate({ symbol, market_current: px !== null, bars_current: true, quote: px === null ? null : { bid: px, ask: px + cost.spread, spread: cost.spread, tick_time_ms: asOf, observed_at: asOf }, closed, as_of: asOf, env: SLICE_ENV }, null);
     return { bias: snap.primary_bias, asOf, source: "TECHNICAL_H4_CLOSED", arenaStatus: snap.operator?.status ?? null };
   };
   const loop = new LivePaperLoop(symbol, "BACKTEST", spec, provider);
@@ -79,7 +107,12 @@ export function runAlignedReplay(symbol: string, spec: SymbolSpecification, inpu
   for (const bar of m5) {
     asOf = bar.available_at;
     pending = [];
-    loop.onClosedM5(bar, visible, null);
+    // Same argument paper receives (lastLive), built from the explicit cost assumption.
+    const live = Object.freeze({ seq: rows.length + 1, symbol, source: "MT5", bid: bar.close, ask: bar.close + cost.spread, spread: cost.spread,
+      event_at: bar.close_time, observed_at: bar.available_at, ingested_at: bar.available_at,
+      provenance: { raw_event_id: `replay-cost-${bar.close_time}`, source: "MT5", symbol, received_at: bar.available_at, normalizer_version: "replay-cost-model", connection_epoch: 0, delivery: "BACKFILL" } }) as unknown as BrokerMarketEvent;
+    loop.mark(live);
+    loop.onClosedM5(bar, visible, live);
     const rd = loop.readiness();
     rows.push(Object.freeze({
       at: bar.close_time, symbol, primaryBias: rd.primaryBias?.bias ?? null, arenaStatus: rd.primaryBias?.arenaStatus ?? null,
@@ -104,6 +137,8 @@ export function runAlignedReplay(symbol: string, spec: SymbolSpecification, inpu
   }
   return Object.freeze({
     status: "DONE", version: ALIGNED_REPLAY_VERSION, symbol, barsReplayed: m5.length, rows: Object.freeze(rows), trades: loop.trades(),
+    decisionTiming: DECISION_TIMING, costModel: Object.freeze({ ...cost }),
+    tradeCostJournal: Object.freeze(loop.trades().map((t) => Object.freeze({ tradeId: String((t as { id?: string; tradeId?: string }).id ?? (t as { tradeId?: string }).tradeId ?? ""), costModel: cost }))),
     summary: Object.freeze({ candidates, gateAllow: allow, gateBlock, preGateBlocks: preGate, downstreamBlocks: down, executed, exits }),
     knownGaps: ALIGNED_REPLAY_KNOWN_GAPS,
   });

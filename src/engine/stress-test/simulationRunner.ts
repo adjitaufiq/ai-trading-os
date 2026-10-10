@@ -1,3 +1,8 @@
+/**
+ * @deprecated LEGACY RUNNER — do NOT use for strategy validation. It wires M1B engines directly with its own
+ * aggregation/spread path and does NOT pass through LivePaperLoop / Decision Gate. Use runAlignedReplay
+ * (src/core/paper/alignedReplay.ts) for paper/demo-aligned backtests. Kept for M7 pipeline smoke tests only.
+ */
 // M7 — Unattended pipeline runner. Wires the EXISTING engines only:
 // M1B.1 normalize → M1B.3 swings/structure → M1B.4 bias → M1B.5 location → M1B.6 EMA
 // → M1B.7 reaction → M2 signal → M3 plan → M4 risk → M5 paper → M6 journal → M6.5 autopsy.
@@ -234,7 +239,12 @@ function runPath(s: Shared, bars: readonly { raw: RawGatewayPayload; scenario: s
   for (const p of pending) finishAutopsy(p);
 }
 
+/** @deprecated Not paper/demo aligned — not valid for strategy validation. Use runAlignedReplay. */
 export function runStressTest(partial: Partial<StressTestConfig>): StressRunResult {
+  if (typeof console !== "undefined" && !(globalThis as { __M7_LEGACY_WARNED?: boolean }).__M7_LEGACY_WARNED) {
+    (globalThis as { __M7_LEGACY_WARNED?: boolean }).__M7_LEGACY_WARNED = true;
+    console.warn("[DEPRECATED] runStressTest is not aligned with paper/demo; do not use for strategy validation. Use runAlignedReplay.");
+  }
   const cfg: StressTestConfig = { ...DEFAULT_STRESS_CONFIG, ...partial };
   const counters = emptyCounters();
   const base = (error?: StressRunResult["error"]): StressRunResult => ({
