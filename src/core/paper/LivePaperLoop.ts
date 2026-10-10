@@ -86,6 +86,12 @@ export interface PaperDecisionRecord {
   readonly reason: string;
   readonly rr?: number | null;
   readonly excursion?: ExcursionMetrics | null;
+  /** CANDIDATE only: copies of the inputs seen at creation (no recomputation). */
+  readonly context?: {
+    readonly m1bState: string; readonly primaryBias: string | null; readonly priceLocation: string; readonly locationTier: string | null;
+    readonly keyLevelPrice: number | null; readonly trigger: string; readonly reactionQuality: string;
+    readonly emaPricePosition: string; readonly emaActions: readonly string[];
+  };
 }
 export const DECISION_LOG_RING = 500;
 /** Synchronous provider evaluated at every CLOSED M5. Absent (replay without ReplayPrimaryBiasProvider) ⇒ fail closed. */
@@ -301,7 +307,10 @@ export class LivePaperLoop {
       if (cr) {
         this.setup = cr.setup;
         const d = cr.setup.direction === "NONE" ? null : cr.setup.direction;
-        this.record({ kind: "CANDIDATE", at: bar.close_time, signalId: cr.setup.id, direction: d, arenaStatus: pb?.arenaStatus ?? null, outcome: "M1B_SETUP", reason: `${loc.context.priceLocation}/${reaction.pattern}` });
+        this.record({ kind: "CANDIDATE", at: bar.close_time, signalId: cr.setup.id, direction: d, arenaStatus: pb?.arenaStatus ?? null, outcome: "M1B_SETUP", reason: `${loc.context.priceLocation}/${reaction.pattern}`,
+          context: Object.freeze({ m1bState: String(cr.setup.state), primaryBias: pb?.bias ?? null, priceLocation: String(loc.context.priceLocation), locationTier: loc.context.locationTier ?? null,
+            keyLevelPrice: Number.isFinite(loc.context.keyLevelPrice) ? loc.context.keyLevelPrice : null, trigger: String(reaction.pattern), reactionQuality: String(reaction.quality),
+            emaPricePosition: String(ema.context.pricePosition), emaActions: Object.freeze([...(ema.context.actions ?? [])]) }) });
       }
     }
     this.obs.m2 = Object.freeze({ at: bar.close_time, state: this.setup ? this.setup.state : (this.decision ?? "NO_SETUP"), direction: this.setup ? this.setup.direction : (ev.kind === "CANDIDATE" ? ev.direction : null) });
