@@ -36,7 +36,7 @@ describe("visual-only SNR contract", () => {
     expect(parseSnrSnapshot({}, "BTCUSD")).toBeNull();
   });
   it("requests only the exact GET endpoint and validates raw and standard envelopes", async () => {
-    const fetchImpl = vi.fn(async () => Response.json(payload()));
+    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json(payload()));
     const client = new EngineHostClient({ baseUrl: "https://host.example", fetchImpl });
     expect((await client.snr("BTCUSD")).ok).toBe(true);
     expect(fetchImpl.mock.calls[0]?.[0]).toBe("https://host.example/v1/analysis/snr/BTCUSD");
