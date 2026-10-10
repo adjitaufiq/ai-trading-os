@@ -18,6 +18,7 @@ export interface EnginePipelineEvent extends PaperPipelineEvent {
 }
 export const PIPELINE_RING = 500;
 import type { ExecutionMode } from "../execution/demo/types";
+import { buildReadiness, type EngineReadiness } from "./readiness";
 
 /** Documented supervisor policy (operator configuration). */
 export interface SupervisorPolicy { readonly tick_ms: number; readonly remount_after_ms: number; readonly backoff_min_ms: number; readonly backoff_max_ms: number }
@@ -175,6 +176,14 @@ export class EngineHost {
   }
 
   demoStatus(): unknown { return this.o.demoStatus?.() ?? { mode: this.o.executionMode ?? "REAL_DISABLED" }; }
+
+  /** Read-only readiness projection (copies existing state; no evaluation). */
+  readiness(symbol: string, now: number): EngineReadiness | null {
+    const s = this.slots.get(symbol);
+    if (!s) return null;
+    return buildReadiness({ symbol, now, health: this.symbolHealth(s, now), executionMode: this.o.executionMode ?? "REAL_DISABLED",
+      paper: s.reader?.paperReadiness?.() ?? null, demo: this.o.demoStatus ? this.o.demoStatus() : null });
+  }
 
   reader(symbol: string): MarketRuntimeReader | null { return this.slots.get(symbol)?.reader ?? null; }
 

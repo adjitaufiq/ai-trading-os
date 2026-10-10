@@ -17,7 +17,7 @@ import { detectMissingIntervals, type MissingInterval } from "../candles/Missing
 import { RadarRuntimeService } from "../radar/RadarRuntimeService";
 import type { RadarHealth, RadarSnapshot } from "../radar/types";
 import { TechnicalSliceService } from "../technical/TechnicalSliceService";
-import { LivePaperLoop, type PrimaryBiasProvider, type ApprovedPaperOpen, type PaperPipelineEvent, type PaperLoopState, type VirtualAccountView } from "../paper/LivePaperLoop";
+import { LivePaperLoop, type PrimaryBiasProvider, type ApprovedPaperOpen, type PaperPipelineEvent, type PaperLoopState, type PaperReadinessView, type VirtualAccountView } from "../paper/LivePaperLoop";
 import type { JournalTrade } from "../../engine/journal/types";
 import type { MarketDataHandlers, MarketDataStream } from "../broker/gateway/BrokerGatewayClient";
 import type {
@@ -95,6 +95,8 @@ export interface MarketRuntimeReader {
   paperAccount?(): Readonly<VirtualAccountView>;
   /** M6 journal rows produced by the live paper loop, tagged with dataSource. */
   paperTrades?(): readonly Readonly<JournalTrade>[];
+  /** Read-only copy of the paper loop's last per-stage outcome (observability). */
+  paperReadiness?(): PaperReadinessView;
   now(): number;
 }
 
@@ -346,6 +348,7 @@ export class MarketRuntime {
       radarHealth: () => self.radar.health(self.o.clock.now()),
       paperAccount: () => self.paper.account(),
       paperTrades: () => self.paper.trades(),
+      paperReadiness: () => self.paper.readiness(),
       missingIntervals(tf) {
         const c = closed(tf);
         if (c.length < 2) return Object.freeze([]);
