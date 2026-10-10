@@ -31,7 +31,7 @@ const candidate = (direction: "BUY" | "SELL", state = "READY") => ({ kind: "CAND
 
 function run(bias: Reading["bias"] | "MISSING" | "NO_PROVIDER", direction: "BUY" | "SELL") {
   let current = bias;
-  const provider = bias === "NO_PROVIDER" ? undefined : () => (current === "MISSING" ? null : { bias: current as Reading["bias"], asOf: T0, source: "TECHNICAL_H4_CLOSED" as const });
+  const provider = bias === "NO_PROVIDER" ? undefined : () => (current === "MISSING" ? null : { bias: current as Reading["bias"], asOf: T0, source: "TECHNICAL_H4_CLOSED" as const, arenaStatus: current === "BUY" ? "CARI_BUY" : current === "SELL" ? "CARI_SELL" : "HOLD" });
   const loop = new LivePaperLoop("XAUUSD", "REAL_MT5", spec, provider);
   const events: { type: string; direction: string | null }[] = [];
   loop.onPipelineEvent((e) => events.push(e));
