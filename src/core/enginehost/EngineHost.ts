@@ -75,6 +75,8 @@ export class EngineHost {
     build?: EngineBuildInfo;
     /** Shadow Guard read model (Phase 2A); absent ⇒ reported as UNKNOWN, never as safe. */
     shadowStatus?: () => unknown;
+    /** Observed demo execution state for /v1/engine/health (label only; never gates orders). Absent ⇒ MONITOR_ONLY/false. */
+    executionState?: () => { armed: boolean; enabled: boolean };
   }) {
     this.startedAt = o.now();
     for (const symbol of o.symbols) this.slots.set(symbol, { symbol, stop: null, rt: null, reader: null, status: "INIT", restarts: 0, unhealthySince: null, nextRemountAt: 0, backoff: this.policy.backoff_min_ms, persistError: null, slice: null });
@@ -174,8 +176,11 @@ export class EngineHost {
 
   health(): EngineHostHealth {
     const now = this.o.now();
+    let ex: { armed: boolean; enabled: boolean } = { armed: false, enabled: false };
+    try { ex = this.o.executionState?.() ?? ex; } catch { /* fail-closed: report disabled */ }
     return Object.freeze({
-      operating_mode: "MONITOR_ONLY", execution_enabled: false, started_at: this.startedAt, persistence: "VPS_DISK",
+      operating_mode: ex.armed ? "DEMO" as const : "MONITOR_ONLY" as const, execution_enabled: ex.armed && ex.enabled,
+      started_at: this.startedAt, persistence: "VPS_DISK" as const,
       demo_execution: this.o.executionMode ?? "REAL_DISABLED",
       symbols: Object.freeze([...this.slots.values()].map((s) => this.symbolHealth(s, now))),
       build: this.buildInfo(),
