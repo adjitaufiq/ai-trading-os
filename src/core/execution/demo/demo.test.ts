@@ -81,7 +81,7 @@ describe("DemoExecutionBridge", () => {
   });
 });
 
-describe("BLOCKED_COUNTER_PRIMARY_BIAS — primaryBias is the only direction authority", () => {
+describe("BLOCK_COUNTER_PRIMARY_BIAS — primaryBias is the only direction authority", () => {
   const run = async (direction: "BUY" | "SELL", ctx: Partial<DemoOrderIntent["context"]>) => {
     const r = rig(); const base = intent(`s-${direction}-${JSON.stringify(ctx)}`);
     const ev = await r.mk().handle({ ...base, direction, context: { ...base.context, ...ctx } });
@@ -89,7 +89,7 @@ describe("BLOCKED_COUNTER_PRIMARY_BIAS — primaryBias is the only direction aut
   };
   it.each([["A", "SELL", "BUY"], ["B", "BUY", "SELL"]] as const)("%s primaryBias %s + attempted %s ⇒ BLOCKED with full audit", async (_k, pb, side) => {
     const { ev, sent } = await run(side, { primaryBias: pb, counterTrendCondition: pb === "SELL" ? "BULLISH_PULLBACK" : "BEARISH_PULLBACK" });
-    expect(ev.data?.["reason"]).toBe("BLOCKED_COUNTER_PRIMARY_BIAS");
+    expect(ev.data?.["reason"]).toBe("BLOCK_COUNTER_PRIMARY_BIAS");
     expect(ev.data?.["audit"]).toMatchObject({ attemptedSide: side, primaryBias: pb, counterTrendCondition: pb === "SELL" ? "BULLISH_PULLBACK" : "BEARISH_PULLBACK", timeframeConflict: { H4: pb, attempted: side, source: "TECHNICAL_H4_CLOSED" } });
     expect(sent).toHaveLength(0);
   });
@@ -100,7 +100,7 @@ describe("BLOCKED_COUNTER_PRIMARY_BIAS — primaryBias is the only direction aut
   it.each([["E", undefined, "BULLISH", "BUY"], ["F", "NONE", "BEARISH", "SELL"]] as const)("%s primaryBias %s + radar %s ⇒ fail closed, radar is not a fallback", async (_k, pb, radar, side) => {
     const { ev, sent } = await run(side, { primaryBias: pb ?? null, h4Bias: radar });
     expect(ev.type).toBe("BLOCKED");
-    expect(ev.data?.["reason"]).toBe("BLOCKED_COUNTER_PRIMARY_BIAS");
+    expect(ev.data?.["reason"]).toBe("BLOCK_COUNTER_PRIMARY_BIAS");
     expect(ev.data?.["audit"]).toMatchObject({ attemptedSide: side, primaryBias: null, timeframeConflict: { source: "PRIMARY_BIAS_UNAVAILABLE" } });
     expect(sent).toHaveLength(0);
   });

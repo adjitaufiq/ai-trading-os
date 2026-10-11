@@ -43,12 +43,12 @@ describe("Execution readiness (Phase 1, read-only)", () => {
   it("reports block reasons verbatim", () => {
     const r = buildReadiness({
       symbol: "XAUUSD", now: NOW, health: health("BOOTSTRAP"), executionMode: "DEMO_STRESS_TEST",
-      paper: paper({ decision: "NO_SETUP COUNTER_PRIMARY_BIAS", primaryBias: { bias: "NONE", asOf: NOW - 1000, source: "TECHNICAL_H4_CLOSED" }, m2: { at: NOW - 1000, state: "NO_SETUP COUNTER_PRIMARY_BIAS", direction: "SELL" }, m3: { at: NOW - 1000, status: "HOLD", holdReason: "RR_TOO_LOW", signalId: "s" }, m4: { at: NOW - 1000, decision: "REJECTED", reasons: ["SPREAD_TOO_WIDE"], signalId: "s" } }),
+      paper: paper({ decision: "NO_SETUP BLOCK_COUNTER_PRIMARY_BIAS", primaryBias: { bias: "NONE", asOf: NOW - 1000, source: "TECHNICAL_H4_CLOSED" }, m2: { at: NOW - 1000, state: "NO_SETUP BLOCK_COUNTER_PRIMARY_BIAS", direction: "SELL" }, m3: { at: NOW - 1000, status: "HOLD", holdReason: "RR_TOO_LOW", signalId: "s" }, m4: { at: NOW - 1000, decision: "REJECTED", reasons: ["SPREAD_TOO_WIDE"], signalId: "s" } }),
       demo: demo({ killSwitch: true, account: { ok: false, reason: "IDENTITY_UNAVAILABLE", login: null, server: null } }),
     });
     expect(r.market).toMatchObject({ status: "BLOCKED", reason: "ENGINE_BOOTSTRAP" });
     expect(r.primary_bias).toMatchObject({ status: "BLOCKED", reason: "NO_PRIMARY_BIAS" });
-    expect(r.m2).toMatchObject({ status: "BLOCKED", reason: "NO_SETUP COUNTER_PRIMARY_BIAS" });
+    expect(r.m2).toMatchObject({ status: "BLOCKED", reason: "NO_SETUP BLOCK_COUNTER_PRIMARY_BIAS" });
     expect(r.m3).toMatchObject({ status: "BLOCKED", reason: "PLAN_HOLD RR_TOO_LOW" });
     expect(r.m4).toMatchObject({ status: "BLOCKED", reason: "RISK_REJECTED SPREAD_TOO_WIDE" });
     expect(r.demo).toMatchObject({ status: "BLOCKED", reason: "KILL_SWITCH" });

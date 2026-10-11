@@ -96,7 +96,7 @@ export interface PaperDecisionRecord {
 export const DECISION_LOG_RING = 500;
 /** Synchronous provider evaluated at every CLOSED M5. Absent (replay without ReplayPrimaryBiasProvider) ⇒ fail closed. */
 export type PrimaryBiasProvider = () => PrimaryBiasReading | null;
-export type PrimaryBiasGateReason = "COUNTER_PRIMARY_BIAS" | "NO_PRIMARY_BIAS";
+export type PrimaryBiasGateReason = "BLOCK_COUNTER_PRIMARY_BIAS" | "NO_PRIMARY_BIAS";
 
 /** Read-only copy of the last pipeline outcome per stage (observability only; never read by the loop's decisions). */
 export interface PaperReadinessView {
@@ -291,7 +291,7 @@ export class LivePaperLoop {
     const pb = this.readPrimaryBias();
     this.obs.pb = pb;
     const side: "BUY" | "SELL" | null = pb && pb.bias !== "NONE" ? pb.bias : null;
-    const gate = (dir: "BUY" | "SELL" | "NONE"): PrimaryBiasGateReason | null => side === null ? "NO_PRIMARY_BIAS" : dir !== side ? "COUNTER_PRIMARY_BIAS" : null;
+    const gate = (dir: "BUY" | "SELL" | "NONE"): PrimaryBiasGateReason | null => side === null ? "NO_PRIMARY_BIAS" : dir !== side ? "BLOCK_COUNTER_PRIMARY_BIAS" : null;
     if (this.setup && !isTerminal(this.setup)) {
       const g = gate(this.setup.direction);
       if (g) { this.decision = `SETUP_INVALIDATED ${g}`; this.setup = null; }

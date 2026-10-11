@@ -19,6 +19,7 @@ export interface EnginePipelineEvent extends PaperPipelineEvent {
 export const PIPELINE_RING = 500;
 import type { ExecutionMode } from "../execution/demo/types";
 import { buildReadiness, type EngineReadiness } from "./readiness";
+import { resolveBuildInfo, type EngineBuildInfo } from "./buildInfo";
 
 /** Documented supervisor policy (operator configuration). */
 export interface SupervisorPolicy { readonly tick_ms: number; readonly remount_after_ms: number; readonly backoff_min_ms: number; readonly backoff_max_ms: number }
@@ -69,6 +70,8 @@ export class EngineHost {
     executionMode?: ExecutionMode;
     /** Durable sink (VPS disk outbox) for every enriched pipeline event; observer only. */
     onPipelineEvent?: (e: EnginePipelineEvent) => void;
+    /** Runtime build identity reported on /v1/engine/health and /v1/engine/version. */
+    build?: EngineBuildInfo;
   }) {
     this.startedAt = o.now();
     for (const symbol of o.symbols) this.slots.set(symbol, { symbol, stop: null, rt: null, reader: null, status: "INIT", restarts: 0, unhealthySince: null, nextRemountAt: 0, backoff: this.policy.backoff_min_ms, persistError: null, slice: null });
@@ -172,8 +175,11 @@ export class EngineHost {
       operating_mode: "MONITOR_ONLY", execution_enabled: false, started_at: this.startedAt, persistence: "VPS_DISK",
       demo_execution: this.o.executionMode ?? "REAL_DISABLED",
       symbols: Object.freeze([...this.slots.values()].map((s) => this.symbolHealth(s, now))),
+      build: this.buildInfo(),
     });
   }
+
+  buildInfo(): EngineBuildInfo { return this.o.build ?? resolveBuildInfo(null); }
 
   demoStatus(): unknown { return this.o.demoStatus?.() ?? { mode: this.o.executionMode ?? "REAL_DISABLED" }; }
 
