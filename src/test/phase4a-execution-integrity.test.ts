@@ -103,3 +103,61 @@ describe("Phase 4A execution integrity", () => {
     expect(parseRiskPolicy('{"risk_per_trade":0.5,"max_position":1,"max_symbol":1,"max_daily_trade":5,"emergency_stop":false}').ok).toBe(false);
   });
 });
+
+import { BrokerAccountProvider, RealAccountProviderDisabled, SimulatedAccountProvider, resolveAccountMode } from "@/engine/risk/accountStateProvider";
+import { reconstructTrades } from "@/core/execution/demo/tradeLifecycle";
+import { STRESS_ENV } from "@/engine/stress-test/types";
+import { ShadowGuard } from "@/core/execution/shadow/ShadowGuard";
+
+describe("Phase 4A.1 account state + lifecycle", () => {
+  it("demo balance read from broker; paper/demo share one interface; REAL disabled", async () => {
+    const demo = await new BrokerAccountProvider({ read: async () => ({ balance: 100, equity: 98, currency: "USD", tradeMode: "DEMO" }), now: () => T }).current();
+    expect(demo).toMatchObject({ balance: 100, equity: 98, source: "EXNESS_DEMO", account_type: "DEMO" });
+    expect(await new BrokerAccountProvider({ read: async () => ({ balance: 100, equity: 100, currency: "USD", tradeMode: "REAL" }), now: () => T }).current()).toBeNull();
+    const paper = await new SimulatedAccountProvider({ initialBalance: 500, now: () => T }).current();
+    expect(Object.keys(paper).sort()).toEqual(Object.keys(demo!).sort());
+    expect(paper.source).toBe("PAPER_SIMULATED");
+    expect(await new RealAccountProviderDisabled().current()).toBeNull();
+    expect(resolveAccountMode({})).toBe("PAPER");
+    expect(resolveAccountMode({ ACCOUNT_MODE: "DEMO" })).toBe("DEMO");
+  });
+
+  it("no hardcoded balance on the demo path: lot scales with broker balance", async () => {
+    for (const [bal, lot] of [[100, 0.01], [20_000, 0.2], [40_000, 0.4]] as const) {
+      const sent: DemoOrderRequest[] = [];
+      const layer = new DemoExecutionLayer({ mode: "DEMO", gateway: gw(bal, [], sent), whitelist: { logins: [1], servers: ["S"] }, lifecycle: new OrderLifecycleLog(mem().store, () => T) });
+      const bridge = new DemoExecutionBridge({ mode: "DEMO_STRESS_TEST", gateway: layer.asGatewayPort(), whitelist: { logins: [1], servers: ["S"] }, store: mem().store, killSwitch: () => false, now: () => T });
+      await bridge.handle(intent());
+      expect(sent[0]?.volume ?? 0).toBe(bal === 100 ? 0 : lot); // 100 USD × 0.5% = 0.5 USD < min lot risk ⇒ blocked
+    }
+    expect(readFileSync("src/core/execution/demo/DemoExecutionBridge.ts", "utf8")).not.toMatch(/10_?000/);
+  });
+
+  it("backtest, paper and demo use the same 0.5%", () => {
+    expect(STRESS_ENV.RISK_PERCENT).toBe(0.5);
+    expect(VIRTUAL_ACCOUNT_DEFAULTS.riskPercent).toBe(0.5);
+    expect(DEMO_RISK_PROFILE.riskPercent).toBe(0.5);
+  });
+
+  it("emergency stop in policy blocks at the shadow gate", () => {
+    const g = new ShadowGuard({ active: () => false, store: mem().store, now: () => T, safety: shadowSafetyFromPolicy(DEFAULT_RISK_POLICY), emergencyStop: () => ({ ...DEFAULT_RISK_POLICY, emergency_stop: true }).emergency_stop });
+    expect(g.gate(intent("e")).record.blocked_by).toBe("EMERGENCY_STOP");
+  });
+
+  it("journal reconstructs a full trade under one tradeId with account/risk/execution snapshots", async () => {
+    const ev = mem(); const positions: DemoPosition[] = []; const sent: DemoOrderRequest[] = [];
+    const g = { ...gw(20_000, positions, sent), closeDeal: async () => ({ positionTicket: 9, price: 2010, profit: 20, time: 1, reason: "TP" as const }) };
+    const layer = new DemoExecutionLayer({ mode: "DEMO", gateway: g, whitelist: { logins: [1], servers: ["S"] }, lifecycle: new OrderLifecycleLog(mem().store, () => T) });
+    const bridge = new DemoExecutionBridge({ mode: "DEMO_STRESS_TEST", gateway: layer.asGatewayPort(), whitelist: { logins: [1], servers: ["S"] }, store: ev.store, killSwitch: () => false, now: () => T });
+    await bridge.handle(intent("t1"));
+    positions.length = 0; // broker closed at TP
+    await bridge.sync();
+    const [t] = reconstructTrades(ev.lines.map((l) => JSON.parse(l)));
+    expect(t!.tradeId).toBe("demo_t1");
+    expect(t!.steps.map((s) => s.stage)).toEqual(["SIGNAL_CREATED", "DECISION_APPROVED", "ORDER_REQUESTED", "ORDER_FILLED", "POSITION_OPEN", "POSITION_CLOSED", "PERFORMANCE_RESULT"]);
+    expect(t!.account).toMatchObject({ balance: 20_000, source: "EXNESS_DEMO" });
+    expect(t!.risk).toMatchObject({ risk_percent: 0.5, lot: 0.2, sl: 1995, tp: 2010 });
+    expect(t!.execution).toMatchObject({ fill_price: 2000 });
+    expect(t!.complete).toBe(true);
+  });
+});

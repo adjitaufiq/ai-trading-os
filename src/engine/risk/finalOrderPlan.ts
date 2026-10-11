@@ -2,15 +2,17 @@
 // Inputs: real broker account balance/equity, broker contract spec, SL distance from the approved plan, policy risk.
 // Pure, no broker I/O. Execution receives only {symbol, direction, lot, entry, sl, tp} and never recalculates.
 import { calculatePositionSize } from "./positionSizer";
-import type { RiskPolicy } from "./riskPolicy";
+import { riskPercentOf, type RiskPolicy } from "./riskPolicy";
 import type { BrokerSymbolInfo } from "./types";
 
 export interface FinalOrderPlan {
   readonly symbol: string; readonly direction: "BUY" | "SELL";
   readonly lot: number; readonly entry: number; readonly sl: number; readonly tp: number;
+  /** Percent form of the policy risk used (0.5). Informational copy; execution never re-derives anything from it. */
+  readonly risk_percent: number;
 }
 export interface FinalOrderAudit {
-  readonly balance: number; readonly equity: number; readonly sizingBase: number;
+  readonly balance: number; readonly equity: number; readonly source: string | null; readonly sizingBase: number;
   readonly risk_per_trade: number; readonly budgetUSD: number; readonly actualRiskUSD: number; readonly slDistance: number;
 }
 export type FinalOrderPlanResult =
@@ -19,7 +21,7 @@ export type FinalOrderPlanResult =
 
 export function buildFinalOrderPlan(
   input: { symbol: string; direction: "BUY" | "SELL"; entry: number; sl: number; tp: number },
-  account: { balance: number; equity: number },
+  account: { balance: number; equity: number; source?: string },
   broker: BrokerSymbolInfo,
   policy: RiskPolicy,
 ): FinalOrderPlanResult {
@@ -33,7 +35,7 @@ export function buildFinalOrderPlan(
   if (!size || !(size.finalLot >= broker.volumeMin)) return { ok: false, reason: "LOT_BELOW_MINIMUM", detail: `raw ${size?.rawLot ?? "?"}` };
   return {
     ok: true,
-    plan: Object.freeze({ symbol: input.symbol, direction: input.direction, lot: size.finalLot, entry: input.entry, sl: input.sl, tp: input.tp }),
-    audit: Object.freeze({ balance: account.balance, equity: account.equity, sizingBase, risk_per_trade: policy.risk_per_trade, budgetUSD, actualRiskUSD: size.actualRiskUSD, slDistance }),
+    plan: Object.freeze({ symbol: input.symbol, direction: input.direction, lot: size.finalLot, entry: input.entry, sl: input.sl, tp: input.tp, risk_percent: riskPercentOf(policy) }),
+    audit: Object.freeze({ balance: account.balance, equity: account.equity, source: account.source ?? null, sizingBase, risk_per_trade: policy.risk_per_trade, budgetUSD, actualRiskUSD: size.actualRiskUSD, slDistance }),
   };
 }
