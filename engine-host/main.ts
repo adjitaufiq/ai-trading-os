@@ -5,12 +5,13 @@
 //   ENGINE_HOST_PORT    read API port (default 8090), bound to 127.0.0.1; expose via your tunnel
 //   ENGINE_SYMBOLS      comma list (default XAUUSD,BTCUSD)
 //   ENGINE_DATA_DIR     persistence dir (default engine-host/data)
-// Phase 2 Shadow Guard (always mounted, fail-closed):
-//   SHADOW_MODE      default ON; only SHADOW_MODE=OFF together with EXECUTION_MODE=DEMO_STRESS_TEST lets orders past it
+// Phase 3.5 canonical execution config (single source of truth, fail-closed):
+//   EXECUTION_MODE        SHADOW | DEMO   (default SHADOW = analyze + journal only, no broker order)
+//                         legacy values accepted: DEMO_STRESS_TEST → DEMO, REAL_DISABLED/PAPER_ONLY → SHADOW
+//   SHADOW_MODE           legacy override; only ON is honored (forces shadow even in DEMO). OFF is ignored.
 //   MAX_DAILY_TRADE  shadow/demo safety daily cap (default 5); MAX_POSITION=1, MAX_SYMBOL=1, duplicate/SL/TP/emergency stop fixed ON
 //   Emergency stop: create file <ENGINE_DATA_DIR>/EMERGENCY_STOP (or DEMO_KILL_SWITCH)
-// Stage 10 DEMO lab (optional; default REAL_DISABLED = no order path wired):
-//   EXECUTION_MODE        REAL_DISABLED | PAPER_ONLY | DEMO_STRESS_TEST
+// DEMO path (wired only when EXECUTION_MODE=DEMO):
 //   DEMO_EXEC_URL         loopback demo execution gateway (default http://127.0.0.1:8100)
 //   DEMO_EXEC_TOKEN       shared token with vps/mt5_exec (required for DEMO_STRESS_TEST)
 //   DEMO_ACCOUNT_WHITELIST / DEMO_SERVER_WHITELIST  comma lists (identity binding)
@@ -37,6 +38,7 @@ import { createDemoGatewayClient } from "../src/core/execution/demo/gatewayClien
 import { parseWhitelist } from "../src/core/execution/demo/guards";
 import { buildDemoIntent } from "../src/core/execution/demo/intent";
 import { parseExecutionMode } from "../src/core/execution/demo/types";
+import { DemoExecutionLayer, OrderLifecycleLog, resolveExecutionPathMode } from "../src/core/execution/demo/DemoExecutionLayer";
 import { ShadowGuard, parseShadowSafety, resolveShadowActive, shadowGatedGateway } from "../src/core/execution/shadow/ShadowGuard";
 import { ControlPlaneAgent } from "../src/core/execution/control/agentSync";
 import { signRequest } from "../src/core/execution/control/contract";
