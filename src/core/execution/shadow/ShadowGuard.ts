@@ -3,6 +3,7 @@
 // shadow record and, while shadow is active, guarantees NO broker send — both at the intent gate and again at the
 // gateway port (defense in depth: a dashboard bug, wrong config, restart or reconnect cannot reach sendOrder).
 import type { DemoExecGatewayPort, DemoOrderIntent, DemoOrderRequest, DemoOrderResponse } from "../demo/types";
+import { resolveExecutionPathMode } from "../demo/DemoExecutionLayer";
 
 export const SHADOW_GUARD_VERSION = "shadow-guard-v1" as const;
 
@@ -27,9 +28,13 @@ export function parseShadowSafety(env: { MAX_DAILY_TRADE?: string | undefined })
   return Object.freeze({ ...DEFAULT_SHADOW_SAFETY, maxDailyTrades: Number.isInteger(n) && n >= 0 ? n : DEFAULT_SHADOW_SAFETY.maxDailyTrades });
 }
 
-/** Shadow is ON unless SHADOW_MODE=OFF *and* the host was started in DEMO_STRESS_TEST. Anything else fails closed. */
+/** Phase 3.5 canonical config: EXECUTION_MODE=SHADOW|DEMO is the single source of truth (legacy
+ *  DEMO_STRESS_TEST resolves to DEMO; REAL_DISABLED/PAPER_ONLY/unset resolve to SHADOW). Shadow is ON
+ *  unless the execution path is DEMO; SHADOW_MODE=ON forces shadow even in DEMO (extra safety override).
+ *  Legacy SHADOW_MODE=OFF is no longer required and never widens access. Anything else fails closed. */
 export function resolveShadowActive(env: { SHADOW_MODE?: string | undefined; EXECUTION_MODE?: string | undefined }): boolean {
-  return !(env.SHADOW_MODE?.trim().toUpperCase() === "OFF" && env.EXECUTION_MODE === "DEMO_STRESS_TEST");
+  if (env.SHADOW_MODE?.trim().toUpperCase() === "ON") return true;
+  return resolveExecutionPathMode(env) !== "DEMO";
 }
 
 export type ShadowBlockReason =
