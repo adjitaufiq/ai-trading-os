@@ -4,6 +4,7 @@
 // gateway port (defense in depth: a dashboard bug, wrong config, restart or reconnect cannot reach sendOrder).
 import type { DemoExecGatewayPort, DemoOrderIntent, DemoOrderRequest, DemoOrderResponse } from "../demo/types";
 import { resolveExecutionPathMode } from "../demo/DemoExecutionLayer";
+import type { RiskPolicy } from "../../../engine/risk/riskPolicy";
 
 export const SHADOW_GUARD_VERSION = "shadow-guard-v1" as const;
 
@@ -22,7 +23,12 @@ export const DEFAULT_SHADOW_SAFETY: ShadowSafetyConfig = Object.freeze({
   duplicateOrderProtection: true, slRequired: true, tpRequired: true, emergencyStop: true,
 });
 
-/** Only MAX_DAILY_TRADE is configurable; protections are fixed ON and cannot be disabled by env. */
+/** Phase 4A: limits come only from risk-policy.json; protections stay fixed ON. */
+export function shadowSafetyFromPolicy(p: RiskPolicy): ShadowSafetyConfig {
+  return Object.freeze({ ...DEFAULT_SHADOW_SAFETY, maxPositions: p.max_position, maxSymbols: p.max_symbol, maxDailyTrades: p.max_daily_trade });
+}
+
+/** @deprecated Phase 4A: engine-host uses shadowSafetyFromPolicy; env no longer sets risk limits. Only MAX_DAILY_TRADE is configurable; protections are fixed ON and cannot be disabled by env. */
 export function parseShadowSafety(env: { MAX_DAILY_TRADE?: string | undefined }): ShadowSafetyConfig {
   const n = Number(env.MAX_DAILY_TRADE);
   return Object.freeze({ ...DEFAULT_SHADOW_SAFETY, maxDailyTrades: Number.isInteger(n) && n >= 0 ? n : DEFAULT_SHADOW_SAFETY.maxDailyTrades });

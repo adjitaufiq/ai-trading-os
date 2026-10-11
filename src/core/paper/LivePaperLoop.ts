@@ -23,6 +23,7 @@ import { buildTradePlan } from "../../engine/plan/tradePlanEngine";
 import type { TradePlan } from "../../engine/plan/types";
 import type { LossStreak } from "../../engine/risk/accountState";
 import { evaluateRisk } from "../../engine/risk/riskEngine";
+import { DEFAULT_RISK_POLICY, riskPercentOf } from "../../engine/risk/riskPolicy";
 import type { AccountProfile } from "../../engine/risk/types";
 import { evaluateSetup, type EvaluatorInput } from "../../engine/signal/signalEvaluator";
 import { createSetup, isTerminal, updateSetup } from "../../engine/signal/signalLifecycle";
@@ -32,7 +33,7 @@ import { decideEntry, DECISION_GATE_POLICY_VERSION, type DecisionGateResult } fr
 
 /** Virtual account environment (not strategy params). */
 export const VIRTUAL_ACCOUNT_DEFAULTS = Object.freeze({
-  initialBalance: 10_000, riskPercent: 1, currency: "USD" as const, maxDailyLossPercent: 5, maxSlippage: 0.5,
+  initialBalance: 10_000, riskPercent: riskPercentOf(DEFAULT_RISK_POLICY), currency: "USD" as const, maxDailyLossPercent: 5, maxSlippage: 0.5,
   maxSymbolRiskPercent: 2, maxTotalRiskPercent: 5, spreadHistory: 20,
 });
 const MIN_M15 = 15;
