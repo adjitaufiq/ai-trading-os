@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AssistantReportSection } from "@/components/AssistantReportSection";
 import { ExecutionControlPanel } from "@/components/ExecutionControlPanel";
 import { DemoLabPanel } from "@/components/DemoLabPanel";
+import { EngineMonitoringPanel } from "@/components/EngineMonitoringPanel";
 import { EngineEventsPanel } from "@/components/EngineEventsPanel";
 
 export const Route = createFileRoute("/_authenticated/assistant/control")({
@@ -35,6 +36,12 @@ function ControlPage() {
             Kendali akun demo, riwayat perubahan, dan pemantauan aktivitas engine.
           </p>
         </header>
+        <AssistantReportSection
+          title="Engine Monitoring (Shadow)"
+          description="Status engine, versi kode di VPS, umur candle per timeframe, dan keputusan terakhir. Mode shadow tidak mengirim order."
+        >
+          <EngineMonitoringPanel />
+        </AssistantReportSection>
         <AssistantReportSection
           title="Execution Control & Audit"
           description="Lihat status agent dan MT5, batas risiko, serta riwayat perubahan. Tombol kendali tersedia sesuai hak akses akun."
