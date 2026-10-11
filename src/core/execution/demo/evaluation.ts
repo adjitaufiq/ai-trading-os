@@ -60,7 +60,7 @@ export function buildTradeSnapshots(events: readonly DemoEvent[], versions: Eval
     const rr = fill !== null && closePrice !== null && riskDist > 0 ? r4((intent.direction === "BUY" ? closePrice - fill : fill - closePrice) / riskDist) : null;
     const closeAt = cl ? (num(cl.data?.["time"]) ?? cl.at) : null;
     const closeAtMs = closeAt !== null && closeAt < 1e12 ? closeAt * 1000 : closeAt;
-    const execStatus = res ? (res.type as "FILLED" | "REJECTED" | "ERROR") : "PENDING";
+    const execStatus: TradeSnapshot["execution"]["execution_status"] = res ? (res.type as "FILLED" | "REJECTED" | "ERROR") : "PENDING";
     const decisionOk = ctx.decision !== null || ed !== null;
     const riskOk = plan !== null && (plan.lot ?? 0) > 0 && typeof plan.risk_percent === "number";
 
@@ -79,7 +79,7 @@ export function buildTradeSnapshots(events: readonly DemoEvent[], versions: Eval
     // A trade that never filled has nothing to close; a filled trade without a broker close is still OPEN (not a violation).
     if (filled && cl && profit === null) violations.push("NO_RESULT");
 
-    out.push(Object.freeze({
+    const snap: TradeSnapshot = {
       label: EVALUATION_BUILD_LABEL, tradeId: tradeIdOf(id), signalId: id, timestamp: iso(s.at)!,
       symbol: intent.symbol, direction: intent.direction,
       account_balance: num(acct?.balance), equity: num(acct?.equity), account_source: str(acct?.source),
@@ -95,7 +95,8 @@ export function buildTradeSnapshots(events: readonly DemoEvent[], versions: Eval
       lifecycle: Object.freeze(stages.map((x) => ({ stage: x.stage, at: iso(x.at) ?? "" }))),
       lifecycle_complete: EVAL_STAGES.every((st) => stages.some((x) => x.stage === st)) && violations.length === 0,
       violations: Object.freeze(violations), versions,
-    }));
+    };
+    out.push(Object.freeze(snap));
   }
   return out;
 }
