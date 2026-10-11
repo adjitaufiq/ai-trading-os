@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DemoExecutionLayer, OrderLifecycleLog, reconcilePositions, resolveExecutionPathMode, type ExecutionPathMode } from "@/core/execution/demo/DemoExecutionLayer";
+import { ShadowGuard, resolveShadowActive, shadowGatedGateway } from "@/core/execution/shadow/ShadowGuard";
 import type { DemoExecGatewayPort, DemoOrderIntent, DemoOrderRequest, DemoPosition } from "@/core/execution/demo/types";
 
 const intent = (id = "sig1", over: Partial<DemoOrderIntent> = {}): DemoOrderIntent => ({
