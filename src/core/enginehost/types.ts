@@ -33,6 +33,8 @@ export interface EngineHostHealth {
   /** Stage 10 demo lab mode. MONITOR_ONLY/execution_enabled describe the REAL account, which stays absent. */
   readonly demo_execution?: "REAL_DISABLED" | "PAPER_ONLY" | "DEMO_STRESS_TEST";
   readonly symbols: readonly SymbolEngineHealth[];
+  /** Which code is actually running (engine_version, commit, build_time, status). Absent on older hosts. */
+  readonly build?: import("./buildInfo").EngineBuildInfo;
 }
 
 export interface EngineRadarView { readonly snapshot: Readonly<RadarSnapshot> | null; readonly health: Readonly<RadarHealth> | null }
