@@ -1,0 +1,1 @@
+- Canonical counter-bias block reason is BLOCK_COUNTER_PRIMARY_BIAS in paper gate, demo bridge, events and journal. Why: one audit name across layers.
