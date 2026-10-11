@@ -4,7 +4,7 @@
 // and reconciles internal state vs broker demo positions. Disabled by default (EXECUTION_MODE=SHADOW).
 // Not wired into the engine host: preparation only, no automatic demo orders.
 import { validateDemoAccount } from "./guards";
-import type { DemoExecGatewayPort, DemoOrderIntent, DemoPosition, DemoWhitelist } from "./types";
+import type { DemoExecGatewayPort, DemoOrderIntent, DemoOrderRequest, DemoOrderResponse, DemoPosition, DemoWhitelist } from "./types";
 
 export const DEMO_EXECUTION_LAYER_VERSION = "demo-exec-layer-v1" as const;
 
