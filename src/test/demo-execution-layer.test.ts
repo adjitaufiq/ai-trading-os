@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DemoExecutionLayer, OrderLifecycleLog, reconcilePositions, resolveExecutionPathMode, type ExecutionPathMode } from "@/core/execution/demo/DemoExecutionLayer";
+import { ShadowGuard, resolveShadowActive, shadowGatedGateway } from "@/core/execution/shadow/ShadowGuard";
 import type { DemoExecGatewayPort, DemoOrderIntent, DemoOrderRequest, DemoPosition } from "@/core/execution/demo/types";
 
 const intent = (id = "sig1", over: Partial<DemoOrderIntent> = {}): DemoOrderIntent => ({
@@ -87,5 +88,90 @@ describe("Phase 3 demo execution layer", () => {
     expect(res.ok).toBe(false);
     expect(res.issues.map((i) => i.kind).sort()).toEqual(["DUPLICATE_POSITION", "MISMATCH", "MISSING_POSITION", "UNTRACKED_POSITION"]);
     expect(reconcilePositions([{ signalId: "a", symbol: "XAUUSD" }], [{ ticket: 1, symbol: "XAUUSD", comment: "a" }]).ok).toBe(true);
+  });
+});
+
+describe("Phase 3.5 wiring — canonical EXECUTION_MODE + gateway-port chain", () => {
+  const req = (id = "sig1", over: Partial<DemoOrderRequest> = {}): DemoOrderRequest => ({
+    signalId: id, symbol: "XAUUSD", direction: "BUY", volume: 0.01, stopLoss: 1995, takeProfit: 2010, ...over,
+  });
+  const mkGuard = (active: boolean, emergency = false) => {
+    const lines: string[] = [];
+    return new ShadowGuard({
+      active: () => active, now: () => Date.UTC(2026, 9, 11), emergencyStop: () => emergency,
+      store: { readLines: () => lines, append: (l) => lines.push(l) },
+    });
+  };
+
+  it("EXECUTION_MODE is the single source of truth; SHADOW_MODE=ON forces shadow, OFF is ignored", () => {
+    expect(resolveShadowActive({})).toBe(true);
+    expect(resolveShadowActive({ EXECUTION_MODE: "SHADOW" })).toBe(true);
+    expect(resolveShadowActive({ EXECUTION_MODE: "DEMO" })).toBe(false);
+    expect(resolveShadowActive({ EXECUTION_MODE: "DEMO", SHADOW_MODE: "ON" })).toBe(true);
+    expect(resolveShadowActive({ EXECUTION_MODE: "DEMO", SHADOW_MODE: "OFF" })).toBe(false);
+    expect(resolveShadowActive({ SHADOW_MODE: "OFF" })).toBe(true); // legacy OFF alone never widens access
+    expect(resolveShadowActive({ SHADOW_MODE: "OFF", EXECUTION_MODE: "DEMO_STRESS_TEST" })).toBe(false); // legacy combo
+  });
+
+  it("EXECUTION_MODE=SHADOW never sends an order through the wired port", async () => {
+    const r = rig("SHADOW");
+    const port = r.layer.asGatewayPort();
+    const resp = await port.sendOrder(req());
+    expect(resp.status).toBe("REJECTED"); expect(resp.comment).toBe("EXECUTION_MODE_SHADOW");
+    expect(r.sent).toHaveLength(0); expect(r.reads).toHaveLength(0);
+  });
+
+  it("EXECUTION_MODE=DEMO reaches the broker through layer → shadow-gated gateway", async () => {
+    const r = rig("DEMO");
+    const guard = mkGuard(false); // shadow off: EXECUTION_MODE=DEMO
+    const port = new DemoExecutionLayer({
+      mode: "DEMO", whitelist: { logins: [1], servers: ["S"] }, lifecycle: r.lifecycle,
+      gateway: shadowGatedGateway((r.layer as unknown as { o: { gateway: DemoExecGatewayPort } }).o.gateway, guard),
+    }).asGatewayPort();
+    const resp = await port.sendOrder(req());
+    expect(resp.status).toBe("FILLED"); expect(resp.ticket).toBe(9);
+    expect(r.sent).toHaveLength(1);
+    expect(r.lifecycle.state("sig1")).toBe("FILLED");
+  });
+
+  it("invalid risk blocks order at the port", async () => {
+    const r = rig("DEMO");
+    const resp = await r.layer.asGatewayPort().sendOrder(req("s2", { volume: 0 }));
+    expect(resp.status).toBe("REJECTED"); expect(resp.comment).toBe("RISK_NOT_APPROVED");
+    expect(r.sent).toHaveLength(0);
+  });
+
+  it("missing SL blocks order at the port", async () => {
+    const r = rig("DEMO");
+    const resp = await r.layer.asGatewayPort().sendOrder(req("s3", { stopLoss: 0 }));
+    expect(resp.comment).toBe("SL_MISSING"); expect(r.sent).toHaveLength(0);
+  });
+
+  it("duplicate order blocked at the port", async () => {
+    const r = rig("DEMO");
+    const port = r.layer.asGatewayPort();
+    expect((await port.sendOrder(req())).status).toBe("FILLED");
+    const dup = await port.sendOrder(req());
+    expect(dup.status).toBe("REJECTED"); expect(dup.comment).toBe("DUPLICATE_ORDER");
+    expect(r.sent).toHaveLength(1);
+  });
+
+  it("emergency stop blocks order at the intent gate even in DEMO (shadow off)", () => {
+    const guard = mkGuard(false, true); // EXECUTION_MODE=DEMO, emergency stop engaged
+    const g = guard.gate(intent("s9"));
+    expect(g.allow).toBe(false);
+    expect(g.record.blocked_by).toBe("EMERGENCY_STOP");
+    expect(g.record.execution.order_prevented).toBe(true);
+  });
+
+  it("shadow-gated gateway blocks any port send while shadow is active", async () => {
+    const sent: DemoOrderRequest[] = [];
+    const blocked = shadowGatedGateway({
+      account: async () => null, symbol: async () => null, positions: async () => [], closeDeal: async () => null,
+      sendOrder: async (q) => { sent.push(q); return { status: "FILLED", ticket: 1, price: 1, retcode: 1, comment: "x" }; },
+    }, mkGuard(true));
+    const resp = await blocked.sendOrder(req("s10"));
+    expect(resp.status).toBe("REJECTED"); expect(resp.comment).toBe("SHADOW_GUARD");
+    expect(sent).toHaveLength(0);
   });
 });

@@ -4,7 +4,7 @@
 // and reconciles internal state vs broker demo positions. Disabled by default (EXECUTION_MODE=SHADOW).
 // Not wired into the engine host: preparation only, no automatic demo orders.
 import { validateDemoAccount } from "./guards";
-import type { DemoExecGatewayPort, DemoOrderIntent, DemoPosition, DemoWhitelist } from "./types";
+import type { DemoExecGatewayPort, DemoOrderIntent, DemoOrderRequest, DemoOrderResponse, DemoPosition, DemoWhitelist } from "./types";
 
 export const DEMO_EXECUTION_LAYER_VERSION = "demo-exec-layer-v1" as const;
 
@@ -105,23 +105,52 @@ export class DemoExecutionLayer {
     return null;
   }
 
-  async execute(intent: DemoOrderIntent, risk: RiskValidation): Promise<ExecuteResult> {
+  /** Shared core: preflight → lifecycle REQUESTED → broker send → lifecycle FILLED/REJECTED. */
+  private async run(intent: DemoOrderIntent, risk: RiskValidation): Promise<{ block: PreflightBlock | null; response: DemoOrderResponse | null }> {
     const block = await this.preflight(intent, risk);
     const lc = this.o.lifecycle;
     if (block) {
       if (block !== "DUPLICATE_ORDER") lc.record(intent.signalId, intent.symbol, this.o.mode, "BLOCKED", block);
-      return { sent: false, blocked_by: block };
+      return { block, response: null };
     }
     lc.record(intent.signalId, intent.symbol, "DEMO", "REQUESTED", null, { direction: intent.direction, volume: risk.volume, sl: intent.stopLoss, tp: intent.takeProfit });
     try {
       const r = await this.o.gateway.sendOrder({ signalId: intent.signalId, symbol: intent.symbol, direction: intent.direction, volume: risk.volume!, stopLoss: intent.stopLoss, takeProfit: intent.takeProfit });
-      const state: OrderState = r.status === "FILLED" ? "FILLED" : "REJECTED";
-      lc.record(intent.signalId, intent.symbol, "DEMO", state, r.comment, { ticket: r.ticket, price: r.price, retcode: r.retcode });
-      return { sent: true, state, ticket: r.ticket };
+      lc.record(intent.signalId, intent.symbol, "DEMO", r.status === "FILLED" ? "FILLED" : "REJECTED", r.comment, { ticket: r.ticket, price: r.price, retcode: r.retcode });
+      return { block: null, response: r };
     } catch (e) {
       lc.record(intent.signalId, intent.symbol, "DEMO", "REJECTED", `ERROR ${(e as Error).message}`);
-      return { sent: true, state: "REJECTED", ticket: null };
+      return { block: null, response: { status: "ERROR", ticket: null, price: null, retcode: null, comment: (e as Error).message } };
     }
+  }
+
+  async execute(intent: DemoOrderIntent, risk: RiskValidation): Promise<ExecuteResult> {
+    const r = await this.run(intent, risk);
+    if (r.block) return { sent: false, blocked_by: r.block };
+    return { sent: true, state: r.response!.status === "FILLED" ? "FILLED" : "REJECTED", ticket: r.response!.ticket };
+  }
+
+  /** Phase 3.5 wiring adapter: exposes the layer as a DemoExecGatewayPort so it sits between risk validation
+   *  (DemoExecutionBridge sizing) and the shadow-gated broker gateway. sendOrder runs the full preflight plus
+   *  lifecycle logging; a positive volume from the bridge is the copied risk-validation outcome. Reads pass through. */
+  asGatewayPort(): DemoExecGatewayPort {
+    const self = this;
+    return {
+      account: () => self.o.gateway.account(),
+      symbol: (s) => self.o.gateway.symbol(s),
+      positions: () => self.o.gateway.positions(),
+      closeDeal: (t) => self.o.gateway.closeDeal(t),
+      sendOrder: async (req: DemoOrderRequest): Promise<DemoOrderResponse> => {
+        const intent: DemoOrderIntent = {
+          signalId: req.signalId, planId: "", symbol: req.symbol, direction: req.direction,
+          plannedEntry: 0, stopLoss: req.stopLoss, takeProfit: req.takeProfit, rr: null, closedBarAt: 0,
+          context: { regime: null, h4Bias: null, h1State: null, setup: null, decision: null, confidence: null, reasons: [], signalSource: {}, engineSnapshot: null },
+        };
+        const r = await self.run(intent, { approved: req.volume > 0, volume: req.volume });
+        if (r.block) return { status: "REJECTED", ticket: null, price: null, retcode: null, comment: r.block };
+        return r.response!;
+      },
+    };
   }
 }
 

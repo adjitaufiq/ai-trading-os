@@ -5,12 +5,13 @@
 //   ENGINE_HOST_PORT    read API port (default 8090), bound to 127.0.0.1; expose via your tunnel
 //   ENGINE_SYMBOLS      comma list (default XAUUSD,BTCUSD)
 //   ENGINE_DATA_DIR     persistence dir (default engine-host/data)
-// Phase 2 Shadow Guard (always mounted, fail-closed):
-//   SHADOW_MODE      default ON; only SHADOW_MODE=OFF together with EXECUTION_MODE=DEMO_STRESS_TEST lets orders past it
+// Phase 3.5 canonical execution config (single source of truth, fail-closed):
+//   EXECUTION_MODE        SHADOW | DEMO   (default SHADOW = analyze + journal only, no broker order)
+//                         legacy values accepted: DEMO_STRESS_TEST → DEMO, REAL_DISABLED/PAPER_ONLY → SHADOW
+//   SHADOW_MODE           legacy override; only ON is honored (forces shadow even in DEMO). OFF is ignored.
 //   MAX_DAILY_TRADE  shadow/demo safety daily cap (default 5); MAX_POSITION=1, MAX_SYMBOL=1, duplicate/SL/TP/emergency stop fixed ON
 //   Emergency stop: create file <ENGINE_DATA_DIR>/EMERGENCY_STOP (or DEMO_KILL_SWITCH)
-// Stage 10 DEMO lab (optional; default REAL_DISABLED = no order path wired):
-//   EXECUTION_MODE        REAL_DISABLED | PAPER_ONLY | DEMO_STRESS_TEST
+// DEMO path (wired only when EXECUTION_MODE=DEMO):
 //   DEMO_EXEC_URL         loopback demo execution gateway (default http://127.0.0.1:8100)
 //   DEMO_EXEC_TOKEN       shared token with vps/mt5_exec (required for DEMO_STRESS_TEST)
 //   DEMO_ACCOUNT_WHITELIST / DEMO_SERVER_WHITELIST  comma lists (identity binding)
@@ -20,7 +21,7 @@
 //   CONTROL_PLANE_URL        e.g. https://ai-trading-os.lovable.app
 //   EXECUTION_AGENT_SECRET   HMAC secret shared with the cloud (same value as the cloud secret)
 //   EXECUTION_AGENT_ID       agent name (default vps-1)
-// The env EXECUTION_MODE still has to be DEMO_STRESS_TEST to wire any order path; the cloud can only
+// The env EXECUTION_MODE still has to be DEMO to wire any order path; the cloud can only
 // halt or set limits within it, never arm a host started without it, and never target a real account.
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, appendFileSync } from "node:fs";
@@ -37,6 +38,7 @@ import { createDemoGatewayClient } from "../src/core/execution/demo/gatewayClien
 import { parseWhitelist } from "../src/core/execution/demo/guards";
 import { buildDemoIntent } from "../src/core/execution/demo/intent";
 import { parseExecutionMode } from "../src/core/execution/demo/types";
+import { DemoExecutionLayer, OrderLifecycleLog, resolveExecutionPathMode } from "../src/core/execution/demo/DemoExecutionLayer";
 import { ShadowGuard, parseShadowSafety, resolveShadowActive, shadowGatedGateway } from "../src/core/execution/shadow/ShadowGuard";
 import { ControlPlaneAgent } from "../src/core/execution/control/agentSync";
 import { signRequest } from "../src/core/execution/control/contract";
@@ -77,16 +79,17 @@ const shadow = new ShadowGuard({
 });
 console.log(`${new Date().toISOString()} [shadow] ${shadow.status().label} · max_daily_trade ${shadow.safety.maxDailyTrades}`);
 
-// ---- Stage 10 DEMO lab wiring (no-op unless EXECUTION_MODE=DEMO_STRESS_TEST) ----
-const executionMode = parseExecutionMode(env.EXECUTION_MODE);
+// ---- DEMO path wiring (no-op unless EXECUTION_MODE=DEMO; legacy DEMO_STRESS_TEST accepted) ----
+const pathMode = resolveExecutionPathMode(env);
+const executionMode = pathMode === "DEMO" ? "DEMO_STRESS_TEST" as const : parseExecutionMode(env.EXECUTION_MODE);
 let demo: DemoExecutionBridge | null = null;
 let cloudKill = false;
 let agent: ControlPlaneAgent | null = null;
 const AGENT_VERSION = "engine-host/control-plane-v1";
-if (executionMode === "DEMO_STRESS_TEST") {
-  if (!env.DEMO_EXEC_TOKEN) throw new Error("DEMO_STRESS_TEST requires DEMO_EXEC_TOKEN");
+if (pathMode === "DEMO") {
+  if (!env.DEMO_EXEC_TOKEN) throw new Error("EXECUTION_MODE=DEMO requires DEMO_EXEC_TOKEN");
   const whitelist = parseWhitelist(env.DEMO_ACCOUNT_WHITELIST, env.DEMO_SERVER_WHITELIST);
-  if (!whitelist.logins.length || !whitelist.servers.length) throw new Error("DEMO_STRESS_TEST requires DEMO_ACCOUNT_WHITELIST and DEMO_SERVER_WHITELIST");
+  if (!whitelist.logins.length || !whitelist.servers.length) throw new Error("EXECUTION_MODE=DEMO requires DEMO_ACCOUNT_WHITELIST and DEMO_SERVER_WHITELIST");
   if (env.CONTROL_PLANE_URL && env.EXECUTION_AGENT_SECRET) {
     agent = new ControlPlaneAgent({
       baseUrl: env.CONTROL_PLANE_URL, secret: env.EXECUTION_AGENT_SECRET, agentId: env.EXECUTION_AGENT_ID ?? "vps-1",
@@ -98,9 +101,21 @@ if (executionMode === "DEMO_STRESS_TEST") {
   if (env.DEMO_CONTROL_URL) log("[demo-lab] DEMO_CONTROL_URL set: orders blocked until it returns stopped=false (unset it for pure standalone)");
   const killFile = join(dataDir, "DEMO_KILL_SWITCH");
   const eventsFile = join(dataDir, "demo-events.jsonl");
+  // Phase 3.5 chain: Decision Gate → Shadow Guard (intent gate) → DemoExecutionBridge (risk validation/sizing)
+  //   → DemoExecutionLayer (mode check, duplicate/SL/TP/risk/symbol/account/position preflight + append-only
+  //   order lifecycle log) → shadowGatedGateway (port-level shadow) → broker demo gateway.
+  const lifecycleFile = join(dataDir, "order-lifecycle.jsonl");
+  const lifecycle = new OrderLifecycleLog(
+    { readLines: () => existsSync(lifecycleFile) ? readFileSync(lifecycleFile, "utf8").split("\n").filter(Boolean) : [], append: (l) => appendFileSync(lifecycleFile, `${l}\n`) },
+    () => Date.now(),
+  );
+  const layer = new DemoExecutionLayer({
+    mode: pathMode, whitelist, lifecycle, maxPositions: 1,
+    gateway: shadowGatedGateway(createDemoGatewayClient({ baseUrl: env.DEMO_EXEC_URL ?? "http://127.0.0.1:8100", token: env.DEMO_EXEC_TOKEN }), shadow),
+  });
   demo = new DemoExecutionBridge({
     mode: executionMode, whitelist, now: () => Date.now(), log,
-    gateway: shadowGatedGateway(createDemoGatewayClient({ baseUrl: env.DEMO_EXEC_URL ?? "http://127.0.0.1:8100", token: env.DEMO_EXEC_TOKEN }), shadow),
+    gateway: layer.asGatewayPort(),
     store: { readLines: () => existsSync(eventsFile) ? readFileSync(eventsFile, "utf8").split("\n").filter(Boolean) : [], append: (l) => appendFileSync(eventsFile, `${l}\n`) },
     killSwitch: () => cloudKill || existsSync(killFile) || (agent ? agent.current().halted : false),
     ...(agent ? { profile: () => agent!.current().profile } : {}),
@@ -121,7 +136,7 @@ if (executionMode === "DEMO_STRESS_TEST") {
   }
   demoRef = demo;
   setInterval(() => { void demo?.sync().catch((e) => log(`[demo-lab] sync failed ${(e as Error).message}`)); }, 15_000);
-  log(`[demo-lab] DEMO_STRESS_TEST armed · logins ${whitelist.logins.join(",")} · servers ${whitelist.servers.join(",")}`);
+  log(`[demo-lab] EXECUTION_MODE=DEMO armed · logins ${whitelist.logins.join(",")} · servers ${whitelist.servers.join(",")}`);
 }
 
 // ---- Durable engine-event outbox: every pipeline event hits disk first, then is pushed (signed) to the cloud. ----
