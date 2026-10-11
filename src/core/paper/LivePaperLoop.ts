@@ -176,6 +176,9 @@ export class LivePaperLoop {
   private brokerDay = { key: -1, start: 0, peak: 0 };
   setAccountStateSource(fn: (() => AccountState | null) | null): void { this.accountSource = fn; }
   accountSourceLabel(): "PAPER_SIMULATED" | "EXNESS_DEMO" { return this.accountSource ? "EXNESS_DEMO" : "PAPER_SIMULATED"; }
+  private readonly sourceByTrade = new Map<string, "PAPER_SIMULATED" | "EXNESS_DEMO">();
+  /** Account source that sized/approved this trade (recorded at close in this process; null if before restart). */
+  tradeAccountSource(tradeId: string): "PAPER_SIMULATED" | "EXNESS_DEMO" | null { return this.sourceByTrade.get(tradeId) ?? null; }
 
   constructor(readonly symbol: string, readonly dataSource: DataSource, private readonly spec: SymbolSpecification, private readonly primaryBiasProvider?: PrimaryBiasProvider) {}
 
@@ -269,6 +272,7 @@ export class LivePaperLoop {
         if (row && this.journal.saveTrade(row).ok) {
           this.balance += row.profitLossUSD; this.peak = Math.max(this.peak, this.balance);
           this.after.push({ tradeId: row.tradeId, balance: r2(this.balance) });
+          this.sourceByTrade.set(row.tradeId, this.accountSourceLabel());
           this.streak = row.result === "LOSS" ? { consecutiveLosses: this.streak.consecutiveLosses + 1, lastLossAt: row.closedAt } : { consecutiveLosses: 0, lastLossAt: this.streak.lastLossAt };
           this.decision = `CLOSED ${row.result} ${row.closeReason}`;
           this.record({ kind: "CLOSE", at: bar.close_time, signalId: o.plan.signalId ?? null, direction: t.snapshot.direction, arenaStatus: o.entryDecision?.arenaStatus ?? null, outcome: row.result, reason: row.closeReason ?? "", rr: o.plan.rr ?? null, excursion: row.excursion ?? null });
