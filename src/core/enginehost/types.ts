@@ -26,8 +26,10 @@ export interface SymbolEngineHealth {
 }
 
 export interface EngineHostHealth {
-  readonly operating_mode: "MONITOR_ONLY";
-  readonly execution_enabled: false;
+  /** DEMO only when the demo path is armed; REAL account stays absent. */
+  readonly operating_mode: "MONITOR_ONLY" | "DEMO";
+  /** true only when demo path armed AND shadow off AND no kill switch active (observation, not a gate). */
+  readonly execution_enabled: boolean;
   readonly started_at: number;
   readonly persistence: "VPS_DISK";
   /** Stage 10 demo lab mode. MONITOR_ONLY/execution_enabled describe the REAL account, which stays absent. */

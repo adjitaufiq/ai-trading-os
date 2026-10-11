@@ -231,6 +231,12 @@ const host = new EngineHost({
   onPipelineEvent: (e: EnginePipelineEvent) => { appendFileSync(outboxFile, `${JSON.stringify(e)}\n`); void pushOutbox(); },
   symbols, persistence: new PaperPersistence(store), now: () => Date.now(), log, executionMode,
   shadowStatus: () => shadow.status(),
+  executionState: () => {
+    const armed = demo !== null;
+    const killed = riskPolicy.emergency_stop || existsSync(join(dataDir, "EMERGENCY_STOP")) || existsSync(join(dataDir, "DEMO_KILL_SWITCH"))
+      || cloudKill || (agent ? agent.current().halted : false);
+    return { armed, enabled: armed && !shadowActive && !killed };
+  },
   onApprovedOpen: (e: ApprovedPaperOpen, reader: MarketRuntimeReader | null) => {
     const intent = buildDemoIntent(e, reader?.radarSnapshot() ?? null, host.bundle(e.symbol, Date.now())?.slice?.current ?? null);
     const g = shadow.gate(intent);
