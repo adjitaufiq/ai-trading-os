@@ -1,7 +1,7 @@
 // Engine Host entry (runs on the Windows VPS with Bun: `bun engine-host/main.ts`).
 // Thin glue only: Node fs/http + global WebSocket around src/core/enginehost. MONITOR_ONLY, read-only HTTP, no order path.
 // Env:
-//   ENGINE_GATEWAY_URL  local MT5 gateway (default http://127.0.0.1:8000, loopback)
+//   ENGINE_GATEWAY_URL  local MT5 gateway (default http://127.0.0.1:8765, loopback)
 //   ENGINE_HOST_PORT    read API port (default 8090), bound to 127.0.0.1; expose via your tunnel
 //   ENGINE_SYMBOLS      comma list (default XAUUSD,BTCUSD)
 //   ENGINE_DATA_DIR     persistence dir (default engine-host/data)
@@ -56,7 +56,7 @@ import { resolveBuildInfo } from "../src/core/enginehost/buildInfo";
 import { ENGINE_CORS_HEADERS, buildEngineEvents, routeEngineRequest, sseFrame } from "../src/core/enginehost/api";
 
 const env = process.env;
-const gatewayUrl = env.ENGINE_GATEWAY_URL ?? "http://127.0.0.1:8000";
+const gatewayUrl = env.ENGINE_GATEWAY_URL ?? "http://127.0.0.1:8765";
 const port = Number(env.ENGINE_HOST_PORT ?? 8090);
 const symbols = (env.ENGINE_SYMBOLS ?? "XAUUSD,BTCUSD").split(",").map((s) => s.trim()).filter(Boolean);
 const dataDir = resolve(env.ENGINE_DATA_DIR ?? join(import.meta.dirname ?? ".", "data"));
