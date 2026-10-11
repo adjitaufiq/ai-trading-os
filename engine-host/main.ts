@@ -266,7 +266,7 @@ createServer((req, res) => {
     // Phase 4B Evaluation Build: read-only snapshots/CSV/counters from the append-only demo event log. Descriptive only.
     const eventsFile = join(dataDir, "demo-events.jsonl");
     const demoEvents = existsSync(eventsFile) ? readFileSync(eventsFile, "utf8").split("\n").filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }) : [];
-    const rows = buildTradeSnapshots(demoEvents, { engine_version: build.commit ?? build.engine_version, strategy_version: `${ARCHITECTURE_VERSION}|${OPERATOR_POLICY_VERSION}|${DECISION_GATE_POLICY_VERSION}`, journal_version: EVALUATION_JOURNAL_VERSION });
+    const rows = buildTradeSnapshots(demoEvents, { engine_version: `${build.engine_version}+${build.commit ?? "UNKNOWN"}`, strategy_version: `${ARCHITECTURE_VERSION}|${OPERATOR_POLICY_VERSION}|${DECISION_GATE_POLICY_VERSION}`, journal_version: EVALUATION_JOURNAL_VERSION });
     if (path.endsWith(".csv")) { res.writeHead(200, { "content-type": "text/csv; charset=utf-8", "content-disposition": "attachment; filename=evaluation-trades.csv", "cache-control": "no-store", ...ENGINE_CORS_HEADERS }); res.end(toEvaluationCsv(rows)); return; }
     const body = JSON.stringify(path.endsWith("stats") ? stressCounters(rows) : { label: "EVALUATION_BUILD", trades: rows });
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store", ...ENGINE_CORS_HEADERS }); res.end(body);
