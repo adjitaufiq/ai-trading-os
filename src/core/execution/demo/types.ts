@@ -1,7 +1,7 @@
 // Phase 6A / Stage 10 DEMO — Demo Stress Test execution contracts.
 // DEMO ONLY: there is no type, mode or code path that targets a real account.
 import type { BrokerSymbolInfo } from "../../../engine/risk/types";
-import { DEFAULT_RISK_POLICY, riskPercentOf } from "../../../engine/risk/riskPolicy";
+import { DEFAULT_RISK_POLICY, dailyLossPercentOf, riskPercentOf } from "../../../engine/risk/riskPolicy";
 
 export type ExecutionMode = "REAL_DISABLED" | "PAPER_ONLY" | "DEMO_STRESS_TEST";
 export const DEFAULT_EXECUTION_MODE: ExecutionMode = "REAL_DISABLED";
@@ -13,7 +13,7 @@ export const DEMO_RISK_PROFILE = Object.freeze({
   riskPercent: riskPercentOf(DEFAULT_RISK_POLICY),
   maxOpenPositions: DEFAULT_RISK_POLICY.max_position,
   maxTradesPerDay: DEFAULT_RISK_POLICY.max_daily_trade,
-  maxDailyLossPercent: 2,
+  maxDailyLossPercent: dailyLossPercentOf(DEFAULT_RISK_POLICY),
 });
 export type DemoRiskProfile = typeof DEMO_RISK_PROFILE;
 

@@ -23,7 +23,8 @@ import { buildTradePlan } from "../../engine/plan/tradePlanEngine";
 import type { TradePlan } from "../../engine/plan/types";
 import type { LossStreak } from "../../engine/risk/accountState";
 import { evaluateRisk } from "../../engine/risk/riskEngine";
-import { DEFAULT_RISK_POLICY, riskPercentOf } from "../../engine/risk/riskPolicy";
+import { DEFAULT_RISK_POLICY, dailyLossPercentOf, riskPercentOf } from "../../engine/risk/riskPolicy";
+import type { AccountState } from "../../engine/risk/accountStateProvider";
 import type { AccountProfile } from "../../engine/risk/types";
 import { evaluateSetup, type EvaluatorInput } from "../../engine/signal/signalEvaluator";
 import { createSetup, isTerminal, updateSetup } from "../../engine/signal/signalLifecycle";
@@ -33,7 +34,7 @@ import { decideEntry, DECISION_GATE_POLICY_VERSION, type DecisionGateResult } fr
 
 /** Virtual account environment (not strategy params). */
 export const VIRTUAL_ACCOUNT_DEFAULTS = Object.freeze({
-  initialBalance: 10_000, riskPercent: riskPercentOf(DEFAULT_RISK_POLICY), currency: "USD" as const, maxDailyLossPercent: 5, maxSlippage: 0.5,
+  initialBalance: 10_000, riskPercent: riskPercentOf(DEFAULT_RISK_POLICY), currency: "USD" as const, maxDailyLossPercent: dailyLossPercentOf(DEFAULT_RISK_POLICY), maxSlippage: 0.5,
   maxSymbolRiskPercent: 2, maxTotalRiskPercent: 5, spreadHistory: 20,
 });
 const MIN_M15 = 15;
@@ -168,6 +169,13 @@ export class LivePaperLoop {
     const ev = Object.freeze({ ...e, symbol: this.symbol });
     for (const l of this.pipeListeners) { try { l(ev); } catch { /* observers never affect the loop */ } }
   }
+
+  /** Phase 4A.2: ACCOUNT_MODE=DEMO account state (broker). When set, M4 approval, lot, exposure and daily-loss
+   *  use ONLY this state; unavailable ⇒ RISK block (never falls back to the simulated balance). */
+  private accountSource: (() => AccountState | null) | null = null;
+  private brokerDay = { key: -1, start: 0, peak: 0 };
+  setAccountStateSource(fn: (() => AccountState | null) | null): void { this.accountSource = fn; }
+  accountSourceLabel(): "PAPER_SIMULATED" | "EXNESS_DEMO" { return this.accountSource ? "EXNESS_DEMO" : "PAPER_SIMULATED"; }
 
   constructor(readonly symbol: string, readonly dataSource: DataSource, private readonly spec: SymbolSpecification, private readonly primaryBiasProvider?: PrimaryBiasProvider) {}
 
@@ -340,13 +348,23 @@ export class LivePaperLoop {
     if (plan.status !== "PLANNED") { this.decision = `PLAN_HOLD ${plan.holdReason ?? ""}`; blocked("PLAN", this.decision, plan); return; }
     const D = VIRTUAL_ACCOUNT_DEFAULTS;
     const contract = { tickSize: this.spec.tick_size, tickValue: this.spec.tick_size * this.spec.contract_size };
+    // Account state: simulated paper balance (PAPER) or broker demo state (DEMO). One base for every check below.
+    let base = { equity: this.balance, balance: this.balance, peak: this.peak, dayStart: this.dayStart };
+    if (this.accountSource) {
+      let st: AccountState | null = null; try { st = this.accountSource(); } catch { st = null; }
+      if (!st || !(st.balance > 0) || !(st.equity > 0)) { this.decision = "RISK_REJECTED ACCOUNT_STATE_UNAVAILABLE"; blocked("RISK", this.decision, plan); return; }
+      const day = Math.floor(now / 86400);
+      if (day !== this.brokerDay.key) this.brokerDay = { key: day, start: st.balance, peak: Math.max(this.brokerDay.peak, st.equity) };
+      this.brokerDay.peak = Math.max(this.brokerDay.peak, st.equity);
+      base = { equity: Math.min(st.balance, st.equity), balance: st.balance, peak: this.brokerDay.peak, dayStart: this.brokerDay.start };
+    }
     const acct: AccountProfile = {
-      mode: "STANDARD", state: "NORMAL", equity: this.balance, peakEquity: this.peak, riskType: "PERCENTAGE", riskValue: D.riskPercent,
-      maxDailyLossPercent: D.maxDailyLossPercent, currentDailyDDPercent: this.dayStart > 0 ? Math.max(0, ((this.dayStart - this.balance) / this.dayStart) * 100) : 0, recoveryMultiplier: 0.5,
+      mode: "STANDARD", state: "NORMAL", equity: base.equity, peakEquity: base.peak, riskType: "PERCENTAGE", riskValue: D.riskPercent,
+      maxDailyLossPercent: D.maxDailyLossPercent, currentDailyDDPercent: base.dayStart > 0 ? Math.max(0, ((base.dayStart - base.equity) / base.dayStart) * 100) : 0, recoveryMultiplier: 0.5,
     };
     // marginPerLot 0 = margin not modelled for paper (no broker margin data); documented, not a guess.
     const risk = evaluateRisk(plan, acct, { symbol: sym, volumeMin: 0.01, volumeMax: 100, volumeStep: 0.01, ...contract, marginPerLot: 0 }, {
-      nowSec: now, positions: [], exposureLimits: { maxSymbolRiskUSD: this.balance * D.maxSymbolRiskPercent / 100, maxTotalRiskUSD: this.balance * D.maxTotalRiskPercent / 100 },
+      nowSec: now, positions: [], exposureLimits: { maxSymbolRiskUSD: base.balance * D.maxSymbolRiskPercent / 100, maxTotalRiskUSD: base.balance * D.maxTotalRiskPercent / 100 },
       spread: { current: spread, history: [...this.spreads] }, quote: { ask, bid, maxSlippage: D.maxSlippage }, lossStreak: this.streak, strictRiskMode: true,
     });
     this.obs.m4 = Object.freeze({ at: bar.close_time, decision: risk.decision, reasons: Object.freeze([...risk.reasons]), signalId: setup.id });
@@ -354,7 +372,7 @@ export class LivePaperLoop {
     // fill reference = opposite side; simulateFill adds the real spread (BUY→ask, SELL→bid)
     const pt = createPaperTrade({
       plan, risk, marketPrice: plan.direction === "BUY" ? bid : ask, sim: { spread, slippage: 0, maxSlippage: D.maxSlippage, latencyMs: 0, latencyDriftPerMs: 0 },
-      contract, accountEquity: this.balance,
+      contract, accountEquity: base.equity,
       signalSource: { bias: `H4_${bias.h4.bias}_H1_${bias.h1.phase}`, location: loc.context.priceLocation, trigger: reaction?.pattern ?? "NONE", reactionQuality: reaction?.quality ?? "NONE", emaContext: ema.context.actions.join(",") || ema.context.pricePosition },
       now,
     });
