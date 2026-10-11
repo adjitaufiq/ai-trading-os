@@ -43,7 +43,7 @@ import { parseExecutionMode } from "../src/core/execution/demo/types";
 import { DemoExecutionLayer, OrderLifecycleLog, PositionReconciler, RECONCILE_INTERVAL_MS, resolveExecutionPathMode } from "../src/core/execution/demo/DemoExecutionLayer";
 import { ShadowGuard, resolveShadowActive, shadowGatedGateway, shadowSafetyFromPolicy } from "../src/core/execution/shadow/ShadowGuard";
 import { DEFAULT_RISK_POLICY, parseRiskPolicy, riskPercentOf, type RiskPolicy } from "../src/core/execution/riskPolicy";
-import { BrokerAccountProvider, resolveAccountMode, type AccountState } from "../src/engine/risk/accountStateProvider";
+import { BrokerAccountProvider, resolveAccountMode, type AccountState } from "../src/core/execution/riskPolicy";
 import { demoHistoryRows, paperHistoryRows } from "../src/core/execution/demo/tradeLifecycle";
 import { validateDemoAccount } from "../src/core/execution/demo/guards";
 import type { MarketRuntime } from "../src/core/runtime/MarketRuntime";
