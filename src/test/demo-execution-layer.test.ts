@@ -156,20 +156,22 @@ describe("Phase 3.5 wiring — canonical EXECUTION_MODE + gateway-port chain", (
     expect(r.sent).toHaveLength(1);
   });
 
-  it("emergency stop blocks order even in DEMO with shadow off (port-level guard)", async () => {
-    const r = rig("DEMO");
-    const guard = mkGuard(false, true); // shadow inactive, but emergency stop engaged at intent level
-    // layer port wraps the shadow-gated gateway exactly like engine-host wiring
-    const inner = shadowGatedGateway(r.layer.o ? (r.layer as unknown as { o: { gateway: DemoExecGatewayPort } }).o.gateway : r.layer.asGatewayPort(), guard);
-    void inner;
-    // engage emergency stop with shadow ACTIVE: port send must be blocked by SHADOW_GUARD
-    const guardOn = mkGuard(true, true);
+  it("emergency stop blocks order at the intent gate even in DEMO (shadow off)", () => {
+    const guard = mkGuard(false, true); // EXECUTION_MODE=DEMO, emergency stop engaged
+    const g = guard.gate(intent("s9"));
+    expect(g.allow).toBe(false);
+    expect(g.record.blocked_by).toBe("EMERGENCY_STOP");
+    expect(g.record.execution.order_prevented).toBe(true);
+  });
+
+  it("shadow-gated gateway blocks any port send while shadow is active", async () => {
+    const sent: DemoOrderRequest[] = [];
     const blocked = shadowGatedGateway({
       account: async () => null, symbol: async () => null, positions: async () => [], closeDeal: async () => null,
-      sendOrder: async (q) => { r.sent.push(q); return { status: "FILLED", ticket: 1, price: 1, retcode: 1, comment: "x" }; },
-    }, guardOn);
-    const resp = await blocked.sendOrder(req("s9"));
+      sendOrder: async (q) => { sent.push(q); return { status: "FILLED", ticket: 1, price: 1, retcode: 1, comment: "x" }; },
+    }, mkGuard(true));
+    const resp = await blocked.sendOrder(req("s10"));
     expect(resp.status).toBe("REJECTED"); expect(resp.comment).toBe("SHADOW_GUARD");
-    expect(r.sent).toHaveLength(0);
+    expect(sent).toHaveLength(0);
   });
 });
