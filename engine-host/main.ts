@@ -21,7 +21,7 @@
 //   CONTROL_PLANE_URL        e.g. https://ai-trading-os.lovable.app
 //   EXECUTION_AGENT_SECRET   HMAC secret shared with the cloud (same value as the cloud secret)
 //   EXECUTION_AGENT_ID       agent name (default vps-1)
-// The env EXECUTION_MODE still has to be DEMO_STRESS_TEST to wire any order path; the cloud can only
+// The env EXECUTION_MODE still has to be DEMO to wire any order path; the cloud can only
 // halt or set limits within it, never arm a host started without it, and never target a real account.
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, appendFileSync } from "node:fs";
@@ -136,7 +136,7 @@ if (pathMode === "DEMO") {
   }
   demoRef = demo;
   setInterval(() => { void demo?.sync().catch((e) => log(`[demo-lab] sync failed ${(e as Error).message}`)); }, 15_000);
-  log(`[demo-lab] DEMO_STRESS_TEST armed · logins ${whitelist.logins.join(",")} · servers ${whitelist.servers.join(",")}`);
+  log(`[demo-lab] EXECUTION_MODE=DEMO armed · logins ${whitelist.logins.join(",")} · servers ${whitelist.servers.join(",")}`);
 }
 
 // ---- Durable engine-event outbox: every pipeline event hits disk first, then is pushed (signed) to the cloud. ----
