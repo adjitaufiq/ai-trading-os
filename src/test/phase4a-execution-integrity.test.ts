@@ -95,10 +95,10 @@ describe("Phase 4A execution integrity", () => {
   });
 
   it("safety config cannot be overridden by environment", () => {
-    process.env.MAX_DAILY_TRADE = "99"; process.env.RISK_PER_TRADE = "0.05";
+    process.env["MAX_DAILY_TRADE"] = "99"; process.env["RISK_PER_TRADE"] = "0.05";
     expect(shadowSafetyFromPolicy(DEFAULT_RISK_POLICY).maxDailyTrades).toBe(5);
     expect(riskPercentOf(DEFAULT_RISK_POLICY)).toBe(0.5);
-    delete process.env.MAX_DAILY_TRADE; delete process.env.RISK_PER_TRADE;
+    delete process.env["MAX_DAILY_TRADE"]; delete process.env["RISK_PER_TRADE"];
     expect(parseRiskPolicy('{"risk_per_trade":0.005,"max_position":1,"max_symbol":1,"max_daily_trade":5,"emergency_stop":false,"extra":1}').ok).toBe(false);
     expect(parseRiskPolicy('{"risk_per_trade":0.5,"max_position":1,"max_symbol":1,"max_daily_trade":5,"emergency_stop":false}').ok).toBe(false);
   });
