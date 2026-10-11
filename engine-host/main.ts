@@ -38,6 +38,7 @@ import { signRequest } from "../src/core/execution/control/contract";
 import type { EnginePipelineEvent } from "../src/core/enginehost/EngineHost";
 import type { ApprovedPaperOpen } from "../src/core/paper/LivePaperLoop";
 import type { MarketRuntimeReader } from "../src/core/runtime/MarketRuntime";
+import { resolveBuildInfo } from "../src/core/enginehost/buildInfo";
 import { ENGINE_CORS_HEADERS, buildEngineEvents, routeEngineRequest, sseFrame } from "../src/core/enginehost/api";
 
 const env = process.env;
@@ -126,7 +127,15 @@ const pushOutbox = async () => {
 setInterval(() => { void pushOutbox(); }, 10_000);
 if (!env.CONTROL_PLANE_URL || !env.EXECUTION_AGENT_SECRET) log("[events] CONTROL_PLANE_URL/EXECUTION_AGENT_SECRET not set: events kept on disk only (5-min cloud capture still runs)");
 
+// Build identity: env (ENGINE_COMMIT / ENGINE_BUILD_TIME) wins, else engine-host/BUILD_INFO.json from the deploy zip.
+const buildFile = join(import.meta.dirname ?? ".", "BUILD_INFO.json");
+let buildSrc: { commit?: unknown; build_time?: unknown } = {};
+try { if (existsSync(buildFile)) buildSrc = JSON.parse(readFileSync(buildFile, "utf8")); } catch { log("[engine-host] BUILD_INFO.json unreadable, commit/build_time reported null"); }
+const build = resolveBuildInfo({ commit: env.ENGINE_COMMIT ?? buildSrc.commit, build_time: env.ENGINE_BUILD_TIME ?? buildSrc.build_time });
+log(`[engine-host] build ${build.engine_version} commit ${build.commit ?? "UNKNOWN"} built ${build.build_time ?? "UNKNOWN"}`);
+
 const host = new EngineHost({
+  build,
   onPipelineEvent: (e: EnginePipelineEvent) => { appendFileSync(outboxFile, `${JSON.stringify(e)}\n`); void pushOutbox(); },
   symbols, persistence: new PaperPersistence(store), now: () => Date.now(), log, executionMode,
   ...(demo ? {
