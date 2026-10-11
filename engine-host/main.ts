@@ -262,7 +262,7 @@ createServer((req, res) => {
     // Phase 4A.2 read-only trade history: demo (broker) + paper rows, each labelled with its account source.
     const eventsFile = join(dataDir, "demo-events.jsonl");
     const demoEvents = existsSync(eventsFile) ? readFileSync(eventsFile, "utf8").split("\n").filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }) : [];
-    const paper = [...runtimes.values()].flatMap((rt) => paperHistoryRows((rt.reader().paperTrades?.() ?? []) as never, (id) => rt.reader().paperTradeAccountSource?.(id) ?? null, riskPercentOf(riskPolicy)));
+    const paper = [...runtimes.values()].flatMap((rt) => paperHistoryRows((rt.reader.paperTrades?.() ?? []) as never, (id) => rt.reader.paperTradeAccountSource?.(id) ?? null, riskPercentOf(riskPolicy)));
     const body = JSON.stringify({ account_mode: accountMode, risk_policy: riskPolicy, demo: demoHistoryRows(demoEvents), paper });
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store", ...ENGINE_CORS_HEADERS }); res.end(body);
     return;
