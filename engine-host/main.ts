@@ -40,10 +40,9 @@ import { createDemoGatewayClient } from "../src/core/execution/demo/gatewayClien
 import { parseWhitelist } from "../src/core/execution/demo/guards";
 import { buildDemoIntent } from "../src/core/execution/demo/intent";
 import { parseExecutionMode } from "../src/core/execution/demo/types";
-import { DemoExecutionLayer, OrderLifecycleLog, resolveExecutionPathMode } from "../src/core/execution/demo/DemoExecutionLayer";
+import { DemoExecutionLayer, OrderLifecycleLog, PositionReconciler, RECONCILE_INTERVAL_MS, resolveExecutionPathMode } from "../src/core/execution/demo/DemoExecutionLayer";
 import { ShadowGuard, resolveShadowActive, shadowGatedGateway, shadowSafetyFromPolicy } from "../src/core/execution/shadow/ShadowGuard";
 import { DEFAULT_RISK_POLICY, parseRiskPolicy, type RiskPolicy } from "../src/engine/risk/riskPolicy";
-import { PositionReconciler, RECONCILE_INTERVAL_MS } from "../src/core/execution/demo/DemoExecutionLayer";
 import { ControlPlaneAgent } from "../src/core/execution/control/agentSync";
 import { signRequest } from "../src/core/execution/control/contract";
 import type { EnginePipelineEvent } from "../src/core/enginehost/EngineHost";
@@ -88,7 +87,6 @@ let brokerPositions: readonly { symbol: string }[] = [];
 const shadowFile = join(dataDir, "shadow-events.jsonl");
 const shadowActive = resolveShadowActive(env);
 let demoRef: { status(): { openPositions: number } } | null = null;
-const log0 = (m: string) => console.log(`${new Date().toISOString()} ${m}`);
 const shadow = new ShadowGuard({
   active: () => shadowActive, now: () => Date.now(), log: (m) => console.log(`${new Date().toISOString()} ${m}`), safety: shadowSafetyFromPolicy(riskPolicy),
   store: { readLines: () => existsSync(shadowFile) ? readFileSync(shadowFile, "utf8").split("\n").filter(Boolean) : [], append: (l) => appendFileSync(shadowFile, `${l}\n`) },
