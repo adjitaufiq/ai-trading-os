@@ -3,6 +3,7 @@
 // No discretionary logic, no AI, no signal/risk/radar mutation. Every step is written to an append-only event log
 // BEFORE the next side effect (SEND_ATTEMPT is written before the order is sent) so a restart can never double-send.
 import { buildFinalOrderPlan } from "../../../engine/risk/finalOrderPlan";
+import { BrokerAccountProvider } from "../../../engine/risk/accountStateProvider";
 import { DEFAULT_RISK_POLICY, riskPercentOf, type RiskPolicy } from "../../../engine/risk/riskPolicy";
 import { checkDemoSafety, dailyLossPercent, validateDemoAccount } from "./guards";
 import {
@@ -105,11 +106,14 @@ export class DemoExecutionBridge {
       const info = await this.o.gateway.symbol(intent.symbol).catch(() => null);
       if (!info) return block("SYMBOL_INFO_UNAVAILABLE");
       // Phase 4A: FINAL_ORDER_PLAN is the single lot source (M4, real broker balance/equity + contract spec + policy risk).
-      const fp = buildFinalOrderPlan({ symbol: intent.symbol, direction: intent.direction, entry: intent.plannedEntry, sl: intent.stopLoss, tp: intent.takeProfit }, id, info, this.policy);
+      // Phase 4A.1: Account State Provider (broker demo identity, copied as-is) is the only balance source.
+      const account = await new BrokerAccountProvider({ read: async () => id, now: this.o.now }).current();
+      if (!account) return block("IDENTITY_UNAVAILABLE", "account state unavailable");
+      const fp = buildFinalOrderPlan({ symbol: intent.symbol, direction: intent.direction, entry: intent.plannedEntry, sl: intent.stopLoss, tp: intent.takeProfit }, account, info, this.policy);
       if (!fp.ok) return block(fp.reason === "LOT_BELOW_MINIMUM" ? "LOT_BELOW_MINIMUM" : "INVALID_PLAN", fp.detail);
       const plan = fp.plan;
 
-      this.push({ type: "SEND_ATTEMPT", signalId: intent.signalId, symbol: intent.symbol, data: { intent, final_order_plan: plan, volume: plan.lot, riskUSD: fp.audit.actualRiskUSD, budgetUSD: fp.audit.budgetUSD, sizing: fp.audit, policy: this.policy } });
+      this.push({ type: "SEND_ATTEMPT", signalId: intent.signalId, symbol: intent.symbol, data: { intent, trade_id: `demo_${intent.signalId}`, account, final_order_plan: plan, volume: plan.lot, riskUSD: fp.audit.actualRiskUSD, budgetUSD: fp.audit.budgetUSD, sizing: fp.audit, policy: this.policy } });
       const t0 = this.o.now();
       let resp;
       try { resp = await this.o.gateway.sendOrder({ signalId: intent.signalId, symbol: plan.symbol, direction: plan.direction, volume: plan.lot, stopLoss: plan.sl, takeProfit: plan.tp }); }
