@@ -140,7 +140,7 @@ export class DemoExecutionBridge {
         if (!Number.isFinite(ticket) || live.has(ticket)) continue;
         const deal = await this.o.gateway.closeDeal(ticket).catch(() => null);
         if (!deal) continue;
-        this.push({ type: "CLOSED", signalId: f.signalId, symbol: f.symbol, detail: deal.reason, data: { ...deal } });
+        this.push({ type: "CLOSED", signalId: f.signalId, symbol: f.symbol, detail: deal.reason, data: { ...deal, ticket, source: "BROKER_DEAL_HISTORY" } });
       }
     });
   }

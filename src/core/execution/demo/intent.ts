@@ -16,7 +16,7 @@ export function buildDemoIntent(e: ApprovedPaperOpen, snap: Readonly<RadarSnapsh
       setup: i?.setup ?? null, decision: i?.status ?? null, confidence: i?.confidence ?? null,
       primaryBias: tech?.primary_bias ?? null, counterTrendCondition: tech?.counter_trend_condition ?? null,
       reasons: Object.freeze([...(i?.reasons ?? i?.audit_trail ?? [])].slice(0, 12)),
-      signalSource: e.signalSource, engineSnapshot: snap ? structuredClone(snap) : null,
+      signalSource: e.signalSource, entryDecision: e.entryDecision ?? null, engineSnapshot: snap ? structuredClone(snap) : null,
     }),
   });
 }

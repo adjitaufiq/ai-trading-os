@@ -1,5 +1,6 @@
 // Phase 6A / Stage 10 DEMO — Demo Stress Test execution contracts.
 // DEMO ONLY: there is no type, mode or code path that targets a real account.
+import type { EntryDecisionSnapshot } from "../../../engine/journal/types";
 import type { BrokerSymbolInfo } from "../../../engine/risk/types";
 import { DEFAULT_RISK_POLICY, dailyLossPercentOf, riskPercentOf } from "../../../engine/risk/riskPolicy";
 
@@ -42,6 +43,8 @@ export interface DemoEntryContext {
   readonly counterTrendCondition?: string | null;
   readonly reasons: readonly string[]; readonly signalSource: Readonly<Record<string, string>>;
   readonly engineSnapshot: unknown;
+  /** Phase 4B: frozen Decision Gate snapshot (copied from the paper open; never recomputed). */
+  readonly entryDecision?: EntryDecisionSnapshot | null;
 }
 
 export interface DemoOrderIntent {
