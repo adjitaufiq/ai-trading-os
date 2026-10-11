@@ -35,6 +35,8 @@ export interface EngineHostHealth {
   readonly symbols: readonly SymbolEngineHealth[];
   /** Which code is actually running (engine_version, commit, build_time, status). Absent on older hosts. */
   readonly build?: import("./buildInfo").EngineBuildInfo;
+  /** Shadow Guard status (Phase 2A). Absent on older hosts. */
+  readonly shadow?: unknown;
 }
 
 export interface EngineRadarView { readonly snapshot: Readonly<RadarSnapshot> | null; readonly health: Readonly<RadarHealth> | null }

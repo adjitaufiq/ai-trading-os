@@ -5,6 +5,10 @@
 //   ENGINE_HOST_PORT    read API port (default 8090), bound to 127.0.0.1; expose via your tunnel
 //   ENGINE_SYMBOLS      comma list (default XAUUSD,BTCUSD)
 //   ENGINE_DATA_DIR     persistence dir (default engine-host/data)
+// Phase 2 Shadow Guard (always mounted, fail-closed):
+//   SHADOW_MODE      default ON; only SHADOW_MODE=OFF together with EXECUTION_MODE=DEMO_STRESS_TEST lets orders past it
+//   MAX_DAILY_TRADE  shadow/demo safety daily cap (default 5); MAX_POSITION=1, MAX_SYMBOL=1, duplicate/SL/TP/emergency stop fixed ON
+//   Emergency stop: create file <ENGINE_DATA_DIR>/EMERGENCY_STOP (or DEMO_KILL_SWITCH)
 // Stage 10 DEMO lab (optional; default REAL_DISABLED = no order path wired):
 //   EXECUTION_MODE        REAL_DISABLED | PAPER_ONLY | DEMO_STRESS_TEST
 //   DEMO_EXEC_URL         loopback demo execution gateway (default http://127.0.0.1:8100)
@@ -33,6 +37,7 @@ import { createDemoGatewayClient } from "../src/core/execution/demo/gatewayClien
 import { parseWhitelist } from "../src/core/execution/demo/guards";
 import { buildDemoIntent } from "../src/core/execution/demo/intent";
 import { parseExecutionMode } from "../src/core/execution/demo/types";
+import { ShadowGuard, parseShadowSafety, resolveShadowActive, shadowGatedGateway } from "../src/core/execution/shadow/ShadowGuard";
 import { ControlPlaneAgent } from "../src/core/execution/control/agentSync";
 import { signRequest } from "../src/core/execution/control/contract";
 import type { EnginePipelineEvent } from "../src/core/enginehost/EngineHost";
@@ -60,6 +65,18 @@ const config = makeGatewayConfig({ httpBaseUrl: gatewayUrl, timeoutMs: 10_000 })
 const client = new BrokerGatewayClient({ config, wallClock: new LiveClock(), monoClock: { now: () => performance.now() }, wsFactory: browserWebSocketFactory });
 const log = (m: string) => console.log(`${new Date().toISOString()} ${m}`);
 
+// ---- Phase 2A Shadow Guard: every approved order intent passes here; while active, no broker send is reachable. ----
+const shadowFile = join(dataDir, "shadow-events.jsonl");
+const shadowActive = resolveShadowActive(env);
+let demoRef: { status(): { openPositions: number } } | null = null;
+const shadow = new ShadowGuard({
+  active: () => shadowActive, now: () => Date.now(), log: (m) => console.log(`${new Date().toISOString()} ${m}`), safety: parseShadowSafety(env),
+  store: { readLines: () => existsSync(shadowFile) ? readFileSync(shadowFile, "utf8").split("\n").filter(Boolean) : [], append: (l) => appendFileSync(shadowFile, `${l}\n`) },
+  emergencyStop: () => existsSync(join(dataDir, "EMERGENCY_STOP")) || existsSync(join(dataDir, "DEMO_KILL_SWITCH")),
+  openState: () => ({ openPositions: demoRef?.status().openPositions ?? 0, openSymbols: [] }),
+});
+console.log(`${new Date().toISOString()} [shadow] ${shadow.status().label} · max_daily_trade ${shadow.safety.maxDailyTrades}`);
+
 // ---- Stage 10 DEMO lab wiring (no-op unless EXECUTION_MODE=DEMO_STRESS_TEST) ----
 const executionMode = parseExecutionMode(env.EXECUTION_MODE);
 let demo: DemoExecutionBridge | null = null;
@@ -83,7 +100,7 @@ if (executionMode === "DEMO_STRESS_TEST") {
   const eventsFile = join(dataDir, "demo-events.jsonl");
   demo = new DemoExecutionBridge({
     mode: executionMode, whitelist, now: () => Date.now(), log,
-    gateway: createDemoGatewayClient({ baseUrl: env.DEMO_EXEC_URL ?? "http://127.0.0.1:8100", token: env.DEMO_EXEC_TOKEN }),
+    gateway: shadowGatedGateway(createDemoGatewayClient({ baseUrl: env.DEMO_EXEC_URL ?? "http://127.0.0.1:8100", token: env.DEMO_EXEC_TOKEN }), shadow),
     store: { readLines: () => existsSync(eventsFile) ? readFileSync(eventsFile, "utf8").split("\n").filter(Boolean) : [], append: (l) => appendFileSync(eventsFile, `${l}\n`) },
     killSwitch: () => cloudKill || existsSync(killFile) || (agent ? agent.current().halted : false),
     ...(agent ? { profile: () => agent!.current().profile } : {}),
@@ -102,6 +119,7 @@ if (executionMode === "DEMO_STRESS_TEST") {
     const tick = async () => { await a.pullConfig(); await a.pushHeartbeat(); await a.pushEvents(demo?.status().recentEvents ?? []); };
     void tick(); setInterval(() => { void tick(); }, 15_000);
   }
+  demoRef = demo;
   setInterval(() => { void demo?.sync().catch((e) => log(`[demo-lab] sync failed ${(e as Error).message}`)); }, 15_000);
   log(`[demo-lab] DEMO_STRESS_TEST armed · logins ${whitelist.logins.join(",")} · servers ${whitelist.servers.join(",")}`);
 }
@@ -138,10 +156,15 @@ const host = new EngineHost({
   build,
   onPipelineEvent: (e: EnginePipelineEvent) => { appendFileSync(outboxFile, `${JSON.stringify(e)}\n`); void pushOutbox(); },
   symbols, persistence: new PaperPersistence(store), now: () => Date.now(), log, executionMode,
-  ...(demo ? {
-    onApprovedOpen: (e: ApprovedPaperOpen, reader: MarketRuntimeReader | null) => { if (agent && !agent.current().allowedSymbols.includes(e.symbol.toUpperCase())) { log(`[demo-lab] ${e.symbol} not in cloud allowed_symbols, skipped`); return; } void demo!.handle(buildDemoIntent(e, reader?.radarSnapshot() ?? null, host.bundle(e.symbol, Date.now())?.slice?.current ?? null)).catch((x) => log(`[demo-lab] handle failed ${(x as Error).message}`)); },
-    demoStatus: () => demo!.status(),
-  } : {}),
+  shadowStatus: () => shadow.status(),
+  onApprovedOpen: (e: ApprovedPaperOpen, reader: MarketRuntimeReader | null) => {
+    const intent = buildDemoIntent(e, reader?.radarSnapshot() ?? null, host.bundle(e.symbol, Date.now())?.slice?.current ?? null);
+    const g = shadow.gate(intent);
+    if (!g.allow || !demo) return;
+    if (agent && !agent.current().allowedSymbols.includes(e.symbol.toUpperCase())) { log(`[demo-lab] ${e.symbol} not in cloud allowed_symbols, skipped`); return; }
+    void demo.handle(intent).catch((x) => log(`[demo-lab] handle failed ${(x as Error).message}`));
+  },
+  ...(demo ? { demoStatus: () => demo!.status() } : {}),
   mount: ({ symbol, onChange, onRuntime }) => mountCanonicalRuntime({ client, config, wsFactory: browserWebSocketFactory, symbol, onChange, onRuntime }),
 });
 host.start();

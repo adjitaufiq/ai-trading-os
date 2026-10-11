@@ -20,6 +20,7 @@ export const PIPELINE_RING = 500;
 import type { ExecutionMode } from "../execution/demo/types";
 import { buildReadiness, type EngineReadiness } from "./readiness";
 import { resolveBuildInfo, type EngineBuildInfo } from "./buildInfo";
+import { MONITORING_SCHEMA, decisionHealth, feedState, marketDataHealth, type EngineMonitoring } from "./monitoring";
 
 /** Documented supervisor policy (operator configuration). */
 export interface SupervisorPolicy { readonly tick_ms: number; readonly remount_after_ms: number; readonly backoff_min_ms: number; readonly backoff_max_ms: number }
@@ -72,6 +73,8 @@ export class EngineHost {
     onPipelineEvent?: (e: EnginePipelineEvent) => void;
     /** Runtime build identity reported on /v1/engine/health and /v1/engine/version. */
     build?: EngineBuildInfo;
+    /** Shadow Guard read model (Phase 2A); absent ⇒ reported as UNKNOWN, never as safe. */
+    shadowStatus?: () => unknown;
   }) {
     this.startedAt = o.now();
     for (const symbol of o.symbols) this.slots.set(symbol, { symbol, stop: null, rt: null, reader: null, status: "INIT", restarts: 0, unhealthySince: null, nextRemountAt: 0, backoff: this.policy.backoff_min_ms, persistError: null, slice: null });
@@ -176,6 +179,37 @@ export class EngineHost {
       demo_execution: this.o.executionMode ?? "REAL_DISABLED",
       symbols: Object.freeze([...this.slots.values()].map((s) => this.symbolHealth(s, now))),
       build: this.buildInfo(),
+      shadow: this.shadowStatus(),
+    });
+  }
+
+  shadowStatus(): unknown { return this.o.shadowStatus?.() ?? { active: null, label: "UNKNOWN" }; }
+
+  /** Phase 2B monitoring projection (copies only). */
+  monitoring(now: number): EngineMonitoring {
+    const syms = [...this.slots.values()].map((s) => {
+      const engine = this.symbolHealth(s, now);
+      return Object.freeze({ symbol: s.symbol, engine, feed: feedState(s.reader, now), market_data: marketDataHealth(s.reader, now), decision: decisionHealth(s.reader?.paperReadiness?.() ?? null) });
+    });
+    const times = syms.map((x) => x.decision.last_analysis_at).filter((t): t is number => t !== null);
+    return Object.freeze({
+      schema: MONITORING_SCHEMA, engine_status: syms.some((x) => x.engine.state !== "OFFLINE") ? "ONLINE" as const : "OFFLINE" as const,
+      build: this.buildInfo(), started_at: this.startedAt, last_process_at: times.length ? Math.max(...times) : null,
+      last_error: syms.find((x) => x.engine.error)?.engine.error ?? null, shadow: this.shadowStatus(), symbols: Object.freeze(syms),
+    });
+  }
+
+  /** Phase 2E journal/storage status: VPS disk persistence per symbol + shadow journal. Cloud DB is not observable here. */
+  journalStatus(now: number) {
+    const m = this.monitoring(now);
+    return Object.freeze({
+      build: m.build, shadow: m.shadow, last_analysis_at: m.last_process_at,
+      database: Object.freeze({
+        engine_storage: "VPS_DISK" as const,
+        status: [...this.slots.values()].some((s) => s.persistError) ? "ERROR" as const : "OK" as const,
+        cloud_database: "NOT_OBSERVABLE_FROM_HOST" as const,
+        symbols: [...this.slots.values()].map((s) => ({ symbol: s.symbol, persist_error: s.persistError, journal_rows: s.reader?.paperTrades?.().length ?? null })),
+      }),
     });
   }
 
