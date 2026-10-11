@@ -42,7 +42,7 @@ import { buildDemoIntent } from "../src/core/execution/demo/intent";
 import { parseExecutionMode } from "../src/core/execution/demo/types";
 import { DemoExecutionLayer, OrderLifecycleLog, PositionReconciler, RECONCILE_INTERVAL_MS, resolveExecutionPathMode } from "../src/core/execution/demo/DemoExecutionLayer";
 import { ShadowGuard, resolveShadowActive, shadowGatedGateway, shadowSafetyFromPolicy } from "../src/core/execution/shadow/ShadowGuard";
-import { DEFAULT_RISK_POLICY, parseRiskPolicy, type RiskPolicy } from "../src/engine/risk/riskPolicy";
+import { DEFAULT_RISK_POLICY, parseRiskPolicy, type RiskPolicy } from "../src/core/execution/riskPolicy";
 import { ControlPlaneAgent } from "../src/core/execution/control/agentSync";
 import { signRequest } from "../src/core/execution/control/contract";
 import type { EnginePipelineEvent } from "../src/core/enginehost/EngineHost";
