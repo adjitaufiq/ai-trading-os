@@ -2,6 +2,7 @@
 // there is no write route, no generic dispatch and no order/execution surface.
 import { ENGINE_HOST_SCHEMA, type EngineEnvelope } from "./types";
 import type { EngineHost } from "./EngineHost";
+import { snrPayload } from "./snr";
 
 export interface EngineHttpResponse { readonly status: number; readonly body: string; readonly headers: Readonly<Record<string, string>> }
 
@@ -35,6 +36,13 @@ export function routeEngineRequest(host: HostView, method: string, rawPath: stri
   if (path === "/v1/journal/status") return host.journalStatus ? json(200, envelope(host.journalStatus(now), now)) : json(404, { error: "NOT_FOUND" });
   if (path === "/v1/engine/readiness") return json(200, envelope({ runtime: host.journalStatus?.(now) ?? null, symbols: host.symbols.map((symbol) => host.readiness?.(symbol, now) ?? null).filter(Boolean) }, now));
   if (path === "/v1/engine/snapshot") return json(200, envelope({ bundles: host.symbols.map((symbol) => host.bundle?.(symbol, now) ?? null).filter(Boolean) }, now));
+  const snr = /^\/v1\/analysis\/snr\/([A-Z0-9._]+)$/.exec(path);
+  if (snr) {
+    const symbol = snr[1]!;
+    if (!host.symbols.includes(symbol)) return json(404, { error: "SYMBOL_NOT_HOSTED", symbol });
+    const data = snrPayload(symbol, host.bundle?.(symbol, now)?.slice?.current?.operator);
+    return data ? json(200, envelope(data, now)) : json(503, { error: "SNR_NOT_READY", symbol });
+  }
   const m = /^\/v1\/engine\/([A-Z0-9._]+)\/(radar|market-context|account|journal|snapshot|readiness)$/.exec(path);
   if (!m) return json(404, { error: "NOT_FOUND" });
   const symbol = m[1]!, view = m[2]!;

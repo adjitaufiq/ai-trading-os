@@ -96,3 +96,15 @@ describe("visual-only SNR contract", () => {
     expect(requestUpdate).toHaveBeenCalledTimes(2);
   });
 });
+import { routeEngineRequest } from "@/core/enginehost/api";
+describe("engine host SNR endpoint", () => {
+  it("copies operator zones and is parseable by the dashboard", () => {
+    const operator = { zones: { H4: [{ role: "SUPPORT", low: 68000, high: 68200 }], M15: [{ role: "RESISTANCE", low: 71000, high: 71100 }] } };
+    const host = { symbols: ["BTCUSD"], health: () => ({}), reader: () => null, bundle: () => ({ slice: { current: { operator } } }) } as never;
+    const res = routeEngineRequest(host, "GET", "/v1/analysis/snr/BTCUSD", 1);
+    expect(res.status).toBe(200);
+    const parsed = parseSnrSnapshot(JSON.parse(res.body).data, "BTCUSD");
+    expect(parsed?.zones.map((z) => z.timeframe)).toEqual(["H4", "M15"]);
+    expect(routeEngineRequest(host, "GET", "/v1/analysis/snr/XAUUSD", 1).status).toBe(404);
+  });
+});
