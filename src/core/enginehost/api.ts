@@ -18,7 +18,7 @@ export function envelope<T>(data: T, now: number): EngineEnvelope<T> {
   return { schema: ENGINE_HOST_SCHEMA, source: "ENGINE_HOST", generated_at: now, data };
 }
 
-type HostView = Pick<EngineHost, "health" | "reader" | "symbols"> & Partial<Pick<EngineHost, "bundle" | "bundleKey" | "demoStatus" | "pipelineEvents" | "readiness" | "buildInfo">>;
+type HostView = Pick<EngineHost, "health" | "reader" | "symbols"> & Partial<Pick<EngineHost, "bundle" | "bundleKey" | "demoStatus" | "pipelineEvents" | "readiness" | "buildInfo" | "monitoring" | "journalStatus" | "shadowStatus">>;
 
 export function routeEngineRequest(host: HostView, method: string, rawPath: string, now: number): EngineHttpResponse {
   if (method === "OPTIONS") return { status: 204, body: "", headers: { ...ENGINE_CORS_HEADERS } };
@@ -30,7 +30,10 @@ export function routeEngineRequest(host: HostView, method: string, rawPath: stri
   if (path === "/v1/engine/journal") return json(200, envelope({ trades: host.symbols.flatMap((symbol) => host.reader(symbol)?.paperTrades?.() ?? []) }, now));
   if (path === "/v1/engine/demo") return json(200, envelope(host.demoStatus?.() ?? { mode: "REAL_DISABLED" }, now));
   if (path === "/v1/engine/pipeline") return json(200, envelope({ events: host.pipelineEvents?.() ?? [] }, now));
-  if (path === "/v1/engine/readiness") return json(200, envelope({ symbols: host.symbols.map((symbol) => host.readiness?.(symbol, now) ?? null).filter(Boolean) }, now));
+  if (path === "/v1/engine/monitoring") return host.monitoring ? json(200, envelope(host.monitoring(now), now)) : json(404, { error: "NOT_FOUND" });
+  if (path === "/v1/engine/shadow") return json(200, envelope(host.shadowStatus?.() ?? { active: null, label: "UNKNOWN" }, now));
+  if (path === "/v1/journal/status") return host.journalStatus ? json(200, envelope(host.journalStatus(now), now)) : json(404, { error: "NOT_FOUND" });
+  if (path === "/v1/engine/readiness") return json(200, envelope({ runtime: host.journalStatus?.(now) ?? null, symbols: host.symbols.map((symbol) => host.readiness?.(symbol, now) ?? null).filter(Boolean) }, now));
   if (path === "/v1/engine/snapshot") return json(200, envelope({ bundles: host.symbols.map((symbol) => host.bundle?.(symbol, now) ?? null).filter(Boolean) }, now));
   const m = /^\/v1\/engine\/([A-Z0-9._]+)\/(radar|market-context|account|journal|snapshot|readiness)$/.exec(path);
   if (!m) return json(404, { error: "NOT_FOUND" });
