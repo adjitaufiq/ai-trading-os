@@ -2,7 +2,8 @@
 // (READY + plan PLANNED + M4 APPROVED) and forwards it to the loopback demo gateway after identity + safety checks.
 // No discretionary logic, no AI, no signal/risk/radar mutation. Every step is written to an append-only event log
 // BEFORE the next side effect (SEND_ATTEMPT is written before the order is sent) so a restart can never double-send.
-import { calculatePositionSize } from "../../../engine/risk/positionSizer";
+import { buildFinalOrderPlan } from "../../../engine/risk/finalOrderPlan";
+import { DEFAULT_RISK_POLICY, riskPercentOf, type RiskPolicy } from "../../../engine/risk/riskPolicy";
 import { checkDemoSafety, dailyLossPercent, validateDemoAccount } from "./guards";
 import {
   DEMO_EXECUTION_POLICY_VERSION, DEMO_RISK_PROFILE, type AccountBlockReason, type BlockReason, type DemoAccountIdentity,
@@ -21,12 +22,17 @@ export class DemoExecutionBridge {
   private lastAccount: { id: DemoAccountIdentity | null; ok: boolean; reason: AccountBlockReason | null } = { id: null, ok: false, reason: "IDENTITY_UNAVAILABLE" };
   private openCount = 0;
   private readonly profileOf: () => DemoRiskProfile;
-  /** Risk limits (static, or pulled from the cloud control plane per call). The sizing/guard math is unchanged. */
-  private get profile(): DemoRiskProfile { return this.profileOf(); }
+  /** Phase 4A: risk % and position/daily limits come ONLY from risk-policy.json; a cloud/static profile may
+   *  supply the daily-loss limit but can never change risk_per_trade, max_position or max_daily_trade. */
+  private get profile(): DemoRiskProfile {
+    const p = this.policy;
+    return { ...this.profileOf(), riskPercent: riskPercentOf(p), maxOpenPositions: p.max_position, maxTradesPerDay: p.max_daily_trade };
+  }
+  private get policy(): RiskPolicy { return this.o.policy ?? DEFAULT_RISK_POLICY; }
 
   constructor(private readonly o: {
     mode: ExecutionMode; gateway: DemoExecGatewayPort; whitelist: DemoWhitelist; store: DemoEventStore;
-    killSwitch: () => boolean; now: () => number; profile?: DemoRiskProfile | (() => DemoRiskProfile); log?: (m: string) => void;
+    killSwitch: () => boolean; now: () => number; profile?: DemoRiskProfile | (() => DemoRiskProfile); policy?: RiskPolicy; log?: (m: string) => void;
   }) {
     const p = o.profile ?? DEMO_RISK_PROFILE;
     this.profileOf = typeof p === "function" ? p : () => p;
@@ -98,14 +104,15 @@ export class DemoExecutionBridge {
       if (!safety.ok) return block(safety.reason);
       const info = await this.o.gateway.symbol(intent.symbol).catch(() => null);
       if (!info) return block("SYMBOL_INFO_UNAVAILABLE");
-      const budget = (id.balance * this.profile.riskPercent) / 100;
-      const size = calculatePositionSize(budget, Math.abs(intent.plannedEntry - intent.stopLoss), info, true);
-      if (!size || size.finalLot < info.volumeMin) return block("LOT_BELOW_MINIMUM", `raw ${size?.rawLot ?? "?"}`);
+      // Phase 4A: FINAL_ORDER_PLAN is the single lot source (M4, real broker balance/equity + contract spec + policy risk).
+      const fp = buildFinalOrderPlan({ symbol: intent.symbol, direction: intent.direction, entry: intent.plannedEntry, sl: intent.stopLoss, tp: intent.takeProfit }, id, info, this.policy);
+      if (!fp.ok) return block(fp.reason === "LOT_BELOW_MINIMUM" ? "LOT_BELOW_MINIMUM" : "INVALID_PLAN", fp.detail);
+      const plan = fp.plan;
 
-      this.push({ type: "SEND_ATTEMPT", signalId: intent.signalId, symbol: intent.symbol, data: { intent, volume: size.finalLot, riskUSD: size.actualRiskUSD, budgetUSD: budget } });
+      this.push({ type: "SEND_ATTEMPT", signalId: intent.signalId, symbol: intent.symbol, data: { intent, final_order_plan: plan, volume: plan.lot, riskUSD: fp.audit.actualRiskUSD, budgetUSD: fp.audit.budgetUSD, sizing: fp.audit, policy: this.policy } });
       const t0 = this.o.now();
       let resp;
-      try { resp = await this.o.gateway.sendOrder({ signalId: intent.signalId, symbol: intent.symbol, direction: intent.direction, volume: size.finalLot, stopLoss: intent.stopLoss, takeProfit: intent.takeProfit }); }
+      try { resp = await this.o.gateway.sendOrder({ signalId: intent.signalId, symbol: plan.symbol, direction: plan.direction, volume: plan.lot, stopLoss: plan.sl, takeProfit: plan.tp }); }
       catch (e) { return this.push({ type: "ERROR", signalId: intent.signalId, symbol: intent.symbol, detail: (e as Error).message, data: { latencyMs: this.o.now() - t0 } }); }
       const latencyMs = this.o.now() - t0;
       const slippage = resp.price !== null ? r8(intent.direction === "BUY" ? resp.price - intent.plannedEntry : intent.plannedEntry - resp.price) : null;

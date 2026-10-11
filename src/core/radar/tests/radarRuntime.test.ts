@@ -140,7 +140,7 @@ describe("live paper loop wiring (M2→M6 inside MarketRuntime)", () => {
   it("exposes a $10k/1% virtual account tagged by data source and journals only tagged rows", async () => {
     const x = await rig("XAUUSD");
     const a0 = x.r.paperAccount!();
-    expect(a0).toMatchObject({ balance: 10000, equity: 10000, riskPercent: 1, openPositions: 0, realizedPnL: 0, dataSource: "SYNTHETIC" });
+    expect(a0).toMatchObject({ balance: 10000, equity: 10000, riskPercent: 0.5, openPositions: 0, realizedPnL: 0, dataSource: "SYNTHETIC" });
     feed(x, 0, N);
     const a = x.r.paperAccount!();
     expect(Object.isFrozen(a)).toBe(true);
