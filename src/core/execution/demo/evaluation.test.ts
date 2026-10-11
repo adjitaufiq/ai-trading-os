@@ -10,13 +10,13 @@ const intent = (id: string): DemoOrderIntent => ({ signalId: id, planId: "p", sy
   context: { regime: "TRENDING", h4Bias: "BULLISH", primaryBias: "BUY", h1State: "PULLBACK", setup: "PULLBACK_BUY", decision: "READY", confidence: 80, reasons: [], signalSource: {}, engineSnapshot: null, entryDecision: { ...ed, signalId: id } } });
 
 function rig(deal: () => DemoCloseDeal | null, lines: string[] = []) {
-  let open = true; let down = false; let sent = 0; let t = Date.UTC(2026, 9, 12, 9);
+  let open = false; let down = false; let sent = 0; let t = Date.UTC(2026, 9, 12, 9);
   const gw: DemoExecGatewayPort = {
     account: async () => acct,
     symbol: async (s) => ({ symbol: s, volumeMin: 0.01, volumeMax: 100, volumeStep: 0.01, tickSize: 0.01, tickValue: 1, marginPerLot: 0 }),
     positions: async () => { if (down) throw new Error("disconnected"); return open ? [{ ticket: 99, symbol: "XAUUSD", comment: "s1" }] : []; },
     closeDeal: async () => deal(),
-    sendOrder: async () => { sent++; return { status: "FILLED", ticket: 99, price: 2000, retcode: 10009, comment: "done" }; },
+    sendOrder: async () => { sent++; open = true; return { status: "FILLED", ticket: 99, price: 2000, retcode: 10009, comment: "done" }; },
   };
   const mk = () => new DemoExecutionBridge({ mode: "DEMO_STRESS_TEST", gateway: gw, whitelist: { logins: [111], servers: ["Exness-MT5Trial"] }, killSwitch: () => false, now: () => (t += 1000), store: { readLines: () => lines, append: (l) => lines.push(l) } });
   return { lines, mk, close: () => { open = false; }, setDown: (v: boolean) => { down = v; }, sent: () => sent };
