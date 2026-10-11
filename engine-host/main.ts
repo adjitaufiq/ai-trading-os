@@ -46,6 +46,9 @@ import { DEFAULT_RISK_POLICY, parseRiskPolicy, riskPercentOf, type RiskPolicy } 
 import { BrokerAccountProvider, resolveAccountMode, type AccountState } from "../src/core/execution/riskPolicy";
 import { demoHistoryRows, paperHistoryRows } from "../src/core/execution/demo/tradeLifecycle";
 import { validateDemoAccount } from "../src/core/execution/demo/guards";
+import { EVALUATION_JOURNAL_VERSION, buildTradeSnapshots, stressCounters, toEvaluationCsv } from "../src/core/execution/demo/evaluation";
+import { ARCHITECTURE_VERSION, OPERATOR_POLICY_VERSION } from "../src/core/technical/operator";
+import { DECISION_GATE_POLICY_VERSION } from "../src/core/paper/decisionGate";
 import type { MarketRuntime } from "../src/core/runtime/MarketRuntime";
 import { ControlPlaneAgent } from "../src/core/execution/control/agentSync";
 import { signRequest } from "../src/core/execution/control/contract";
@@ -190,6 +193,7 @@ if (pathMode === "DEMO") {
     void tick(); setInterval(() => { void tick(); }, 15_000);
   }
   demoRef = demo;
+  void demo?.sync().catch(() => undefined); // Phase 4B: capture broker closes that happened while the host was down
   setInterval(() => { void demo?.sync().catch((e) => log(`[demo-lab] sync failed ${(e as Error).message}`)); }, 15_000);
   log(`[demo-lab] EXECUTION_MODE=DEMO armed · logins ${whitelist.logins.join(",")} · servers ${whitelist.servers.join(",")}`);
 }
@@ -256,6 +260,16 @@ createServer((req, res) => {
     const now = Date.now();
     for (const symbol of host.symbols) { const b = host.bundle(symbol, now); if (b) res.write(sseFrame({ type: "SNAPSHOT_UPDATE", symbol, timestamp: new Date(now).toISOString(), data: b })); }
     sse.add(res); req.on("close", () => sse.delete(res));
+    return;
+  }
+  if (req.method === "GET" && (path === "/v1/evaluation/trades" || path === "/v1/evaluation/export.csv" || path === "/v1/evaluation/stats")) {
+    // Phase 4B Evaluation Build: read-only snapshots/CSV/counters from the append-only demo event log. Descriptive only.
+    const eventsFile = join(dataDir, "demo-events.jsonl");
+    const demoEvents = existsSync(eventsFile) ? readFileSync(eventsFile, "utf8").split("\n").filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }) : [];
+    const rows = buildTradeSnapshots(demoEvents, { engine_version: build.commit ?? build.engine_version, strategy_version: `${ARCHITECTURE_VERSION}|${OPERATOR_POLICY_VERSION}|${DECISION_GATE_POLICY_VERSION}`, journal_version: EVALUATION_JOURNAL_VERSION });
+    if (path.endsWith(".csv")) { res.writeHead(200, { "content-type": "text/csv; charset=utf-8", "content-disposition": "attachment; filename=evaluation-trades.csv", "cache-control": "no-store", ...ENGINE_CORS_HEADERS }); res.end(toEvaluationCsv(rows)); return; }
+    const body = JSON.stringify(path.endsWith("stats") ? stressCounters(rows) : { label: "EVALUATION_BUILD", trades: rows });
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store", ...ENGINE_CORS_HEADERS }); res.end(body);
     return;
   }
   if (req.method === "GET" && path === "/v1/journal/trades") {
