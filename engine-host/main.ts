@@ -101,9 +101,21 @@ if (pathMode === "DEMO") {
   if (env.DEMO_CONTROL_URL) log("[demo-lab] DEMO_CONTROL_URL set: orders blocked until it returns stopped=false (unset it for pure standalone)");
   const killFile = join(dataDir, "DEMO_KILL_SWITCH");
   const eventsFile = join(dataDir, "demo-events.jsonl");
+  // Phase 3.5 chain: Decision Gate → Shadow Guard (intent gate) → DemoExecutionBridge (risk validation/sizing)
+  //   → DemoExecutionLayer (mode check, duplicate/SL/TP/risk/symbol/account/position preflight + append-only
+  //   order lifecycle log) → shadowGatedGateway (port-level shadow) → broker demo gateway.
+  const lifecycleFile = join(dataDir, "order-lifecycle.jsonl");
+  const lifecycle = new OrderLifecycleLog(
+    { readLines: () => existsSync(lifecycleFile) ? readFileSync(lifecycleFile, "utf8").split("\n").filter(Boolean) : [], append: (l) => appendFileSync(lifecycleFile, `${l}\n`) },
+    () => Date.now(),
+  );
+  const layer = new DemoExecutionLayer({
+    mode: pathMode, whitelist, lifecycle, maxPositions: 1,
+    gateway: shadowGatedGateway(createDemoGatewayClient({ baseUrl: env.DEMO_EXEC_URL ?? "http://127.0.0.1:8100", token: env.DEMO_EXEC_TOKEN }), shadow),
+  });
   demo = new DemoExecutionBridge({
     mode: executionMode, whitelist, now: () => Date.now(), log,
-    gateway: shadowGatedGateway(createDemoGatewayClient({ baseUrl: env.DEMO_EXEC_URL ?? "http://127.0.0.1:8100", token: env.DEMO_EXEC_TOKEN }), shadow),
+    gateway: layer.asGatewayPort(),
     store: { readLines: () => existsSync(eventsFile) ? readFileSync(eventsFile, "utf8").split("\n").filter(Boolean) : [], append: (l) => appendFileSync(eventsFile, `${l}\n`) },
     killSwitch: () => cloudKill || existsSync(killFile) || (agent ? agent.current().halted : false),
     ...(agent ? { profile: () => agent!.current().profile } : {}),
