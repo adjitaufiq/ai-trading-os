@@ -123,10 +123,11 @@ describe("Phase 3.5 wiring — canonical EXECUTION_MODE + gateway-port chain", (
 
   it("EXECUTION_MODE=DEMO reaches the broker through layer → shadow-gated gateway", async () => {
     const r = rig("DEMO");
-    const guard = mkGuard(false);
-    const port = r.layer.asGatewayPort();
-    const chained = new DemoExecutionLayer({ mode: "DEMO", gateway: shadowGatedGateway(r.layer.asGatewayPort(), guard), whitelist: { logins: [1], servers: ["S"] }, lifecycle: r.lifecycle });
-    void chained; void port;
+    const guard = mkGuard(false); // shadow off: EXECUTION_MODE=DEMO
+    const port = new DemoExecutionLayer({
+      mode: "DEMO", whitelist: { logins: [1], servers: ["S"] }, lifecycle: r.lifecycle,
+      gateway: shadowGatedGateway((r.layer as unknown as { o: { gateway: DemoExecGatewayPort } }).o.gateway, guard),
+    }).asGatewayPort();
     const resp = await port.sendOrder(req());
     expect(resp.status).toBe("FILLED"); expect(resp.ticket).toBe(9);
     expect(r.sent).toHaveLength(1);
