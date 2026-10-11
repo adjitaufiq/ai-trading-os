@@ -86,7 +86,7 @@ describe("cross-symbol isolation", () => {
     expect(res["XAUUSD"]!.metrics).toEqual(xau.metrics);
     expect(res["XAUUSD"]!.context).toEqual(xau.context);
     expect(JSON.stringify(res["BTCUSD"]!.trades)).toBe(JSON.stringify(btc.trades));
-  });
+  }, 30_000); // CPU-bound 2×8000-bar replay; deterministic, no shared mutable state — only slow under full-suite CPU contention
   it("same price, different meaning: identical prices never share levels or rows", () => {
     const clone = xauPath.map((b) => ({ ...b.raw, symbol: "BTCUSD" }));
     const res = runMultiAssetReplay([...xauPath.map((b) => b.raw), ...clone], { sampleSize: 1000, maxTrades: 1000, maxBars: BARS });
