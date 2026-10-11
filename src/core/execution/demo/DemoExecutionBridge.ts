@@ -4,7 +4,7 @@
 // BEFORE the next side effect (SEND_ATTEMPT is written before the order is sent) so a restart can never double-send.
 import { buildFinalOrderPlan } from "../../../engine/risk/finalOrderPlan";
 import { BrokerAccountProvider } from "../../../engine/risk/accountStateProvider";
-import { DEFAULT_RISK_POLICY, riskPercentOf, type RiskPolicy } from "../../../engine/risk/riskPolicy";
+import { DEFAULT_RISK_POLICY, dailyLossPercentOf, riskPercentOf, type RiskPolicy } from "../../../engine/risk/riskPolicy";
 import { checkDemoSafety, dailyLossPercent, validateDemoAccount } from "./guards";
 import {
   DEMO_EXECUTION_POLICY_VERSION, DEMO_RISK_PROFILE, type AccountBlockReason, type BlockReason, type DemoAccountIdentity,
@@ -24,10 +24,10 @@ export class DemoExecutionBridge {
   private openCount = 0;
   private readonly profileOf: () => DemoRiskProfile;
   /** Phase 4A: risk % and position/daily limits come ONLY from risk-policy.json; a cloud/static profile may
-   *  supply the daily-loss limit but can never change risk_per_trade, max_position or max_daily_trade. */
+   *  never change risk_per_trade, max_daily_loss, max_position or max_daily_trade (Phase 4A.2: all from the policy). */
   private get profile(): DemoRiskProfile {
     const p = this.policy;
-    return { ...this.profileOf(), riskPercent: riskPercentOf(p), maxOpenPositions: p.max_position, maxTradesPerDay: p.max_daily_trade };
+    return { ...this.profileOf(), riskPercent: riskPercentOf(p), maxOpenPositions: p.max_position, maxTradesPerDay: p.max_daily_trade, maxDailyLossPercent: dailyLossPercentOf(p) };
   }
   private get policy(): RiskPolicy { return this.o.policy ?? DEFAULT_RISK_POLICY; }
 

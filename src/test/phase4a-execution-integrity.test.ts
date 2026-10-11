@@ -99,8 +99,8 @@ describe("Phase 4A execution integrity", () => {
     expect(shadowSafetyFromPolicy(DEFAULT_RISK_POLICY).maxDailyTrades).toBe(5);
     expect(riskPercentOf(DEFAULT_RISK_POLICY)).toBe(0.5);
     delete process.env["MAX_DAILY_TRADE"]; delete process.env["RISK_PER_TRADE"];
-    expect(parseRiskPolicy('{"risk_per_trade":0.005,"max_position":1,"max_symbol":1,"max_daily_trade":5,"emergency_stop":false,"extra":1}').ok).toBe(false);
-    expect(parseRiskPolicy('{"risk_per_trade":0.5,"max_position":1,"max_symbol":1,"max_daily_trade":5,"emergency_stop":false}').ok).toBe(false);
+    expect(parseRiskPolicy('{"risk_per_trade":0.005,"max_position":1,"max_symbol":1,"max_daily_trade":5,"max_daily_loss":0.02,"emergency_stop":false,"extra":1}').ok).toBe(false);
+    expect(parseRiskPolicy('{"risk_per_trade":0.5,"max_position":1,"max_symbol":1,"max_daily_trade":5,"max_daily_loss":0.02,"emergency_stop":false}').ok).toBe(false);
   });
 });
 
@@ -159,5 +159,53 @@ describe("Phase 4A.1 account state + lifecycle", () => {
     expect(t!.risk).toMatchObject({ risk_percent: 0.5, lot: 0.2, sl: 1995, tp: 2010 });
     expect(t!.execution).toMatchObject({ fill_price: 2000 });
     expect(t!.complete).toBe(true);
+  });
+});
+
+import { LivePaperLoop } from "@/core/paper/LivePaperLoop";
+import { demoHistoryRows } from "@/core/execution/demo/tradeLifecycle";
+import { dailyLossPercentOf } from "@/engine/risk/riskPolicy";
+
+describe("Phase 4A.2 account alignment", () => {
+  it("daily loss limit is locked in the policy; cloud profile cannot override", async () => {
+    expect(DEFAULT_RISK_POLICY.max_daily_loss).toBe(0.02);
+    expect(dailyLossPercentOf(DEFAULT_RISK_POLICY)).toBe(2);
+    expect(DEMO_RISK_PROFILE.maxDailyLossPercent).toBe(2);
+    expect(VIRTUAL_ACCOUNT_DEFAULTS.maxDailyLossPercent).toBe(2);
+    expect(STRESS_ENV.MAX_DAILY_LOSS_PERCENT).toBe(2);
+    // equity 1.5% below day start; a cloud profile claiming 1% daily loss is ignored ⇒ order still goes through
+    const sent: DemoOrderRequest[] = []; const ev = mem();
+    const g = gw(20_000, [], sent);
+    let bal = 20_000;
+    g.account = async () => ({ login: 1, server: "S", tradeMode: "DEMO", balance: bal, equity: bal, currency: "USD" });
+    const layer = new DemoExecutionLayer({ mode: "DEMO", gateway: g, whitelist: { logins: [1], servers: ["S"] }, lifecycle: new OrderLifecycleLog(mem().store, () => T) });
+    const bridge = new DemoExecutionBridge({ mode: "DEMO_STRESS_TEST", gateway: layer.asGatewayPort(), whitelist: { logins: [1], servers: ["S"] }, store: ev.store, killSwitch: () => false, now: () => T,
+      profile: () => ({ ...DEMO_RISK_PROFILE, maxDailyLossPercent: 1 }) });
+    await bridge.sync(); bal = 19_700;
+    await bridge.handle(intent("dl"));
+    expect(sent).toHaveLength(1);
+  });
+
+  it("paper M4 uses the broker account state in DEMO and fails closed when unavailable", () => {
+    const loop = new LivePaperLoop("XAUUSD", "REAL_MT5", { tick_size: 0.01, contract_size: 100 } as never);
+    expect(loop.accountSourceLabel()).toBe("PAPER_SIMULATED");
+    loop.setAccountStateSource(() => null);
+    expect(loop.accountSourceLabel()).toBe("EXNESS_DEMO");
+    const src = readFileSync("src/core/paper/LivePaperLoop.ts", "utf8");
+    // every M4 input (equity, exposure, daily DD, paper lot base) reads the same acctBase
+    expect(src).toMatch(/equity: acctBase\.equity, peakEquity: acctBase\.peak/);
+    expect(src).toMatch(/maxSymbolRiskUSD: acctBase\.balance/);
+    expect(src).toMatch(/accountEquity: acctBase\.equity/);
+    expect(src).toMatch(/ACCOUNT_STATE_UNAVAILABLE/);
+  });
+
+  it("trade history row carries the account source used for sizing", async () => {
+    const ev = mem(); const sent: DemoOrderRequest[] = [];
+    const layer = new DemoExecutionLayer({ mode: "DEMO", gateway: gw(20_000, [], sent), whitelist: { logins: [1], servers: ["S"] }, lifecycle: new OrderLifecycleLog(mem().store, () => T) });
+    const bridge = new DemoExecutionBridge({ mode: "DEMO_STRESS_TEST", gateway: layer.asGatewayPort(), whitelist: { logins: [1], servers: ["S"] }, store: ev.store, killSwitch: () => false, now: () => T });
+    await bridge.handle(intent("h1"));
+    const [row] = demoHistoryRows(ev.lines.map((l) => JSON.parse(l)));
+    expect(row).toMatchObject({ tradeId: "demo_h1", symbol: "XAUUSD", entry: 2000, result: "OPEN", risk_percent: 0.5, lot: 0.2, account_source: "EXNESS_DEMO" });
+    expect(readFileSync("engine-host/main.ts", "utf8")).toMatch(/"\/v1\/journal\/trades"/);
   });
 });

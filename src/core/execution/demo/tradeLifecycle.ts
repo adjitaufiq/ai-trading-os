@@ -46,3 +46,41 @@ export function reconstructTrades(events: readonly DemoEvent[]): TradeLifecycle[
   }
   return out;
 }
+
+/** Phase 4A.2 read-only trade history row (copy of journal facts; no calculation beyond field selection). */
+export interface TradeHistoryRow {
+  readonly tradeId: string; readonly kind: "DEMO" | "PAPER"; readonly symbol: string; readonly direction: "BUY" | "SELL";
+  readonly entry: number | null; readonly exit: number | null; readonly result: string | null;
+  readonly profit: number | null; readonly risk_percent: number | null; readonly lot: number | null; readonly risk_usd: number | null;
+  readonly account_source: string | null; readonly opened_at: string | null; readonly closed_at: string | null;
+}
+const iso = (ms: number | null | undefined) => (typeof ms === "number" && Number.isFinite(ms) ? new Date(ms).toISOString() : null);
+
+export function demoHistoryRows(events: readonly DemoEvent[]): TradeHistoryRow[] {
+  return reconstructTrades(events).map((t) => {
+    const s = events.find((e) => e.type === "SEND_ATTEMPT" && e.signalId === t.signalId)!;
+    const intent = s.data!["intent"] as DemoOrderIntent;
+    const closed = t.steps.find((x) => x.stage === "POSITION_CLOSED");
+    const perf = t.steps.find((x) => x.stage === "PERFORMANCE_RESULT");
+    const acct = t.account as { source?: string } | null;
+    return Object.freeze({
+      tradeId: t.tradeId, kind: "DEMO" as const, symbol: t.symbol, direction: intent.direction,
+      entry: t.execution.fill_price, exit: (closed?.data["price"] as number | undefined) ?? null,
+      result: (perf?.data["outcome"] as string | undefined) ?? (t.execution.response?.startsWith("FILLED") ? "OPEN" : t.execution.response),
+      profit: (perf?.data["profit"] as number | undefined) ?? null, risk_percent: t.risk.risk_percent, lot: t.risk.lot,
+      risk_usd: Number(s.data!["riskUSD"]) || null, account_source: acct?.source ?? null,
+      opened_at: iso(t.execution.filled_at ?? s.at), closed_at: iso(closed?.at),
+    });
+  });
+}
+
+export function paperHistoryRows(
+  trades: readonly { tradeId: string; symbol: string; direction: "BUY" | "SELL"; entryPrice: number; exitPrice: number; result: string; profitLossUSD: number; lot: number; riskUSD: number; openedAt: number; closedAt: number }[],
+  sourceOf: (tradeId: string) => string | null, riskPercent: number,
+): TradeHistoryRow[] {
+  return trades.map((t) => Object.freeze({
+    tradeId: t.tradeId, kind: "PAPER" as const, symbol: t.symbol, direction: t.direction, entry: t.entryPrice, exit: t.exitPrice,
+    result: t.result, profit: t.profitLossUSD, risk_percent: riskPercent, lot: t.lot, risk_usd: t.riskUSD,
+    account_source: sourceOf(t.tradeId), opened_at: iso(t.openedAt * (t.openedAt < 1e12 ? 1000 : 1)), closed_at: iso(t.closedAt * (t.closedAt < 1e12 ? 1000 : 1)),
+  }));
+}

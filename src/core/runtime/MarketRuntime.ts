@@ -17,6 +17,7 @@ import { detectMissingIntervals, type MissingInterval } from "../candles/Missing
 import { RadarRuntimeService } from "../radar/RadarRuntimeService";
 import type { RadarHealth, RadarSnapshot } from "../radar/types";
 import { TechnicalSliceService } from "../technical/TechnicalSliceService";
+import type { AccountState } from "../../engine/risk/accountStateProvider";
 import { LivePaperLoop, type PrimaryBiasProvider, type ApprovedPaperOpen, type PaperPipelineEvent, type PaperLoopState, type PaperReadinessView, type VirtualAccountView } from "../paper/LivePaperLoop";
 import type { JournalTrade } from "../../engine/journal/types";
 import type { MarketDataHandlers, MarketDataStream } from "../broker/gateway/BrokerGatewayClient";
@@ -95,6 +96,8 @@ export interface MarketRuntimeReader {
   paperAccount?(): Readonly<VirtualAccountView>;
   /** M6 journal rows produced by the live paper loop, tagged with dataSource. */
   paperTrades?(): readonly Readonly<JournalTrade>[];
+  /** Phase 4A.2: account source label that approved/sized a paper trade (copy). */
+  paperTradeAccountSource?(tradeId: string): "PAPER_SIMULATED" | "EXNESS_DEMO" | null;
   /** Read-only copy of the paper loop's last per-stage outcome (observability). */
   paperReadiness?(): PaperReadinessView;
   now(): number;
@@ -134,6 +137,8 @@ export class MarketRuntime {
   readonly reader: MarketRuntimeReader;
   private readonly radar: RadarRuntimeService;
   private readonly paper: LivePaperLoop;
+  /** Phase 4A.2: route the paper M4 account base to the broker demo account state (ACCOUNT_MODE=DEMO). */
+  setPaperAccountStateSource(fn: (() => AccountState | null) | null): void { this.paper.setAccountStateSource(fn); }
   private biasSlice: TechnicalSliceService | null = null;
 
   constructor(private readonly o: MarketRuntimeOptions) {
@@ -349,6 +354,7 @@ export class MarketRuntime {
       radarHealth: () => self.radar.health(self.o.clock.now()),
       paperAccount: () => self.paper.account(),
       paperTrades: () => self.paper.trades(),
+      paperTradeAccountSource: (id: string) => self.paper.tradeAccountSource(id),
       paperReadiness: () => self.paper.readiness(),
       missingIntervals(tf) {
         const c = closed(tf);

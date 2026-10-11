@@ -1,5 +1,5 @@
 import type { JournalTrade } from "../journal/types";
-import { DEFAULT_RISK_POLICY, riskPercentOf } from "../risk/riskPolicy";
+import { DEFAULT_RISK_POLICY, dailyLossPercentOf, riskPercentOf } from "../risk/riskPolicy";
 // M7 — Automation stress test contracts.
 // MEASUREMENT ONLY: runs the existing M1B→M6.5 chain unattended on SIMULATED
 // (or supplied historical) candles. Never changes EMA/SL/RR/risk params, never
@@ -169,7 +169,7 @@ export const STRESS_ENV = {
   BROKER: { volumeMin: 0.01, volumeMax: 100, volumeStep: 0.01, tickSize: 0.01, tickValue: 1, marginPerLot: 1000 },
   /** Phase 4A.1: same single policy as paper and demo (risk-policy.json, 0.5%). */
   RISK_PERCENT: riskPercentOf(DEFAULT_RISK_POLICY),
-  MAX_DAILY_LOSS_PERCENT: 5,
+  MAX_DAILY_LOSS_PERCENT: dailyLossPercentOf(DEFAULT_RISK_POLICY),
   MAX_SLIPPAGE: 0.5,
   /** Rolling M15 ATR history injected into M1B.9 (environment window, not a strategy param). */
   ATR_HISTORY: 200,

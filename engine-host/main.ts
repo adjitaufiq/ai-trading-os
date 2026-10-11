@@ -42,7 +42,11 @@ import { buildDemoIntent } from "../src/core/execution/demo/intent";
 import { parseExecutionMode } from "../src/core/execution/demo/types";
 import { DemoExecutionLayer, OrderLifecycleLog, PositionReconciler, RECONCILE_INTERVAL_MS, resolveExecutionPathMode } from "../src/core/execution/demo/DemoExecutionLayer";
 import { ShadowGuard, resolveShadowActive, shadowGatedGateway, shadowSafetyFromPolicy } from "../src/core/execution/shadow/ShadowGuard";
-import { DEFAULT_RISK_POLICY, parseRiskPolicy, type RiskPolicy } from "../src/core/execution/riskPolicy";
+import { DEFAULT_RISK_POLICY, parseRiskPolicy, riskPercentOf, type RiskPolicy } from "../src/core/execution/riskPolicy";
+import { BrokerAccountProvider, resolveAccountMode, type AccountState } from "../src/core/execution/riskPolicy";
+import { demoHistoryRows, paperHistoryRows } from "../src/core/execution/demo/tradeLifecycle";
+import { validateDemoAccount } from "../src/core/execution/demo/guards";
+import type { MarketRuntime } from "../src/core/runtime/MarketRuntime";
 import { ControlPlaneAgent } from "../src/core/execution/control/agentSync";
 import { signRequest } from "../src/core/execution/control/contract";
 import type { EnginePipelineEvent } from "../src/core/enginehost/EngineHost";
@@ -98,6 +102,30 @@ console.log(`${new Date().toISOString()} [shadow] ${shadow.status().label} · ma
 // ---- DEMO path wiring (no-op unless EXECUTION_MODE=DEMO; legacy DEMO_STRESS_TEST accepted) ----
 const pathMode = resolveExecutionPathMode(env);
 const executionMode = pathMode === "DEMO" ? "DEMO_STRESS_TEST" as const : parseExecutionMode(env.EXECUTION_MODE);
+// ---- Phase 4A.2 Account State Provider: ACCOUNT_MODE=PAPER (simulated) | DEMO (Exness demo); REAL refused. ----
+// EXECUTION_MODE=DEMO forces ACCOUNT_MODE=DEMO so approval, lot, exposure and daily loss all use the broker account.
+const accountMode = pathMode === "DEMO" ? "DEMO" as const : resolveAccountMode(env);
+if (accountMode === "REAL") throw new Error("ACCOUNT_MODE=REAL is not supported (real account capability is absent)");
+let accountCache: { state: AccountState; at: number } | null = null;
+const ACCOUNT_STATE_MAX_AGE_MS = 60_000;
+const accountStateSource = accountMode === "DEMO"
+  ? () => (accountCache && Date.now() - accountCache.at <= ACCOUNT_STATE_MAX_AGE_MS ? accountCache.state : null)
+  : null;
+if (accountMode === "DEMO") {
+  if (!env.DEMO_EXEC_TOKEN) throw new Error("ACCOUNT_MODE=DEMO requires DEMO_EXEC_TOKEN (read-only account read)");
+  const wl = parseWhitelist(env.DEMO_ACCOUNT_WHITELIST, env.DEMO_SERVER_WHITELIST);
+  if (!wl.logins.length || !wl.servers.length) throw new Error("ACCOUNT_MODE=DEMO requires DEMO_ACCOUNT_WHITELIST and DEMO_SERVER_WHITELIST");
+  const reader = shadowGatedGateway(createDemoGatewayClient({ baseUrl: env.DEMO_EXEC_URL ?? "http://127.0.0.1:8100", token: env.DEMO_EXEC_TOKEN }), shadow);
+  const provider = new BrokerAccountProvider({
+    now: () => Date.now(),
+    read: async () => { const id = await reader.account(); return id && validateDemoAccount(id, wl).ok ? id : null; },
+  });
+  const pull = async () => { const st = await provider.current(); if (st) accountCache = { state: st, at: Date.now() }; else log("[account] DEMO account state unavailable — paper M4 approvals blocked"); };
+  void pull(); setInterval(() => { void pull(); }, 15_000);
+}
+log(`[account] ACCOUNT_MODE=${accountMode}`);
+const runtimes = new Map<string, MarketRuntime>();
+
 let demo: DemoExecutionBridge | null = null;
 let cloudKill = false;
 let agent: ControlPlaneAgent | null = null;
@@ -207,7 +235,8 @@ const host = new EngineHost({
     void demo.handle(intent).catch((x) => log(`[demo-lab] handle failed ${(x as Error).message}`));
   },
   ...(demo ? { demoStatus: () => demo!.status() } : {}),
-  mount: ({ symbol, onChange, onRuntime }) => mountCanonicalRuntime({ client, config, wsFactory: browserWebSocketFactory, symbol, onChange, onRuntime }),
+  mount: ({ symbol, onChange, onRuntime }) => mountCanonicalRuntime({ client, config, wsFactory: browserWebSocketFactory, symbol, onChange,
+    onRuntime: (rt) => { rt.setPaperAccountStateSource(accountStateSource); runtimes.set(symbol, rt); onRuntime(rt); } }),
 });
 host.start();
 
@@ -227,6 +256,15 @@ createServer((req, res) => {
     const now = Date.now();
     for (const symbol of host.symbols) { const b = host.bundle(symbol, now); if (b) res.write(sseFrame({ type: "SNAPSHOT_UPDATE", symbol, timestamp: new Date(now).toISOString(), data: b })); }
     sse.add(res); req.on("close", () => sse.delete(res));
+    return;
+  }
+  if (req.method === "GET" && path === "/v1/journal/trades") {
+    // Phase 4A.2 read-only trade history: demo (broker) + paper rows, each labelled with its account source.
+    const eventsFile = join(dataDir, "demo-events.jsonl");
+    const demoEvents = existsSync(eventsFile) ? readFileSync(eventsFile, "utf8").split("\n").filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }) : [];
+    const paper = [...runtimes.values()].flatMap((rt) => paperHistoryRows((rt.reader.paperTrades?.() ?? []) as never, (id) => rt.reader.paperTradeAccountSource?.(id) ?? null, riskPercentOf(riskPolicy)));
+    const body = JSON.stringify({ account_mode: accountMode, risk_policy: riskPolicy, demo: demoHistoryRows(demoEvents), paper });
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store", ...ENGINE_CORS_HEADERS }); res.end(body);
     return;
   }
   const out = routeEngineRequest(host, req.method ?? "GET", req.url ?? "/", Date.now());
