@@ -84,7 +84,7 @@ export class DemoExecutionBridge {
           attemptedSide: intent.direction, primaryBias, counterTrendCondition,
           timeframeConflict: { H4: primaryBias, H1: intent.context.h1State, attempted: intent.direction, source: primaryBias ? "TECHNICAL_H4_CLOSED" : "PRIMARY_BIAS_UNAVAILABLE" },
         };
-        return block("BLOCKED_COUNTER_PRIMARY_BIAS", `primaryBias=${primaryBias ?? "UNAVAILABLE"} attemptedSide=${intent.direction} counterTrend=${counterTrendCondition ?? "NONE"}`, audit);
+        return block("BLOCK_COUNTER_PRIMARY_BIAS", `primaryBias=${primaryBias ?? "UNAVAILABLE"} attemptedSide=${intent.direction} counterTrend=${counterTrendCondition ?? "NONE"}`, audit);
       }
       const id = await this.refreshAccount();
       if (!id) return block(this.lastAccount.reason ?? "IDENTITY_UNAVAILABLE");

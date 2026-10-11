@@ -124,7 +124,7 @@ export function runAlignedReplay(symbol: string, spec: SymbolSpecification, inpu
   const gateBlock: Record<string, number> = {}, preGate: Record<string, number> = {}, down: Record<string, number> = {};
   let candidates = 0, allow = 0, executed = 0, exits = 0;
   for (const r of rows) {
-    if (r.decision?.startsWith("NO_SETUP COUNTER_PRIMARY_BIAS") || r.decision?.startsWith("NO_SETUP NO_PRIMARY_BIAS") || r.decision?.startsWith("SETUP_INVALIDATED")) inc(preGate, r.decision);
+    if (r.decision?.startsWith("NO_SETUP BLOCK_COUNTER_PRIMARY_BIAS") || r.decision?.startsWith("NO_SETUP NO_PRIMARY_BIAS") || r.decision?.startsWith("SETUP_INVALIDATED")) inc(preGate, r.decision);
     for (const x of r.records) {
       if (x.kind === "CANDIDATE") candidates++;
       if (x.kind === "GATE") { if (x.outcome === "ALLOW") allow++; else inc(gateBlock, x.reason); }

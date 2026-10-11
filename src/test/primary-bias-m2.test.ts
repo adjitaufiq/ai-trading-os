@@ -48,13 +48,13 @@ describe("PrimaryBias → M2 paper gate", () => {
     const r = run("SELL", "BUY"); r.step();
     expect(h.created).toBe(0);
     expect(r.events.filter((e) => e.type === "READY")).toHaveLength(0);
-    expect(r.loop.account().lastDecision).toBe("NO_SETUP COUNTER_PRIMARY_BIAS");
+    expect(r.loop.account().lastDecision).toBe("NO_SETUP BLOCK_COUNTER_PRIMARY_BIAS");
   });
 
   it("B. H4 BUY + bearish M15/M5 reaction → SELL rejected before createSetup", () => {
     const r = run("BUY", "SELL"); r.step();
     expect(h.created).toBe(0);
-    expect(r.loop.account().lastDecision).toBe("NO_SETUP COUNTER_PRIMARY_BIAS");
+    expect(r.loop.account().lastDecision).toBe("NO_SETUP BLOCK_COUNTER_PRIMARY_BIAS");
   });
 
   it.each(["NONE", "MISSING"] as const)("C. H4 %s → no READY setup, no S/R fallback", (b) => {
@@ -85,7 +85,7 @@ describe("PrimaryBias → M2 paper gate", () => {
     r.setBias("SELL"); r.step();
     expect(r.events.filter((e) => e.type === "READY")).toHaveLength(0);
     expect(r.loop.exportState().setup).toBeNull();
-    expect(r.loop.account().lastDecision).toBe("NO_SETUP COUNTER_PRIMARY_BIAS");
+    expect(r.loop.account().lastDecision).toBe("NO_SETUP BLOCK_COUNTER_PRIMARY_BIAS");
     expect(h.created).toBe(1);
   });
 
