@@ -79,16 +79,17 @@ const shadow = new ShadowGuard({
 });
 console.log(`${new Date().toISOString()} [shadow] ${shadow.status().label} · max_daily_trade ${shadow.safety.maxDailyTrades}`);
 
-// ---- Stage 10 DEMO lab wiring (no-op unless EXECUTION_MODE=DEMO_STRESS_TEST) ----
-const executionMode = parseExecutionMode(env.EXECUTION_MODE);
+// ---- DEMO path wiring (no-op unless EXECUTION_MODE=DEMO; legacy DEMO_STRESS_TEST accepted) ----
+const pathMode = resolveExecutionPathMode(env);
+const executionMode = pathMode === "DEMO" ? "DEMO_STRESS_TEST" as const : parseExecutionMode(env.EXECUTION_MODE);
 let demo: DemoExecutionBridge | null = null;
 let cloudKill = false;
 let agent: ControlPlaneAgent | null = null;
 const AGENT_VERSION = "engine-host/control-plane-v1";
-if (executionMode === "DEMO_STRESS_TEST") {
-  if (!env.DEMO_EXEC_TOKEN) throw new Error("DEMO_STRESS_TEST requires DEMO_EXEC_TOKEN");
+if (pathMode === "DEMO") {
+  if (!env.DEMO_EXEC_TOKEN) throw new Error("EXECUTION_MODE=DEMO requires DEMO_EXEC_TOKEN");
   const whitelist = parseWhitelist(env.DEMO_ACCOUNT_WHITELIST, env.DEMO_SERVER_WHITELIST);
-  if (!whitelist.logins.length || !whitelist.servers.length) throw new Error("DEMO_STRESS_TEST requires DEMO_ACCOUNT_WHITELIST and DEMO_SERVER_WHITELIST");
+  if (!whitelist.logins.length || !whitelist.servers.length) throw new Error("EXECUTION_MODE=DEMO requires DEMO_ACCOUNT_WHITELIST and DEMO_SERVER_WHITELIST");
   if (env.CONTROL_PLANE_URL && env.EXECUTION_AGENT_SECRET) {
     agent = new ControlPlaneAgent({
       baseUrl: env.CONTROL_PLANE_URL, secret: env.EXECUTION_AGENT_SECRET, agentId: env.EXECUTION_AGENT_ID ?? "vps-1",
