@@ -2,7 +2,7 @@
 // Executor only: it never evaluates strategy, bias, entry, SL/TP or risk math. It receives an already-approved intent plus
 // the risk validation outcome (copied), runs broker order safety preflight, records every order lifecycle state append-only,
 // and reconciles internal state vs broker demo positions. Disabled by default (EXECUTION_MODE=SHADOW).
-// Not wired into the engine host: preparation only, no automatic demo orders.
+// Phase 3.5 wired in engine-host; Phase 4A adds MAX_SYMBOL on real broker positions + PositionReconciler.
 import { validateDemoAccount } from "./guards";
 import type { DemoExecGatewayPort, DemoOrderIntent, DemoOrderRequest, DemoOrderResponse, DemoPosition, DemoWhitelist } from "./types";
 
@@ -21,7 +21,7 @@ export interface RiskValidation { readonly approved: boolean; readonly volume: n
 
 export type PreflightBlock =
   | "EXECUTION_MODE_SHADOW" | "SYMBOL_INVALID" | "ACCOUNT_NOT_CONNECTED" | "POSITION_LIMIT"
-  | "DUPLICATE_ORDER" | "SL_MISSING" | "TP_MISSING" | "RISK_NOT_APPROVED";
+  | "DUPLICATE_ORDER" | "SL_MISSING" | "TP_MISSING" | "RISK_NOT_APPROVED" | "SYMBOL_LIMIT" | "DUPLICATE_SYMBOL" | "RECONCILE_MISMATCH";
 
 export type OrderState = "REQUESTED" | "ACCEPTED" | "REJECTED" | "FILLED" | "CANCELLED" | "CLOSED" | "BLOCKED";
 
@@ -78,6 +78,10 @@ export interface DemoLayerOptions {
   readonly whitelist: DemoWhitelist;
   readonly lifecycle: OrderLifecycleLog;
   readonly maxPositions?: number;
+  /** Phase 4A: max distinct symbols across actual broker positions (risk-policy.json max_symbol). */
+  readonly maxSymbols?: number;
+  /** Phase 4A: post-order + periodic reconciliation; a mismatch blocks new orders. */
+  readonly reconciler?: PositionReconciler;
 }
 
 export type ExecuteResult =
@@ -94,6 +98,7 @@ export class DemoExecutionLayer {
     if (!(intent.stopLoss > 0)) return "SL_MISSING";
     if (!(intent.takeProfit > 0)) return "TP_MISSING";
     if (!risk.approved || !(risk.volume !== null && risk.volume > 0)) return "RISK_NOT_APPROVED";
+    if (this.o.reconciler?.blocked()) return "RECONCILE_MISMATCH";
     let info = null; try { info = await this.o.gateway.symbol(intent.symbol); } catch { info = null; }
     if (!info || info.symbol.toUpperCase() !== intent.symbol.toUpperCase()) return "SYMBOL_INVALID";
     let acct = null; try { acct = await this.o.gateway.account(); } catch { acct = null; }
@@ -102,6 +107,10 @@ export class DemoExecutionLayer {
     try { positions = await this.o.gateway.positions(); } catch { return "ACCOUNT_NOT_CONNECTED"; }
     if (positions.some((p) => p.comment.includes(intent.signalId))) return "DUPLICATE_ORDER";
     if (positions.length >= (this.o.maxPositions ?? 1)) return "POSITION_LIMIT";
+    // Phase 4A MAX_SYMBOL on actual broker positions: one position per symbol, and a cap on distinct symbols.
+    const syms = new Set(positions.map((p) => p.symbol.toUpperCase()));
+    if (syms.has(intent.symbol.toUpperCase())) return "DUPLICATE_SYMBOL";
+    if (syms.size >= (this.o.maxSymbols ?? 1)) return "SYMBOL_LIMIT";
     return null;
   }
 
@@ -117,9 +126,12 @@ export class DemoExecutionLayer {
     try {
       const r = await this.o.gateway.sendOrder({ signalId: intent.signalId, symbol: intent.symbol, direction: intent.direction, volume: risk.volume!, stopLoss: intent.stopLoss, takeProfit: intent.takeProfit });
       lc.record(intent.signalId, intent.symbol, "DEMO", r.status === "FILLED" ? "FILLED" : "REJECTED", r.comment, { ticket: r.ticket, price: r.price, retcode: r.retcode });
+      // Phase 4A A: SEND → RESPONSE → QUERY BROKER POSITION → RECONCILE → JOURNAL
+      await this.o.reconciler?.reconcile("POST_ORDER").catch(() => undefined);
       return { block: null, response: r };
     } catch (e) {
       lc.record(intent.signalId, intent.symbol, "DEMO", "REJECTED", `ERROR ${(e as Error).message}`);
+      await this.o.reconciler?.reconcile("POST_ORDER").catch(() => undefined);
       return { block: null, response: { status: "ERROR", ticket: null, price: null, retcode: null, comment: (e as Error).message } };
     }
   }
@@ -173,4 +185,61 @@ export function reconcilePositions(internal: readonly { signalId: string; symbol
   }
   for (const p of broker) if (!matched.has(p.ticket)) issues.push({ kind: "UNTRACKED_POSITION", ticket: p.ticket, symbol: p.symbol });
   return { ok: issues.length === 0, issues };
+}
+
+// ---- Phase 4A — Broker reconciliation (post-order + periodic). Executor-side state check only. ----
+export const RECONCILE_INTERVAL_MS = 60_000;
+
+export interface ReconcileRecord {
+  readonly schema: "reconcile-v1"; readonly trigger: "POST_ORDER" | "PERIODIC" | "STARTUP";
+  readonly at: number; readonly timestamp: string; readonly ok: boolean;
+  readonly issues: readonly ReconcileIssue[]; readonly broker_positions: number; readonly internal_open: number;
+  readonly closed: readonly string[]; readonly error: string | null;
+}
+
+/** Compares lifecycle FILLED signals vs actual broker positions. Broker-side SL/TP closes are recorded as CLOSED
+ *  (confirmed via closeDeal), never flagged. Any mismatch ⇒ blocked() true until a later clean reconcile.
+ *  On restart the last persisted record seeds the block flag (fail closed). Every run is journaled append-only. */
+export class PositionReconciler {
+  private isBlocked = false;
+  private last: ReconcileRecord | null = null;
+  constructor(private readonly o: {
+    gateway: DemoExecGatewayPort; lifecycle: OrderLifecycleLog; store: LifecycleStore; now: () => number;
+    alert?: (r: ReconcileRecord) => void;
+  }) {
+    const lines = o.store.readLines();
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try { const r = JSON.parse(lines[i]!) as ReconcileRecord; if (r && r.schema === "reconcile-v1") { this.last = r; this.isBlocked = !r.ok; break; } } catch { /* torn */ }
+    }
+  }
+  blocked(): boolean { return this.isBlocked; }
+  lastRecord(): ReconcileRecord | null { return this.last; }
+
+  async reconcile(trigger: ReconcileRecord["trigger"]): Promise<ReconcileRecord> {
+    let positions: readonly DemoPosition[] | null = null; let error: string | null = null;
+    try { positions = await this.o.gateway.positions(); } catch (e) { error = (e as Error).message; }
+    const closed: string[] = [];
+    let issues: readonly ReconcileIssue[] = [];
+    if (positions) {
+      let r = reconcilePositions(this.o.lifecycle.openSignals(), positions);
+      for (const i of r.issues) {
+        if (i.kind !== "MISSING_POSITION") continue;
+        const ticket = Number(this.o.lifecycle.all().find((x) => x.signal_id === i.signalId && x.state === "FILLED")?.data?.["ticket"]);
+        const deal = Number.isFinite(ticket) ? await this.o.gateway.closeDeal(ticket).catch(() => null) : null;
+        if (deal) { this.o.lifecycle.record(i.signalId, i.symbol, "DEMO", "CLOSED", deal.reason, { ...deal }); closed.push(i.signalId); }
+      }
+      if (closed.length) r = reconcilePositions(this.o.lifecycle.openSignals(), positions);
+      issues = r.issues;
+    }
+    const at = this.o.now();
+    const ok = positions !== null && issues.length === 0;
+    const rec: ReconcileRecord = Object.freeze({
+      schema: "reconcile-v1", trigger, at, timestamp: new Date(at).toISOString(), ok, issues,
+      broker_positions: positions?.length ?? 0, internal_open: this.o.lifecycle.openSignals().length, closed, error,
+    });
+    this.o.store.append(JSON.stringify(rec)); // journal first
+    this.last = rec; this.isBlocked = !ok;
+    if (!ok) { try { this.o.alert?.(rec); } catch { /* alert never affects state */ } }
+    return rec;
+  }
 }
