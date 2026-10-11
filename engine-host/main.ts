@@ -9,7 +9,9 @@
 //   EXECUTION_MODE        SHADOW | DEMO   (default SHADOW = analyze + journal only, no broker order)
 //                         legacy values accepted: DEMO_STRESS_TEST → DEMO, REAL_DISABLED/PAPER_ONLY → SHADOW
 //   SHADOW_MODE           legacy override; only ON is honored (forces shadow even in DEMO). OFF is ignored.
-//   MAX_DAILY_TRADE  shadow/demo safety daily cap (default 5); MAX_POSITION=1, MAX_SYMBOL=1, duplicate/SL/TP/emergency stop fixed ON
+//   RISK_POLICY_FILE  location of risk-policy.json (default engine-host/risk-policy.json). Phase 4A: the ONLY source of
+//                     risk_per_trade / max_position / max_symbol / max_daily_trade / emergency_stop. Env never overrides them
+//                     (MAX_DAILY_TRADE is ignored). Invalid file ⇒ host refuses to start; missing ⇒ SHADOW only.
 //   Emergency stop: create file <ENGINE_DATA_DIR>/EMERGENCY_STOP (or DEMO_KILL_SWITCH)
 // DEMO path (wired only when EXECUTION_MODE=DEMO):
 //   DEMO_EXEC_URL         loopback demo execution gateway (default http://127.0.0.1:8100)
@@ -39,7 +41,9 @@ import { parseWhitelist } from "../src/core/execution/demo/guards";
 import { buildDemoIntent } from "../src/core/execution/demo/intent";
 import { parseExecutionMode } from "../src/core/execution/demo/types";
 import { DemoExecutionLayer, OrderLifecycleLog, resolveExecutionPathMode } from "../src/core/execution/demo/DemoExecutionLayer";
-import { ShadowGuard, parseShadowSafety, resolveShadowActive, shadowGatedGateway } from "../src/core/execution/shadow/ShadowGuard";
+import { ShadowGuard, resolveShadowActive, shadowGatedGateway, shadowSafetyFromPolicy } from "../src/core/execution/shadow/ShadowGuard";
+import { DEFAULT_RISK_POLICY, parseRiskPolicy, type RiskPolicy } from "../src/engine/risk/riskPolicy";
+import { PositionReconciler, RECONCILE_INTERVAL_MS } from "../src/core/execution/demo/DemoExecutionLayer";
 import { ControlPlaneAgent } from "../src/core/execution/control/agentSync";
 import { signRequest } from "../src/core/execution/control/contract";
 import type { EnginePipelineEvent } from "../src/core/enginehost/EngineHost";
@@ -67,15 +71,29 @@ const config = makeGatewayConfig({ httpBaseUrl: gatewayUrl, timeoutMs: 10_000 })
 const client = new BrokerGatewayClient({ config, wallClock: new LiveClock(), monoClock: { now: () => performance.now() }, wsFactory: browserWebSocketFactory });
 const log = (m: string) => console.log(`${new Date().toISOString()} ${m}`);
 
+// ---- Phase 4A risk policy: single auditable file; env only gives its location. ----
+const policyFile = resolve(env.RISK_POLICY_FILE ?? join(import.meta.dirname ?? ".", "risk-policy.json"));
+let riskPolicy: RiskPolicy = DEFAULT_RISK_POLICY;
+let policyLoaded = false;
+if (existsSync(policyFile)) {
+  const pr = parseRiskPolicy(readFileSync(policyFile, "utf8"));
+  if (!pr.ok) throw new Error(`risk-policy.json invalid (${pr.error}) at ${policyFile}`);
+  riskPolicy = pr.policy; policyLoaded = true;
+}
+log(`[risk-policy] ${policyLoaded ? policyFile : "NOT FOUND (defaults, DEMO refused)"} ${JSON.stringify(riskPolicy)}`);
+// Cached actual broker positions (refreshed by reconciliation) feed the shadow MAX_POSITION/MAX_SYMBOL checks.
+let brokerPositions: readonly { symbol: string }[] = [];
+
 // ---- Phase 2A Shadow Guard: every approved order intent passes here; while active, no broker send is reachable. ----
 const shadowFile = join(dataDir, "shadow-events.jsonl");
 const shadowActive = resolveShadowActive(env);
 let demoRef: { status(): { openPositions: number } } | null = null;
+const log0 = (m: string) => console.log(`${new Date().toISOString()} ${m}`);
 const shadow = new ShadowGuard({
-  active: () => shadowActive, now: () => Date.now(), log: (m) => console.log(`${new Date().toISOString()} ${m}`), safety: parseShadowSafety(env),
+  active: () => shadowActive, now: () => Date.now(), log: (m) => console.log(`${new Date().toISOString()} ${m}`), safety: shadowSafetyFromPolicy(riskPolicy),
   store: { readLines: () => existsSync(shadowFile) ? readFileSync(shadowFile, "utf8").split("\n").filter(Boolean) : [], append: (l) => appendFileSync(shadowFile, `${l}\n`) },
-  emergencyStop: () => existsSync(join(dataDir, "EMERGENCY_STOP")) || existsSync(join(dataDir, "DEMO_KILL_SWITCH")),
-  openState: () => ({ openPositions: demoRef?.status().openPositions ?? 0, openSymbols: [] }),
+  emergencyStop: () => riskPolicy.emergency_stop || existsSync(join(dataDir, "EMERGENCY_STOP")) || existsSync(join(dataDir, "DEMO_KILL_SWITCH")),
+  openState: () => ({ openPositions: Math.max(brokerPositions.length, demoRef?.status().openPositions ?? 0), openSymbols: brokerPositions.map((p) => p.symbol) }),
 });
 console.log(`${new Date().toISOString()} [shadow] ${shadow.status().label} · max_daily_trade ${shadow.safety.maxDailyTrades}`);
 
@@ -87,6 +105,7 @@ let cloudKill = false;
 let agent: ControlPlaneAgent | null = null;
 const AGENT_VERSION = "engine-host/control-plane-v1";
 if (pathMode === "DEMO") {
+  if (!policyLoaded) throw new Error(`EXECUTION_MODE=DEMO requires risk-policy.json at ${policyFile}`);
   if (!env.DEMO_EXEC_TOKEN) throw new Error("EXECUTION_MODE=DEMO requires DEMO_EXEC_TOKEN");
   const whitelist = parseWhitelist(env.DEMO_ACCOUNT_WHITELIST, env.DEMO_SERVER_WHITELIST);
   if (!whitelist.logins.length || !whitelist.servers.length) throw new Error("EXECUTION_MODE=DEMO requires DEMO_ACCOUNT_WHITELIST and DEMO_SERVER_WHITELIST");
@@ -109,12 +128,22 @@ if (pathMode === "DEMO") {
     { readLines: () => existsSync(lifecycleFile) ? readFileSync(lifecycleFile, "utf8").split("\n").filter(Boolean) : [], append: (l) => appendFileSync(lifecycleFile, `${l}\n`) },
     () => Date.now(),
   );
-  const layer = new DemoExecutionLayer({
-    mode: pathMode, whitelist, lifecycle, maxPositions: 1,
-    gateway: shadowGatedGateway(createDemoGatewayClient({ baseUrl: env.DEMO_EXEC_URL ?? "http://127.0.0.1:8100", token: env.DEMO_EXEC_TOKEN }), shadow),
+  const brokerGw = shadowGatedGateway(createDemoGatewayClient({ baseUrl: env.DEMO_EXEC_URL ?? "http://127.0.0.1:8100", token: env.DEMO_EXEC_TOKEN }), shadow);
+  const reconcileFile = join(dataDir, "reconcile-events.jsonl");
+  const reconciler = new PositionReconciler({
+    lifecycle, now: () => Date.now(),
+    gateway: { ...brokerGw, positions: async () => { const p = await brokerGw.positions(); brokerPositions = p; return p; } },
+    store: { readLines: () => existsSync(reconcileFile) ? readFileSync(reconcileFile, "utf8").split("\n").filter(Boolean) : [], append: (l) => appendFileSync(reconcileFile, `${l}\n`) },
+    alert: (r) => log(`[reconcile] ALERT ${r.trigger} mismatch — new orders BLOCKED ${JSON.stringify(r.issues)}${r.error ? ` error=${r.error}` : ""}`),
   });
+  const layer = new DemoExecutionLayer({
+    mode: pathMode, whitelist, lifecycle, maxPositions: riskPolicy.max_position, maxSymbols: riskPolicy.max_symbol, reconciler,
+    gateway: brokerGw,
+  });
+  void reconciler.reconcile("STARTUP");
+  setInterval(() => { void reconciler.reconcile("PERIODIC").catch((e) => log(`[reconcile] failed ${(e as Error).message}`)); }, RECONCILE_INTERVAL_MS);
   demo = new DemoExecutionBridge({
-    mode: executionMode, whitelist, now: () => Date.now(), log,
+    mode: executionMode, whitelist, now: () => Date.now(), log, policy: riskPolicy,
     gateway: layer.asGatewayPort(),
     store: { readLines: () => existsSync(eventsFile) ? readFileSync(eventsFile, "utf8").split("\n").filter(Boolean) : [], append: (l) => appendFileSync(eventsFile, `${l}\n`) },
     killSwitch: () => cloudKill || existsSync(killFile) || (agent ? agent.current().halted : false),
