@@ -61,6 +61,8 @@ export interface ApprovedPaperOpen {
   readonly signalId: string; readonly planId: string; readonly symbol: string; readonly direction: "BUY" | "SELL";
   readonly entry: number; readonly stopLoss: number; readonly takeProfit: number; readonly rr: number | null;
   readonly riskDecision: "APPROVED"; readonly signalSource: Readonly<Record<string, string>>; readonly closedBarAt: number;
+  /** Phase 4B: frozen Decision Gate snapshot copied as-is for the demo evaluation journal (no new decision). */
+  readonly entryDecision?: EntryDecisionSnapshot;
 }
 
 /** Pipeline observability event (proof of life). Read-only copy; emitting never alters the loop. */
@@ -399,7 +401,7 @@ export class LivePaperLoop {
     this.emit({ ...base, type: "EXECUTION", stage: "PAPER", reason: `PAPER OPEN ${plan.direction}`, entry: o.trade.snapshot.entryPrice, stopLoss: plan.sl, takeProfit: plan.tp });
     const openEv: ApprovedPaperOpen = Object.freeze({
       signalId: setup.id, planId: plan.id, symbol: sym, direction: plan.direction, entry: plan.entry, stopLoss: plan.sl!, takeProfit: plan.tp!, rr: plan.rr,
-      riskDecision: "APPROVED" as const, signalSource: Object.freeze({ ...o.trade.snapshot.signalSource }), closedBarAt: bar.close_time,
+      riskDecision: "APPROVED" as const, signalSource: Object.freeze({ ...o.trade.snapshot.signalSource }), closedBarAt: bar.close_time, entryDecision,
     });
     for (const l of this.openListeners) { try { l(openEv); } catch { /* observers never affect the loop */ } }
   }
