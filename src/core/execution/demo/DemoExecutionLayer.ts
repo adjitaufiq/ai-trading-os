@@ -67,7 +67,7 @@ export class OrderLifecycleLog {
   /** signal ids whose latest state is FILLED (internal open positions). */
   openSignals(): readonly { signalId: string; symbol: string }[] {
     const out: { signalId: string; symbol: string }[] = [];
-    for (const [id, s] of this.current) if (s === "FILLED") out.push({ signalId: id, symbol: this.records.findLast((r) => r.signal_id === id)!.symbol });
+    for (const [id, s] of this.current) if (s === "FILLED") out.push({ signalId: id, symbol: [...this.records].reverse().find((r) => r.signal_id === id)!.symbol });
     return out;
   }
 }
