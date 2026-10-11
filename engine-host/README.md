@@ -6,7 +6,7 @@ MONITOR_ONLY: read-only HTTP API, no order path. The MT5 gateway is unchanged.
 ## Install (one time)
 1. Install Bun: `powershell -c "irm bun.sh/install.ps1 | iex"`
 2. Get this repo on the VPS (git clone / pull), then in the repo root: `bun install`
-3. Make sure the MT5 gateway is running on `http://127.0.0.1:8000`.
+3. Make sure the MT5 gateway is running on `http://127.0.0.1:8765`.
 4. Elevated PowerShell in repo root:
    `powershell -ExecutionPolicy Bypass -File engine-host\install-windows.ps1`
 5. Check: `curl http://127.0.0.1:8090/v1/engine/health`
