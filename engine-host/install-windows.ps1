@@ -1,7 +1,7 @@
 # Registers the Arena Engine Host to start at boot and restart on failure (Task Scheduler).
 # Run ONCE in an elevated PowerShell from the repo root:  powershell -ExecutionPolicy Bypass -File engine-host\install-windows.ps1
 param(
-  [string]$GatewayUrl = "http://127.0.0.1:8000",
+  [string]$GatewayUrl = "http://127.0.0.1:8765",
   [int]$Port = 8090,
   [string]$Symbols = "XAUUSD,BTCUSD"
 )
