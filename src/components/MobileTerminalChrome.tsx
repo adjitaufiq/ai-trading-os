@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 import { useMobileTerminal } from "./MobileTerminalContext";
 import { Direction, Lamp, mobileLamps } from "./MobileTradingView";
 import type { ExeLamp } from "@/lib/exeLamp";
+import { ExecutionChecklist } from "./ExecutionChecklist";
 import robot from "@/assets/ai-robot-head-3d.png.asset.json";
 export function MobileTerminalChrome({
   selectedSymbol,
@@ -153,6 +154,9 @@ export function MobileTerminalChrome({
           <DialogTitle>Personal AI Trader</DialogTitle>
           <DialogDescription>{exe ? `ENGINE ${exe.engine} · MODE ${exe.mode} · EXECUTION ${exe.execution}` : "ENGINE NOT CONNECTED"} · terminal tanpa tombol order</DialogDescription>
           <div className="space-y-5">
+            <MenuGroup title="Checklist Eksekusi">
+              <ExecutionChecklist automation={exe?.automation} />
+            </MenuGroup>
             <MenuGroup title="Catatan">
               <MenuAction icon={NotebookPen} label="Jurnal" onClick={() => accessory("Jurnal")} />
               <MenuAction

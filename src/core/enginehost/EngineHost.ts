@@ -22,6 +22,8 @@ import { buildReadiness, type EngineReadiness } from "./readiness";
 import { resolveBuildInfo, type EngineBuildInfo } from "./buildInfo";
 import { MONITORING_SCHEMA, decisionHealth, feedState, marketDataHealth, type EngineMonitoring } from "./monitoring";
 import { buildExecutionStatus, type ExecutionStatusView } from "./executionStatus";
+import { AutomationStateTracker, type AutomationTransition } from "./automationState";
+import { snrPayload } from "./snr";
 
 const rec = (v: unknown): Record<string, unknown> | null =>
   v && typeof v === "object" ? (v as Record<string, unknown>) : null;
@@ -60,12 +62,15 @@ export class EngineHost {
   private timer: ReturnType<typeof setInterval> | null = null;
   private sliceTimer: ReturnType<typeof setInterval> | null = null;
   readonly startedAt: number;
+  private automation: AutomationStateTracker | null = null;
 
   constructor(private readonly o: {
     symbols: readonly string[];
     mount: MountFn;
     persistence: PaperPersistence;
     now: () => number;
+    /** Records every automation stage change (append-only on VPS). */
+    onAutomationTransition?: (t: AutomationTransition) => void;
     log?: (msg: string) => void;
     policy?: SupervisorPolicy;
     /** Demo lab observer (Stage 10 DEMO). Receives approved paper opens; cannot alter engine state. */
@@ -207,7 +212,7 @@ export class EngineHost {
     let reconBlocked: boolean | null = null;
     try { reconBlocked = this.o.reconciliationBlocked?.() ?? null; } catch { reconBlocked = null; }
     const shadow = rec(this.shadowStatus());
-    return buildExecutionStatus({
+    const view = buildExecutionStatus({
       now,
       symbols: [...this.slots.values()].map((s) => this.symbolHealth(s, now)),
       armed: ex.armed,
@@ -217,6 +222,13 @@ export class EngineHost {
       reconciliationBlocked: reconBlocked,
       readiness: [...this.slots.keys()].map((symbol) => this.readiness(symbol, now)),
     });
+    // LOCKED: no approval source is wired, so user approval stays NOT_APPROVED.
+    this.automation ??= new AutomationStateTracker({ onTransition: this.o.onAutomationTransition });
+    let snr: boolean | null = null;
+    try {
+      snr = this.symbols.some((sym) => (snrPayload(sym, this.bundle(sym, now)?.slice?.current?.operator, now)?.zones.length ?? 0) > 0);
+    } catch { snr = null; }
+    return Object.freeze({ ...view, automation: this.automation.observe(view, snr, now) });
   }
 
   /** Phase 2B monitoring projection (copies only). */

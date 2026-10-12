@@ -3,6 +3,7 @@
 // broker close deal). Counters are descriptive only and never feed a decision, risk or execution path.
 import type { DemoEvent, DemoOrderIntent } from "./types";
 import { tradeIdOf } from "./tradeLifecycle";
+import type { ChartSnapshot, SnapshotPhase, SnapshotZone } from "./chartSnapshot";
 
 export const EVALUATION_JOURNAL_VERSION = "eval-journal-v1" as const;
 export const EVALUATION_BUILD_LABEL = "EVALUATION_BUILD" as const;
@@ -29,6 +30,13 @@ export interface TradeSnapshot {
   readonly execution: { readonly order_request_time: string; readonly broker_response: string | null; readonly fill_price: number | null; readonly execution_status: "FILLED" | "REJECTED" | "ERROR" | "PENDING"; readonly broker_ticket: number | null; readonly slippage: number | null; readonly latency_ms: number | null };
   readonly result: { readonly close_time: string | null; readonly close_price: number | null; readonly close_reason: string | null; readonly close_source: string | null; readonly profit_loss: number | null; readonly rr_result: number | null; readonly outcome: "WIN" | "LOSS" | "BREAKEVEN" | "OPEN" | "NOT_FILLED" };
   readonly holding_ms: number | null;
+  /** Journal context (copied): timeframe of the recorded chart snapshot, engine setup, SNR zone at entry, engine confidence. Null = not available. */
+  readonly journal: {
+    readonly timeframe: string | null; readonly setup: string | null;
+    readonly snr_zone: (SnapshotZone & { readonly match: "CONTAINS_ENTRY" | "NEAREST" }) | null;
+    readonly confidence: number | null; readonly confidence_status: "AVAILABLE" | "NOT_AVAILABLE";
+    readonly chart_snapshots: readonly { readonly phase: SnapshotPhase; readonly event_at: number; readonly bars: number; readonly image: string }[];
+  };
   readonly lifecycle: readonly { readonly stage: EvalStage; readonly at: string }[];
   readonly lifecycle_complete: boolean; readonly violations: readonly LifecycleViolation[];
   readonly versions: EvaluationVersions;
@@ -39,7 +47,17 @@ const num = (v: unknown): number | null => (typeof v === "number" && Number.isFi
 const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
 const r4 = (n: number) => Math.round(n * 1e4) / 1e4;
 
-export function buildTradeSnapshots(events: readonly DemoEvent[], versions: EvaluationVersions): TradeSnapshot[] {
+function zoneAt(charts: readonly ChartSnapshot[], price: number) {
+  const snap = charts.find((c) => c.phase === "ENTRY") ?? charts.find((c) => c.phase === "PRE_ENTRY");
+  const zones = snap?.snr?.zones ?? [];
+  const inside = zones.find((z) => z.low <= price && price <= z.high);
+  if (inside) return Object.freeze({ ...inside, match: "CONTAINS_ENTRY" as const });
+  const dist = (z: SnapshotZone) => Math.min(Math.abs(z.low - price), Math.abs(z.high - price));
+  const near = [...zones].sort((a, b) => dist(a) - dist(b))[0];
+  return near ? Object.freeze({ ...near, match: "NEAREST" as const }) : null;
+}
+
+export function buildTradeSnapshots(events: readonly DemoEvent[], versions: EvaluationVersions, chartSnapshots: readonly ChartSnapshot[] = []): TradeSnapshot[] {
   const out: TradeSnapshot[] = [];
   const seen = new Set<string>();
   for (const s of events) {
@@ -91,6 +109,16 @@ export function buildTradeSnapshots(events: readonly DemoEvent[], versions: Eval
       execution: { order_request_time: iso(s.at)!, broker_response: res ? `${res.type} ${res.detail ?? ""}`.trim() : null, fill_price: fill, execution_status: execStatus, broker_ticket: num(res?.data?.["ticket"]), slippage: num(res?.data?.["slippage"]), latency_ms: num(res?.data?.["latencyMs"]) },
       result: { close_time: iso(closeAtMs), close_price: closePrice, close_reason: cl ? (str(cl.detail) ?? str(cl.data?.["reason"])) : null, close_source: cl ? (str(cl.data?.["source"]) ?? "RECONCILIATION") : null, profit_loss: profit, rr_result: rr,
         outcome: (!filled ? "NOT_FILLED" : profit === null ? "OPEN" : profit > 0 ? "WIN" : profit < 0 ? "LOSS" : "BREAKEVEN") as TradeSnapshot["result"]["outcome"] },
+      journal: (() => {
+        const charts = chartSnapshots.filter((c) => c.signalId === id);
+        const conf = num(ctx.confidence);
+        return Object.freeze({
+          timeframe: charts[0]?.timeframe ?? null, setup: str(ctx.setup),
+          snr_zone: zoneAt(charts, fill ?? (plan?.entry ?? intent.plannedEntry)),
+          confidence: conf, confidence_status: conf === null ? "NOT_AVAILABLE" as const : "AVAILABLE" as const,
+          chart_snapshots: Object.freeze(charts.map((c) => Object.freeze({ phase: c.phase, event_at: c.event_at, bars: c.bars.length, image: c.image }))),
+        });
+      })(),
       holding_ms: filled && closeAtMs !== null ? Math.max(0, closeAtMs - res!.at) : null,
       lifecycle: Object.freeze(stages.map((x) => ({ stage: x.stage, at: iso(x.at) ?? "" }))),
       lifecycle_complete: EVAL_STAGES.every((st) => stages.some((x) => x.stage === st)) && violations.length === 0,
@@ -101,7 +129,7 @@ export function buildTradeSnapshots(events: readonly DemoEvent[], versions: Eval
   return out;
 }
 
-export const EVAL_CSV_COLUMNS = ["Trade ID", "Date", "Symbol", "Direction", "Market Bias", "Setup Type", "Entry", "SL", "TP", "Lot", "Risk %", "Balance", "Result", "Profit/Loss", "RR", "Win/Loss", "Close Reason", "Decision Reason", "Execution Status", "Engine Version", "Strategy Version", "Journal Version"] as const;
+export const EVAL_CSV_COLUMNS = ["Trade ID", "Date", "Symbol", "Direction", "Market Bias", "Setup Type", "Entry", "SL", "TP", "Lot", "Risk %", "Balance", "Result", "Profit/Loss", "RR", "Win/Loss", "Close Reason", "Decision Reason", "Execution Status", "Engine Version", "Strategy Version", "Journal Version", "Timeframe", "SNR Zone", "Confidence"] as const;
 
 const cell = (v: unknown) => { const t = v === null || v === undefined ? "" : String(v); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
 
@@ -112,6 +140,8 @@ export function toEvaluationCsv(rows: readonly TradeSnapshot[]): string {
     r.lot_size, r.risk_percent, r.account_balance, r.result.outcome, r.result.profit_loss, r.result.rr_result,
     r.result.outcome === "WIN" || r.result.outcome === "LOSS" ? r.result.outcome : "", r.result.close_reason, r.decision.approval_reason, r.execution.execution_status,
     r.versions.engine_version, r.versions.strategy_version, r.versions.journal_version,
+    r.journal.timeframe, r.journal.snr_zone ? `${r.journal.snr_zone.timeframe} ${r.journal.snr_zone.type} ${r.journal.snr_zone.low}-${r.journal.snr_zone.high}` : "",
+    r.journal.confidence ?? "NOT_AVAILABLE",
   ].map(cell).join(","));
   return `${lines.join("\n")}\n`;
 }

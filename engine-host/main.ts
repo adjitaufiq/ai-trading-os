@@ -34,6 +34,8 @@ import { LiveClock } from "../src/core/temporal/CanonicalClock";
 import { mountCanonicalRuntime } from "../src/lib/canonicalRuntimes";
 import { browserWebSocketFactory } from "../src/lib/browserWebSocket";
 import { EngineHost } from "../src/core/enginehost/EngineHost";
+import { captureChartSnapshots, renderChartSnapshotSvg, snapshotKey, type ChartSnapshot } from "../src/core/execution/demo/chartSnapshot";
+import { snrPayload } from "../src/core/enginehost/snr";
 import { PaperPersistence, type EngineStorePort } from "../src/core/enginehost/persistence";
 import { DemoExecutionBridge } from "../src/core/execution/demo/DemoExecutionBridge";
 import { createDemoGatewayClient } from "../src/core/execution/demo/gatewayClient";
@@ -231,8 +233,10 @@ log(`[engine-host] build ${build.engine_version} commit ${build.commit ?? "UNKNO
 // Observation only (health/execution-status labels); order gating stays in DemoExecutionBridge/Layer.
 const killSwitchActive = () => riskPolicy.emergency_stop || existsSync(join(dataDir, "EMERGENCY_STOP")) || existsSync(join(dataDir, "DEMO_KILL_SWITCH"))
   || cloudKill || (agent ? agent.current().halted : false);
+const automationFile = join(dataDir, "automation-transitions.jsonl");
 const host = new EngineHost({
   build,
+  onAutomationTransition: (t) => { try { appendFileSync(automationFile, `${JSON.stringify(t)}\n`); } catch (x) { log(`[automation] record failed ${(x as Error).message}`); } },
   onPipelineEvent: (e: EnginePipelineEvent) => { appendFileSync(outboxFile, `${JSON.stringify(e)}\n`); void pushOutbox(); },
   symbols, persistence: new PaperPersistence(store), now: () => Date.now(), log, executionMode,
   shadowStatus: () => shadow.status(),
@@ -254,6 +258,35 @@ const host = new EngineHost({
     onRuntime: (rt) => { rt.setPaperAccountStateSource(accountStateSource); runtimes.set(symbol, rt); onRuntime(rt); } }),
 });
 host.start();
+
+// Automation stage observation (records transitions even without dashboard polling). Observability only.
+setInterval(() => { try { host.executionStatus(Date.now()); } catch { /* observability only */ } }, 5_000);
+
+// Hybrid chart snapshots (read-only observer of the demo event log): OHLC + SNR + event meta per phase,
+// SVG image only at ENTRY/CLOSE. Never feeds decision, risk or execution.
+const CHART_TF = "M5"; // paper loop evaluates on CLOSED M5 bars
+const chartFile = join(dataDir, "chart-snapshots.jsonl");
+const chartDir = join(dataDir, "chart-snapshots");
+const readCharts = (): ChartSnapshot[] => existsSync(chartFile) ? readFileSync(chartFile, "utf8").split("\n").filter(Boolean).flatMap((l) => { try { return [JSON.parse(l) as ChartSnapshot]; } catch { return []; } }) : [];
+const chartDone = new Set(readCharts().map((c) => snapshotKey(c.signalId, c.phase)));
+setInterval(() => {
+  try {
+    const ef = join(dataDir, "demo-events.jsonl");
+    if (!existsSync(ef)) return;
+    const events = readFileSync(ef, "utf8").split("\n").filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } });
+    const now = Date.now();
+    const snaps = captureChartSnapshots(events, chartDone, {
+      closedBars: (sym) => host.reader(sym)?.closedBars(CHART_TF) ?? [],
+      snr: (sym) => snrPayload(sym, host.bundle(sym, now)?.slice?.current?.operator, now),
+    }, CHART_TF, now);
+    for (const c of snaps) {
+      appendFileSync(chartFile, `${JSON.stringify(c)}\n`);
+      chartDone.add(snapshotKey(c.signalId, c.phase));
+      const svg = renderChartSnapshotSvg(c);
+      if (svg) { mkdirSync(chartDir, { recursive: true }); writeFileSync(join(chartDir, `${c.tradeId}_${c.phase}.svg`), svg); }
+    }
+  } catch (x) { log(`[chart-snapshot] ${(x as Error).message}`); }
+}, 10_000);
 
 const sse = new Set<import("node:http").ServerResponse>();
 const seen = new Map<string, number>();
@@ -277,7 +310,7 @@ createServer((req, res) => {
     // Phase 4B Evaluation Build: read-only snapshots/CSV/counters from the append-only demo event log. Descriptive only.
     const eventsFile = join(dataDir, "demo-events.jsonl");
     const demoEvents = existsSync(eventsFile) ? readFileSync(eventsFile, "utf8").split("\n").filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }) : [];
-    const rows = buildTradeSnapshots(demoEvents, { engine_version: `${build.engine_version}+${build.commit ?? "UNKNOWN"}`, strategy_version: `${ARCHITECTURE_VERSION}|${OPERATOR_POLICY_VERSION}|${DECISION_GATE_POLICY_VERSION}`, journal_version: EVALUATION_JOURNAL_VERSION });
+    const rows = buildTradeSnapshots(demoEvents, { engine_version: `${build.engine_version}+${build.commit ?? "UNKNOWN"}`, strategy_version: `${ARCHITECTURE_VERSION}|${OPERATOR_POLICY_VERSION}|${DECISION_GATE_POLICY_VERSION}`, journal_version: EVALUATION_JOURNAL_VERSION }, readCharts());
     if (path.endsWith(".csv")) { res.writeHead(200, { "content-type": "text/csv; charset=utf-8", "content-disposition": "attachment; filename=evaluation-trades.csv", "cache-control": "no-store", ...ENGINE_CORS_HEADERS }); res.end(toEvaluationCsv(rows)); return; }
     const body = JSON.stringify(path.endsWith("stats") ? stressCounters(rows) : { label: "EVALUATION_BUILD", trades: rows });
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store", ...ENGINE_CORS_HEADERS }); res.end(body);

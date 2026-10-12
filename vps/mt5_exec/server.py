@@ -63,6 +63,10 @@ def make_handler(svc: DemoExecService, token: str, log_path: str = "demo-exec.lo
             q = parse_qs(u.query)
             if u.path == "/v1/demo/account":
                 return self._run(svc.account)
+            if u.path == "/v1/demo/status":
+                return self._run(svc.status)
+            if u.path == "/v1/demo/symbols":
+                return self._run(lambda: {"symbols": svc.symbols(",".join(q.get("names", [""])).split(","))})
             if u.path == "/v1/demo/positions":
                 return self._run(lambda: {"positions": svc.positions()})
             if u.path == "/v1/demo/symbol":
