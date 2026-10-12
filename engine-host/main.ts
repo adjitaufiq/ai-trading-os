@@ -267,7 +267,7 @@ const host = new EngineHost({
     const intent = buildDemoIntent(e, reader?.radarSnapshot() ?? null, host.bundle(e.symbol, Date.now())?.slice?.current ?? null);
     const g = shadow.gate(intent);
     if (!g.allow || !demo) return;
-    if (!demoArmed()) { log(`[demo-arm] ${e.symbol} approved open held: session not armed`); return; }
+    if (!demoArmed()) { log(`[demo-arm] ${e.symbol} risk-approved open held: SESSION_ARM_REQUIRED`); return; }
     if (agent && !agent.current().allowedSymbols.includes(e.symbol.toUpperCase())) { log(`[demo-lab] ${e.symbol} not in cloud allowed_symbols, skipped`); return; }
     void demo.handle(intent).catch((x) => log(`[demo-lab] handle failed ${(x as Error).message}`));
   },
