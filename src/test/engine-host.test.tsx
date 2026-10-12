@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { LivePaperLoop, PAPER_STATE_VERSION, type PaperLoopState } from "@/core/paper/LivePaperLoop";
