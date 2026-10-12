@@ -106,6 +106,8 @@ export interface EntryDecisionSnapshot {
   readonly plannedRr: number | null;
   readonly lot: number | null;
   readonly riskUSD: number | null;
+  /** Hardening V1: regime label frozen at entry (engine M1B.9 mapping; UNCERTAIN when absent). Copy-only. */
+  readonly regime?: string | null;
 }
 
 export type SaveError = "DUPLICATE_TRADE_ID" | "INVALID_TRADE";
