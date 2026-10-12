@@ -1,7 +1,7 @@
 // Automation execution state machine + pre-execution checklist (observability only).
 // Pure projection of the ExecutionStatusView facts the host already holds. It never gates, sends or arms
-// anything: order gating stays in DemoExecutionBridge/Layer + Shadow Guard. LOCKED by construction —
-// there is no approval write path, so user_approval is always NOT_APPROVED and DEMO_ARMED is unreachable.
+// anything: order gating stays in DemoExecutionBridge/Layer + Shadow Guard. Approval = session-level DEMO arm
+// file validated by demoArm.ts (read-only; no write path). Without it user_approval stays NOT_APPROVED.
 import type { ExecutionStatusView } from "./executionStatus";
 
 export type AutomationStage = "MONITOR_ONLY" | "PAPER_READY" | "DEMO_CONNECTED" | "DEMO_ARMED" | "DEMO_EXECUTION";
@@ -17,11 +17,25 @@ export interface AutomationTransition { readonly from: AutomationStage | null; r
 
 export interface AutomationView {
   readonly stage: AutomationStage;
+  /** Operator-facing lifecycle label (copy of the same facts; never gates). */
+  readonly phase: LifecyclePhase;
+  /** True while Shadow Guard blocks sends: phase may reach SIGNAL but never DEMO_EXECUTION. */
+  readonly shadow_blocked: boolean;
   readonly user_approval: "NOT_APPROVED" | "APPROVED";
   readonly checklist: readonly ChecklistItem[];
   /** BLOCKED unless every checklist item is PASS. */
   readonly verdict: "EXECUTION_BLOCKED" | "CLEARED";
   readonly transitions: readonly AutomationTransition[];
+}
+
+export type LifecyclePhase = "MONITOR_ONLY" | "DEMO_CONNECTED" | "WAITING_SETUP" | "SIGNAL" | "DEMO_EXECUTION";
+
+/** Session-armed lifecycle label. Shadow does not hide WAITING_SETUP/SIGNAL, only DEMO_EXECUTION. */
+export function derivePhase(s: ExecutionStatusView, armed: boolean): LifecyclePhase {
+  if (s.engine !== "ONLINE" || s.stale || s.mode !== "DEMO_EXECUTION" || s.mt5 !== "CONNECTED" || s.account !== "PASS") return "MONITOR_ONLY";
+  if (!armed || s.kill_switch || s.reconciliation !== "CLEAN") return "DEMO_CONNECTED";
+  if (s.execution === "ACTIVE" && s.shadow === "CLEAR") return "DEMO_EXECUTION";
+  return s.signal === "READY" ? "SIGNAL" : "WAITING_SETUP";
 }
 
 const pf = (ok: boolean, known = true): CheckState => (!known ? "UNKNOWN" : ok ? "PASS" : "FAIL");
@@ -69,7 +83,7 @@ export class AutomationStateTracker {
     }
     const checklist = buildChecklist(s, snrAvailable, approved);
     return Object.freeze({
-      stage, user_approval: approved ? "APPROVED" as const : "NOT_APPROVED" as const, checklist,
+      stage, phase: derivePhase(s, approved), shadow_blocked: s.shadow !== "CLEAR", user_approval: approved ? "APPROVED" as const : "NOT_APPROVED" as const, checklist,
       verdict: checklist.every((c) => c.state === "PASS") ? "CLEARED" as const : "EXECUTION_BLOCKED" as const,
       transitions: Object.freeze(this.log.slice(-20)),
     });

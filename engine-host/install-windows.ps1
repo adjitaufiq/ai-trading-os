@@ -17,6 +17,14 @@ cd /d "$repo"
 set ENGINE_GATEWAY_URL=$GatewayUrl
 set ENGINE_HOST_PORT=$Port
 set ENGINE_SYMBOLS=$Symbols
+rem DEMO env comes from Machine-level variables on the VPS (never literal values in this file).
+set EXECUTION_MODE=%EXECUTION_MODE%
+set ACCOUNT_MODE=%ACCOUNT_MODE%
+set SHADOW_MODE=%SHADOW_MODE%
+set DEMO_EXEC_URL=%DEMO_EXEC_URL%
+set DEMO_EXEC_TOKEN=%DEMO_EXEC_TOKEN%
+set DEMO_ACCOUNT_WHITELIST=%DEMO_ACCOUNT_WHITELIST%
+set DEMO_SERVER_WHITELIST=%DEMO_SERVER_WHITELIST%
 "$bun" engine-host\main.ts >> engine-host\data\engine-host.log 2>&1
 "@ | Set-Content -Encoding ASCII $runner
 New-Item -ItemType Directory -Force -Path (Join-Path $PSScriptRoot "data") | Out-Null

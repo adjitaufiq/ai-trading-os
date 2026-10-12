@@ -57,6 +57,8 @@ import { signRequest } from "../src/core/execution/control/contract";
 import type { EnginePipelineEvent } from "../src/core/enginehost/EngineHost";
 import type { ApprovedPaperOpen } from "../src/core/paper/LivePaperLoop";
 import type { MarketRuntimeReader } from "../src/core/runtime/MarketRuntime";
+import { createHash } from "node:crypto";
+import { checkDemoArm } from "../src/core/enginehost/demoArm";
 import { resolveBuildInfo } from "../src/core/enginehost/buildInfo";
 import { ENGINE_CORS_HEADERS, buildEngineEvents, routeEngineRequest, sseFrame } from "../src/core/enginehost/api";
 
@@ -234,8 +236,23 @@ log(`[engine-host] build ${build.engine_version} commit ${build.commit ?? "UNKNO
 const killSwitchActive = () => riskPolicy.emergency_stop || existsSync(join(dataDir, "EMERGENCY_STOP")) || existsSync(join(dataDir, "DEMO_KILL_SWITCH"))
   || cloudKill || (agent ? agent.current().halted : false);
 const automationFile = join(dataDir, "automation-transitions.jsonl");
+// Session-level DEMO arm (operator file, read-only here). Fail-closed; Shadow Guard still gates every send.
+const armFile = join(dataDir, "demo-arm.json");
+const armHashes = String(env.DEMO_ACCOUNT_WHITELIST ?? "").split(",").map((x) => x.trim()).filter(Boolean)
+  .map((x) => createHash("sha256").update(x).digest("hex"));
+let lastArmReason = "";
+const demoArmed = (): boolean => {
+  if (demo === null) return false;
+  let raw: string | null = null;
+  try { raw = existsSync(armFile) ? readFileSync(armFile, "utf8") : null; } catch { raw = null; }
+  const c = checkDemoArm({ raw, now: Date.now(), whitelistHashes: armHashes, killSwitch: killSwitchActive() });
+  const r = c.ok ? "ARMED" : c.reason;
+  if (r !== lastArmReason) { lastArmReason = r; log(`[demo-arm] ${r}`); }
+  return c.ok;
+};
 const host = new EngineHost({
   build,
+  automationArmed: demoArmed,
   onAutomationTransition: (t) => { try { appendFileSync(automationFile, `${JSON.stringify(t)}\n`); } catch (x) { log(`[automation] record failed ${(x as Error).message}`); } },
   onPipelineEvent: (e: EnginePipelineEvent) => { appendFileSync(outboxFile, `${JSON.stringify(e)}\n`); void pushOutbox(); },
   symbols, persistence: new PaperPersistence(store), now: () => Date.now(), log, executionMode,
@@ -250,6 +267,7 @@ const host = new EngineHost({
     const intent = buildDemoIntent(e, reader?.radarSnapshot() ?? null, host.bundle(e.symbol, Date.now())?.slice?.current ?? null);
     const g = shadow.gate(intent);
     if (!g.allow || !demo) return;
+    if (!demoArmed()) { log(`[demo-arm] ${e.symbol} approved open held: session not armed`); return; }
     if (agent && !agent.current().allowedSymbols.includes(e.symbol.toUpperCase())) { log(`[demo-lab] ${e.symbol} not in cloud allowed_symbols, skipped`); return; }
     void demo.handle(intent).catch((x) => log(`[demo-lab] handle failed ${(x as Error).message}`));
   },

@@ -71,6 +71,8 @@ export class EngineHost {
     now: () => number;
     /** Records every automation stage change (append-only on VPS). */
     onAutomationTransition?: (t: AutomationTransition) => void;
+    /** Session-level DEMO arm (read-only system gate). Absent ⇒ never approved. */
+    automationArmed?: () => boolean;
     log?: (msg: string) => void;
     policy?: SupervisorPolicy;
     /** Demo lab observer (Stage 10 DEMO). Receives approved paper opens; cannot alter engine state. */
@@ -222,8 +224,8 @@ export class EngineHost {
       reconciliationBlocked: reconBlocked,
       readiness: [...this.slots.keys()].map((symbol) => this.readiness(symbol, now)),
     });
-    // LOCKED: no approval source is wired, so user approval stays NOT_APPROVED.
-    this.automation ??= new AutomationStateTracker({ onTransition: this.o.onAutomationTransition });
+    const armedFn = this.o.automationArmed;
+    this.automation ??= new AutomationStateTracker({ onTransition: this.o.onAutomationTransition, ...(armedFn ? { userApproved: armedFn } : {}) });
     let snr: boolean | null = null;
     try {
       snr = this.symbols.some((sym) => (snrPayload(sym, this.bundle(sym, now)?.slice?.current?.operator, now)?.zones.length ?? 0) > 0);
