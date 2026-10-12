@@ -26,7 +26,7 @@ const spec = Object.freeze({ symbol: "XAUUSD", origin: "BROKER_REPORTED" as cons
 const M5 = 300_000, T0 = 1_700_000_000_000;
 const bar = (tf: Timeframe, i: number, ms: number): Bar => ({ symbol: "XAUUSD", timeframe: tf, status: "CLOSED", open_time: T0 + i * ms, close_time: T0 + (i + 1) * ms, available_at: T0 + (i + 1) * ms, open: 2000, high: 2001, low: 1999, close: 2000, tick_count: 1 } as unknown as Bar);
 const hist = (tf: Timeframe, n: number, ms: number) => Array.from({ length: n }, (_, i) => bar(tf, i, ms));
-const closedAt = (k: number) => (tf: Timeframe) => tf === "M5" ? hist("M5", 20 + k, M5) : tf === "M15" ? hist("M15", 20, 3 * M5).map((b) => ({ ...b, open_time: b.open_time - 20 * 3 * M5, close_time: b.close_time - 20 * 3 * M5, available_at: b.available_at - 20 * 3 * M5 })) : [];
+const closedAt = (k: number) => (tf: Timeframe) => tf === "M5" ? hist("M5", 20 + k, M5) : tf === "M15" ? hist("M15", 20, 3 * M5).map((b) => ({ ...b, open_time: b.open_time - (k - 40) * M5, close_time: b.close_time - (k - 40) * M5, available_at: b.available_at - (k - 40) * M5 })) : [];
 const candidate = (direction: "BUY" | "SELL", state = "READY") => ({ kind: "CANDIDATE", direction, state, trace: { state, checks: [], at: 0 } });
 
 function run(bias: Reading["bias"] | "MISSING" | "NO_PROVIDER", direction: "BUY" | "SELL") {
