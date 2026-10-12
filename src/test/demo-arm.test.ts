@@ -24,7 +24,7 @@ describe("demo arm (session system gate)", () => {
     expect(derivePhase(base, false)).toBe("DEMO_CONNECTED");
     expect(derivePhase(base, true)).toBe("WAITING_SETUP");
     expect(derivePhase({ ...base, signal: "READY" }, true)).toBe("SIGNAL");
-    expect(derivePhase({ ...base, execution: "ACTIVE" }, true)).toBe("SIGNAL".length ? "WAITING_SETUP" : "");
+    expect(derivePhase({ ...base, execution: "ACTIVE" }, true)).toBe("WAITING_SETUP");
     expect(derivePhase({ ...base, shadow: "CLEAR", execution: "ACTIVE", blockers: [] }, true)).toBe("DEMO_EXECUTION");
   });
 });
