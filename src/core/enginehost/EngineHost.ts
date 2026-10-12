@@ -21,6 +21,10 @@ import type { ExecutionMode } from "../execution/demo/types";
 import { buildReadiness, type EngineReadiness } from "./readiness";
 import { resolveBuildInfo, type EngineBuildInfo } from "./buildInfo";
 import { MONITORING_SCHEMA, decisionHealth, feedState, marketDataHealth, type EngineMonitoring } from "./monitoring";
+import { buildExecutionStatus, type ExecutionStatusView } from "./executionStatus";
+
+const rec = (v: unknown): Record<string, unknown> | null =>
+  v && typeof v === "object" ? (v as Record<string, unknown>) : null;
 
 /** Documented supervisor policy (operator configuration). */
 export interface SupervisorPolicy { readonly tick_ms: number; readonly remount_after_ms: number; readonly backoff_min_ms: number; readonly backoff_max_ms: number }
@@ -77,6 +81,10 @@ export class EngineHost {
     shadowStatus?: () => unknown;
     /** Observed demo execution state for /v1/engine/health (label only; never gates orders). Absent ⇒ MONITOR_ONLY/false. */
     executionState?: () => { armed: boolean; enabled: boolean };
+    /** Reconciler blocked flag for /v1/engine/execution-status; null when no reconciler exists. Absent ⇒ UNKNOWN. */
+    reconciliationBlocked?: () => boolean | null;
+    /** Kill switch observation for /v1/engine/execution-status (copy only). Absent ⇒ false only when not armed. */
+    killSwitch?: () => boolean;
   }) {
     this.startedAt = o.now();
     for (const symbol of o.symbols) this.slots.set(symbol, { symbol, stop: null, rt: null, reader: null, status: "INIT", restarts: 0, unhealthySince: null, nextRemountAt: 0, backoff: this.policy.backoff_min_ms, persistError: null, slice: null });
@@ -189,6 +197,27 @@ export class EngineHost {
   }
 
   shadowStatus(): unknown { return this.o.shadowStatus?.() ?? { active: null, label: "UNKNOWN" }; }
+
+  /** Read-only execution status projection (copies only; never gates orders). */
+  executionStatus(now: number): ExecutionStatusView {
+    let ex: { armed: boolean; enabled: boolean } = { armed: false, enabled: false };
+    try { ex = this.o.executionState?.() ?? ex; } catch { /* fail-closed */ }
+    let killed = false;
+    try { killed = this.o.killSwitch?.() ?? false; } catch { killed = true; }
+    let reconBlocked: boolean | null = null;
+    try { reconBlocked = this.o.reconciliationBlocked?.() ?? null; } catch { reconBlocked = null; }
+    const shadow = rec(this.shadowStatus());
+    return buildExecutionStatus({
+      now,
+      symbols: [...this.slots.values()].map((s) => this.symbolHealth(s, now)),
+      armed: ex.armed,
+      shadowActive: shadow?.["active"] === true,
+      killSwitch: killed,
+      demo: this.o.demoStatus ? this.o.demoStatus() : null,
+      reconciliationBlocked: reconBlocked,
+      readiness: [...this.slots.keys()].map((symbol) => this.readiness(symbol, now)),
+    });
+  }
 
   /** Phase 2B monitoring projection (copies only). */
   monitoring(now: number): EngineMonitoring {
