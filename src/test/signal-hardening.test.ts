@@ -85,6 +85,29 @@ describe("Signal Lifecycle Hardening V1", () => {
     expect(d).toHaveLength(3);
     expect(Object.isFrozen(d[2])).toBe(true);
   });
+  it("8b. M15 older than 60 minutes → CONTEXT_M15_STALE (new freshness limit)", () => {
+    const r = rig({ m15Shift: 20 * 3 * M5 + 61 * 60_000 }); r.step();
+    expect(r.kinds()).toEqual([["REJECTED", "SIGNAL_REJECTED", "CONTEXT_M15_STALE"]]);
+    expect(validateSignalContext({ barCloseMs: 61 * 60_000, m15LastCloseMs: 0, primaryBiasAsOfMs: 0 })).toBe("CONTEXT_M15_STALE");
+    expect(validateSignalContext({ barCloseMs: 59 * 60_000, m15LastCloseMs: 0, primaryBiasAsOfMs: 0 })).toBeNull();
+  });
+  it("8c. M5 feed gap > 15 minutes → CONTEXT_M5_STALE", () => {
+    expect(validateSignalContext({ barCloseMs: 20 * 60_000, m15LastCloseMs: 0, primaryBiasAsOfMs: 0, m5PrevCloseMs: 0 })).toBe("CONTEXT_M5_STALE");
+    expect(validateSignalContext({ barCloseMs: 10 * 60_000, m15LastCloseMs: 0, primaryBiasAsOfMs: 0, m5PrevCloseMs: 0 })).toBeNull();
+    expect(validateSignalContext({ barCloseMs: 20 * 60_000, m15LastCloseMs: 0, primaryBiasAsOfMs: 0 })).toBeNull(); // absent ⇒ not checked
+  });
+  it("8d. regime provider wires the engine regime into the decision log (else UNCERTAIN)", () => {
+    const spec = Object.freeze({ symbol: "XAUUSD", origin: "BROKER_REPORTED" as const, digits: 3, point: 0.001, tick_size: 0.001, contract_size: 100, broker_utc_offset_ms: 0 });
+    const provider = () => ({ bias: "BUY" as const, asOf: T0, source: "TECHNICAL_H4_CLOSED" as const, arenaStatus: "CARI_BUY" });
+    const closed = (tf: Timeframe) => tf === "M5" ? hist("M5", 21, M5) : tf === "M15" ? hist("M15", 20, 3 * M5) : [];
+    const regime = { regime: "TREND_CONTINUATION" } as never;
+    const a = new LivePaperLoop("XAUUSD", "REAL_MT5", spec, provider, () => regime);
+    a.onClosedM5(hist("M5", 21, M5).at(-1)!, closed, null);
+    expect(a.decisions()[0]!.context?.regime).toBe("TREND");
+    const b = new LivePaperLoop("XAUUSD", "REAL_MT5", spec, provider, () => { throw new Error("boom"); });
+    b.onClosedM5(hist("M5", 21, M5).at(-1)!, closed, null);
+    expect(b.decisions()[0]!.context?.regime).toBe("UNCERTAIN");
+  });
   it("8. restart/persistence never yields a duplicate READY", () => {
     h.expiry = (T0 + 100 * M5) / 1000;
     const a = rig(); a.step();
