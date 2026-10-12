@@ -324,7 +324,7 @@ export class LivePaperLoop {
     this.active.prune(c.timestamp);
     if (side) this.active.invalidateDirection(side === "BUY" ? "SELL" : "BUY");
     else { this.active.invalidateDirection("BUY"); this.active.invalidateDirection("SELL"); }
-    const ctxReject = () => validateSignalContext({ barCloseMs: bar.close_time, m15LastCloseMs: m15.length ? (m15.at(-1)!.timestamp * 1000) + 900_000 : null, primaryBiasAsOfMs: pb ? pb.asOf : null });
+    const ctxReject = () => validateSignalContext({ barCloseMs: bar.close_time, m15LastCloseMs: m15.length ? (m15.at(-1)!.timestamp * 1000) + 900_000 : null, primaryBiasAsOfMs: pb ? pb.asOf : null, m5PrevCloseMs: m5.length >= 2 ? (m5.at(-2)!.timestamp * 1000) + 300_000 : null });
     if (this.setup && !isTerminal(this.setup)) {
       const g = gate(this.setup.direction);
       if (g) { this.decision = `SETUP_INVALIDATED ${g}`; this.setup = null; }
@@ -356,7 +356,7 @@ export class LivePaperLoop {
           context: Object.freeze({ m1bState: String(cr.setup.state), primaryBias: pb?.bias ?? null, priceLocation: String(loc.context.priceLocation), locationTier: loc.context.locationTier ?? null,
             keyLevelPrice: Number.isFinite(loc.context.keyLevelPrice) ? loc.context.keyLevelPrice : null, trigger: String(reaction.pattern), reactionQuality: String(reaction.quality),
             emaPricePosition: String(ema.context.pricePosition), emaActions: Object.freeze([...(ema.context.actions ?? [])]),
-            regime: regimeLabel(cr.setup.marketContext?.regime), signalIdentity: signalIdentity(cr.setup) }) });
+            regime: regimeLabel(cr.setup.marketContext?.regime ?? this.readRegime()), signalIdentity: signalIdentity(cr.setup) }) });
       }
     }
     this.obs.m2 = Object.freeze({ at: bar.close_time, state: this.setup ? this.setup.state : (this.decision ?? "NO_SETUP"), direction: this.setup ? this.setup.direction : (ev.kind === "CANDIDATE" ? ev.direction : null) });
