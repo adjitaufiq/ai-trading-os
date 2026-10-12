@@ -12,6 +12,7 @@ import { buildStructure, detectStructureShift } from "../../engine/core/swing/st
 import { SwingDetector } from "../../engine/core/swing/swingDetector";
 import type { SwingTimeframe } from "../../engine/core/swing/types";
 import type { DataSource } from "../../engine/contracts/dataSource";
+import type { MarketRegimeSnapshot } from "../../engine/core/market/regime/types";
 import { createPaperTrade } from "../../engine/execution/paperExecution";
 import { updatePosition } from "../../engine/execution/positionManager";
 import { openPaperTrade } from "../../engine/execution/tradeLifecycle";
@@ -188,7 +189,13 @@ export class LivePaperLoop {
   /** Account source that sized/approved this trade (recorded at close in this process; null if before restart). */
   tradeAccountSource(tradeId: string): "PAPER_SIMULATED" | "EXNESS_DEMO" | null { return this.sourceByTrade.get(tradeId) ?? null; }
 
-  constructor(readonly symbol: string, readonly dataSource: DataSource, private readonly spec: SymbolSpecification, private readonly primaryBiasProvider?: PrimaryBiasProvider) {}
+  constructor(readonly symbol: string, readonly dataSource: DataSource, private readonly spec: SymbolSpecification, private readonly primaryBiasProvider?: PrimaryBiasProvider, private readonly regimeProvider?: () => MarketRegimeSnapshot | null) {}
+
+  /** Fail closed: missing/erroring provider ⇒ null ⇒ regime label UNCERTAIN (never recomputed here). */
+  private readRegime(): MarketRegimeSnapshot | null {
+    if (!this.regimeProvider) return null;
+    try { return this.regimeProvider() ?? null; } catch { return null; }
+  }
 
   /** Fail closed: no provider, provider error, or malformed reading ⇒ null (treated as NO_PRIMARY_BIAS). */
   private readPrimaryBias(): PrimaryBiasReading | null {
@@ -317,7 +324,7 @@ export class LivePaperLoop {
     this.active.prune(c.timestamp);
     if (side) this.active.invalidateDirection(side === "BUY" ? "SELL" : "BUY");
     else { this.active.invalidateDirection("BUY"); this.active.invalidateDirection("SELL"); }
-    const ctxReject = () => validateSignalContext({ barCloseMs: bar.close_time, m15LastCloseMs: m15.length ? (m15.at(-1)!.timestamp * 1000) + 900_000 : null, primaryBiasAsOfMs: pb ? pb.asOf : null });
+    const ctxReject = () => validateSignalContext({ barCloseMs: bar.close_time, m15LastCloseMs: m15.length ? (m15.at(-1)!.timestamp * 1000) + 900_000 : null, primaryBiasAsOfMs: pb ? pb.asOf : null, m5PrevCloseMs: m5.length >= 2 ? (m5.at(-2)!.timestamp * 1000) + 300_000 : null });
     if (this.setup && !isTerminal(this.setup)) {
       const g = gate(this.setup.direction);
       if (g) { this.decision = `SETUP_INVALIDATED ${g}`; this.setup = null; }
@@ -349,7 +356,7 @@ export class LivePaperLoop {
           context: Object.freeze({ m1bState: String(cr.setup.state), primaryBias: pb?.bias ?? null, priceLocation: String(loc.context.priceLocation), locationTier: loc.context.locationTier ?? null,
             keyLevelPrice: Number.isFinite(loc.context.keyLevelPrice) ? loc.context.keyLevelPrice : null, trigger: String(reaction.pattern), reactionQuality: String(reaction.quality),
             emaPricePosition: String(ema.context.pricePosition), emaActions: Object.freeze([...(ema.context.actions ?? [])]),
-            regime: regimeLabel(cr.setup.marketContext?.regime), signalIdentity: signalIdentity(cr.setup) }) });
+            regime: regimeLabel(cr.setup.marketContext?.regime ?? this.readRegime()), signalIdentity: signalIdentity(cr.setup) }) });
       }
     }
     this.obs.m2 = Object.freeze({ at: bar.close_time, state: this.setup ? this.setup.state : (this.decision ?? "NO_SETUP"), direction: this.setup ? this.setup.direction : (ev.kind === "CANDIDATE" ? ev.direction : null) });
@@ -425,6 +432,7 @@ export class LivePaperLoop {
       trigger: ss.trigger ?? null, reactionQuality: ss.reactionQuality ?? null,
       plannedEntry: plan.entry ?? null, stopLoss: plan.sl ?? null, takeProfit: plan.tp ?? null, plannedRr: plan.rr ?? null,
       lot: o.trade.snapshot.lot ?? null, riskUSD: o.trade.snapshot.riskUSD ?? null,
+      regime: regimeLabel(setup.marketContext?.regime ?? this.readRegime()),
     });
     this.open = { trade: o.trade, plan, bars: [], h1Phase: bias.h1.phase, tier: loc.context.locationTier, primaryBias: pb, entryDecision };
     this.record({ kind: "ORDER", at: bar.close_time, signalId: setup.id, direction: plan.direction, arenaStatus: g.arenaStatus, outcome: "CREATED", reason: `PAPER OPEN ${plan.direction}` });
