@@ -28,6 +28,7 @@ import type { AccountState } from "../../engine/risk/accountStateProvider";
 import type { AccountProfile } from "../../engine/risk/types";
 import { evaluateSetup, type EvaluatorInput } from "../../engine/signal/signalEvaluator";
 import { createSetup, isTerminal, updateSetup } from "../../engine/signal/signalLifecycle";
+import { ActiveSignalRegistry, regimeLabel, signalIdentity, validateSignalContext, type ActiveSignal } from "./signalHardening";
 import type { SignalSetup } from "../../engine/signal/types";
 import type { EntryDecisionSnapshot, ExcursionMetrics } from "../../engine/journal/types";
 import { decideEntry, DECISION_GATE_POLICY_VERSION, type DecisionGateResult } from "./decisionGate";
@@ -82,10 +83,10 @@ export interface PrimaryBiasReading {
 
 /** Append-only decision lifecycle record (candidate → gate → order → close). Copies only; never read by decisions. */
 export interface PaperDecisionRecord {
-  readonly kind: "CANDIDATE" | "GATE" | "ORDER" | "CLOSE";
+  readonly kind: "CANDIDATE" | "GATE" | "ORDER" | "CLOSE" | "REJECTED";
   readonly at: number; readonly symbol: string; readonly signalId: string | null; readonly direction: "BUY" | "SELL" | null;
   readonly arenaStatus: string | null;
-  /** CANDIDATE: M1B source; GATE: ALLOW/BLOCK; ORDER: CREATED/REJECTED/FAILED; CLOSE: WIN/LOSS/BREAKEVEN. */
+  /** REJECTED: SIGNAL_REJECTED/DUPLICATE_BLOCKED (audit only, never READY). CANDIDATE: M1B source; GATE: ALLOW/BLOCK; ORDER: CREATED/REJECTED/FAILED; CLOSE: WIN/LOSS/BREAKEVEN. */
   readonly outcome: string;
   readonly reason: string;
   readonly rr?: number | null;
@@ -95,6 +96,8 @@ export interface PaperDecisionRecord {
     readonly m1bState: string; readonly primaryBias: string | null; readonly priceLocation: string; readonly locationTier: string | null;
     readonly keyLevelPrice: number | null; readonly trigger: string; readonly reactionQuality: string;
     readonly emaPricePosition: string; readonly emaActions: readonly string[];
+    /** Regime label frozen at creation (engine M1B.9 regime; UNCERTAIN when absent). */
+    readonly regime?: string; readonly signalIdentity?: string;
   };
 }
 export const DECISION_LOG_RING = 500;
@@ -131,6 +134,8 @@ export interface PaperLoopState {
   readonly setup: unknown;
   readonly open: unknown;
   readonly journal: readonly unknown[];
+  /** Hardening V1: active consumed-READY identities (optional for older states). */
+  readonly activeSignals?: readonly ActiveSignal[];
 }
 
 const toArena = (b: Bar, i: number, spread: number): ArenaCandle => Object.freeze({
@@ -141,6 +146,7 @@ const toArena = (b: Bar, i: number, spread: number): ArenaCandle => Object.freez
 export class LivePaperLoop {
   readonly journal = new TradeJournal();
   private setup: SignalSetup | null = null;
+  private readonly active = new ActiveSignalRegistry();
   private open: Open | null = null;
   private balance: number = VIRTUAL_ACCOUNT_DEFAULTS.initialBalance;
   private peak = this.balance;
@@ -220,7 +226,7 @@ export class LivePaperLoop {
       balance: this.balance, peak: this.peak, dayKey: this.dayKey, dayStart: this.dayStart, streak: this.streak,
       lastClose: Number.isFinite(this.lastClose) ? this.lastClose : null, decision: this.decision,
       spreads: [...this.spreads], after: [...this.after], setup: this.setup, open: this.open,
-      journal: this.journal.getAll().map((r) => ({ ...r })),
+      journal: this.journal.getAll().map((r) => ({ ...r })), activeSignals: this.active.export(),
     }) as PaperLoopState;
   }
 
@@ -234,6 +240,7 @@ export class LivePaperLoop {
     this.lastClose = s.lastClose ?? -Infinity; this.decision = s.decision;
     this.spreads.push(...s.spreads); this.after.push(...s.after);
     this.setup = s.setup as SignalSetup | null; this.open = s.open as Open | null;
+    this.active.restore(s.activeSignals);
   }
 
   /** Mark-to-market only (no state transition); exits still happen only on CLOSED bars. */
@@ -307,6 +314,10 @@ export class LivePaperLoop {
     this.obs.pb = pb;
     const side: "BUY" | "SELL" | null = pb && pb.bias !== "NONE" ? pb.bias : null;
     const gate = (dir: "BUY" | "SELL" | "NONE"): PrimaryBiasGateReason | null => side === null ? "NO_PRIMARY_BIAS" : dir !== side ? "BLOCK_COUNTER_PRIMARY_BIAS" : null;
+    this.active.prune(c.timestamp);
+    if (side) this.active.invalidateDirection(side === "BUY" ? "SELL" : "BUY");
+    else { this.active.invalidateDirection("BUY"); this.active.invalidateDirection("SELL"); }
+    const ctxReject = () => validateSignalContext({ barCloseMs: bar.close_time, m15LastCloseMs: m15.length ? (m15.at(-1)!.timestamp * 1000) + 900_000 : null, primaryBiasAsOfMs: pb ? pb.asOf : null });
     if (this.setup && !isTerminal(this.setup)) {
       const g = gate(this.setup.direction);
       if (g) { this.decision = `SETUP_INVALIDATED ${g}`; this.setup = null; }
@@ -318,21 +329,41 @@ export class LivePaperLoop {
       if (isTerminal(this.setup)) { this.decision = `SETUP ${this.setup.state}`; this.setup = null; }
     }
     if (!this.setup && reaction && !evGate) {
-      const cr = createSetup(ev, input, reaction, c, c.close);
+      const raw = createSetup(ev, input, reaction, c, c.close);
+      let cr = raw;
+      if (raw) {
+        const rd = raw.setup.direction === "NONE" ? null : raw.setup.direction;
+        const why = ctxReject();
+        const dup = why ? null : this.active.activeFor(raw.setup);
+        if (why || dup) {
+          this.decision = why ? `SIGNAL_REJECTED ${why}` : "DUPLICATE_BLOCKED";
+          this.record({ kind: "REJECTED", at: bar.close_time, signalId: raw.setup.id, direction: rd, arenaStatus: pb?.arenaStatus ?? null,
+            outcome: why ? "SIGNAL_REJECTED" : "DUPLICATE_BLOCKED", reason: why ?? `DUPLICATE_OF ${dup!.signalId}` });
+          cr = null;
+        }
+      }
       if (cr) {
         this.setup = cr.setup;
         const d = cr.setup.direction === "NONE" ? null : cr.setup.direction;
         this.record({ kind: "CANDIDATE", at: bar.close_time, signalId: cr.setup.id, direction: d, arenaStatus: pb?.arenaStatus ?? null, outcome: "M1B_SETUP", reason: `${loc.context.priceLocation}/${reaction.pattern}`,
           context: Object.freeze({ m1bState: String(cr.setup.state), primaryBias: pb?.bias ?? null, priceLocation: String(loc.context.priceLocation), locationTier: loc.context.locationTier ?? null,
             keyLevelPrice: Number.isFinite(loc.context.keyLevelPrice) ? loc.context.keyLevelPrice : null, trigger: String(reaction.pattern), reactionQuality: String(reaction.quality),
-            emaPricePosition: String(ema.context.pricePosition), emaActions: Object.freeze([...(ema.context.actions ?? [])]) }) });
+            emaPricePosition: String(ema.context.pricePosition), emaActions: Object.freeze([...(ema.context.actions ?? [])]),
+            regime: regimeLabel(cr.setup.marketContext?.regime), signalIdentity: signalIdentity(cr.setup) }) });
       }
     }
     this.obs.m2 = Object.freeze({ at: bar.close_time, state: this.setup ? this.setup.state : (this.decision ?? "NO_SETUP"), direction: this.setup ? this.setup.direction : (ev.kind === "CANDIDATE" ? ev.direction : null) });
     if (!this.setup || this.setup.state !== "READY") return;
     if (!pb || gate(this.setup.direction)) { this.decision = `SETUP_INVALIDATED ${gate(this.setup.direction) ?? "NO_PRIMARY_BIAS"}`; this.setup = null; return; }
 
+    const lost = ctxReject();
+    if (lost) { // context lost after the setup became READY ⇒ invalidate, never consume
+      this.decision = `SETUP_INVALIDATED ${lost}`;
+      this.record({ kind: "REJECTED", at: bar.close_time, signalId: this.setup.id, direction: this.setup.direction === "NONE" ? null : this.setup.direction, arenaStatus: pb.arenaStatus ?? null, outcome: "SIGNAL_REJECTED", reason: `CONTEXT_LOST ${lost}` });
+      this.setup = null; return;
+    }
     const setup = this.setup; this.setup = null; // consumed by the plan attempt
+    this.active.register(setup);
     const base = { signalId: setup.id, direction: setup.direction === "NONE" ? null : setup.direction, at: bar.close_time };
     // Decision Gate: single entry authority. M1B READY is only a request; ARENA operator.status must ALLOW the same side.
     const g = decideEntry(pb.arenaStatus, setup.direction);
