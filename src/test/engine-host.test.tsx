@@ -144,7 +144,7 @@ describe("engine host — architecture", () => {
     const dirs = [join(process.cwd(), "src/core/enginehost"), join(process.cwd(), "engine-host")];
     for (const d of dirs) for (const f of readdirSync(d).filter((x) => x.endsWith(".ts"))) {
       const src = readFileSync(join(d, f), "utf8");
-      expect(src, f).not.toMatch(/order_send|placeOrder|src\/probe|["'][^"'\n]*engine\/execution(?!-status)/);
+      expect(src, f).not.toMatch(/order_send|placeOrder|src\/probe|engine\/execution(?!-status)/);
     }
   });
 });
