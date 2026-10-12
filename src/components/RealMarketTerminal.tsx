@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, Expand, Layers, Settings2, X } from "lucide-react";
+import { ArrowLeft, Expand, Eye, EyeOff, Settings2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarketCandles } from "@/components/MarketCandles";
 import { SnrOverlayLegend } from "@/components/SnrOverlayLegend";
@@ -105,7 +105,7 @@ export function RealMarketTerminal({ client, selectedSymbol: selected, onSelecte
   const [clock, setClock] = useState<number | null>(null);
   const [inspected, setInspected] = useState<BridgeBar | null>(null);
   const [focus, setFocus] = useState(false);
-  const [snrVisible, setSnrVisible] = useState(true);
+  const [snrAnnotations, setSnrAnnotations] = useState(false);
   const snr = useSnrOverlay(selected);
 
   const quoteBusy = useRef<Record<TerminalMarket, boolean>>({ XAUUSD: false, BTCUSD: false });
@@ -233,8 +233,8 @@ export function RealMarketTerminal({ client, selectedSymbol: selected, onSelecte
   const state = states[selected];
   const digits = state.spec.value?.digits ?? null;
   const quote = state.quote.value;
-  const snrZones = useMemo(() => snrVisible ? selectSnrZones(snr.snapshot, quote?.bid ?? null, timeframe) : [], [snrVisible, snr.snapshot, quote?.bid, timeframe]);
-  const snrSwings = useMemo(() => snrVisible ? (snr.snapshot?.swings ?? []).filter((s) => s.timeframe === (timeframe === "M5" ? "M15" : timeframe)) : [], [snrVisible, snr.snapshot, timeframe]);
+  const snrZones = useMemo(() => selectSnrZones(snr.snapshot, quote?.bid ?? null, timeframe), [snr.snapshot, quote?.bid, timeframe]);
+  const snrSwings = useMemo(() => (snr.snapshot?.swings ?? []).filter((s) => s.timeframe === (timeframe === "M5" ? "M15" : timeframe)), [snr.snapshot, timeframe]);
   const bars = state.bars[timeframe];
   const liveBars = live[`${selected}:${timeframe}`];
   const merged = useMemo(() => mergeLiveBars(bars?.value ?? [], liveBars ?? []), [bars?.value, liveBars]);
@@ -249,6 +249,7 @@ export function RealMarketTerminal({ client, selectedSymbol: selected, onSelecte
   const price = (n: number | null) => formatMarketPrice(n, digits);
   const ohlc = ([{ label: "OPEN", key: "open" }, { label: "HIGH", key: "high" }, { label: "LOW", key: "low" }, { label: "CLOSE", key: "close" }] as const).map(({ label, key }) => ({ label, key, value: candle ? price(candle[key]) : "—" }));
   const publishObservation = mobile?.setObservation;
+  const annotationToggle = <Button size="icon" variant={snrAnnotations ? "secondary" : "ghost"} aria-label="Detail SNR" aria-pressed={snrAnnotations} title={snrAnnotations ? "Sembunyikan label SNR" : "Tampilkan label SNR"} onClick={() => setSnrAnnotations((value) => !value)}>{snrAnnotations ? <Eye /> : <EyeOff />}</Button>;
   useEffect(() => {
     publishObservation?.({ symbol: selected, bid: formatMarketPrice(quote?.bid ?? null, digits), ask: formatMarketPrice(quote?.ask ?? null, digits), spread: formatMarketPrice(quote ? quote.ask - quote.bid : null, digits), connected: connection === "TERHUBUNG", fresh: freshness === "FRESH", detail: `${terminalLine} · ${freshnessLabel(freshness)}` });
   }, [publishObservation, selected, quote, digits, connection, freshness, terminalLine]);
@@ -284,21 +285,21 @@ export function RealMarketTerminal({ client, selectedSymbol: selected, onSelecte
         <section className="min-w-0" aria-label="Grafik pasar">
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="flex min-w-0 gap-1" role="group" aria-label="Timeframes">{TERMINAL_TIMEFRAMES.map((tf) => <Button type="button" size="sm" key={tf} variant={timeframe === tf ? "secondary" : "ghost"} aria-pressed={timeframe === tf} onClick={() => setTimeframe(tf)} className="h-9 min-w-11 px-2 font-mono text-xs" data-testid={`timeframe-${tf}`}>{tf}</Button>)}</div>
-             <div className="flex shrink-0 gap-1"><Button size="icon" variant={snrVisible ? "secondary" : "ghost"} aria-label="Overlay SNR" aria-pressed={snrVisible} title="Overlay support/resistance" onClick={() => setSnrVisible((value) => !value)}><Layers /></Button><Button size="icon" variant="ghost" aria-label="Fokus grafik" title="Fokus grafik" onClick={() => setFocus(true)}><Expand /></Button></div>
+             <div className="flex shrink-0 gap-1">{annotationToggle}<Button size="icon" variant="ghost" aria-label="Fokus grafik" title="Fokus grafik" onClick={() => setFocus(true)}><Expand /></Button></div>
           </div>
           <div className="relative h-[380px] min-w-0 overflow-hidden border-y border-border sm:h-[580px] lg:h-[650px]" data-testid="chart-area">
-             {chartBars.length > 0 && digits != null ? <MarketCandles bars={chartBars} digits={digits} snrZones={snrZones} snrSwings={snrSwings} onInspect={setInspected} onActivate={() => setFocus(true)} focus={false} /> : <div className="grid h-full place-items-center text-sm text-muted-foreground" data-testid="chart-empty">{bars?.failed ? "DATA GRAFIK TIDAK TERSEDIA" : "Memuat candle broker asli…"}</div>}
+             {chartBars.length > 0 && digits != null ? <MarketCandles key={`${selected}:${timeframe}`} bars={chartBars} digits={digits} snrZones={snrZones} snrSwings={snrSwings} annotationsVisible={snrAnnotations} onInspect={setInspected} onActivate={() => setFocus(true)} focus={false} /> : <div className="grid h-full place-items-center text-sm text-muted-foreground" data-testid="chart-empty">{bars?.failed ? "DATA GRAFIK TIDAK TERSEDIA" : "Memuat candle broker asli…"}</div>}
           </div>
-          <SnrOverlayLegend snapshot={snr.snapshot} zones={snrZones} digits={digits} visible={snrVisible} />
+          <SnrOverlayLegend snapshot={snr.snapshot} zones={snrZones} digits={digits} visible={snrAnnotations || !snr.snapshot?.zones.length} />
           <div className="mt-2 flex min-h-6 items-center justify-between gap-2 text-xs text-muted-foreground"><span>{selected} · {timeframe} · CANDLE BROKER{merged.liveFrom != null ? " + CANDLE AKTIF (dari tick, hanya tampilan)" : ""}</span><span className="text-right">{bars?.failed && chartBars.length ? "DATA VALID TERAKHIR" : bars?.failed ? "DATA TIDAK TERSEDIA" : "DATA ASLI"}</span></div>
           {candle && <div className="mt-1 text-xs text-muted-foreground" data-testid="candle-time">{new Date(candle.raw_time_s * 1000).toISOString().replace("T", " ").replace(".000Z", " UTC")}{inspected ? " · candle terpilih" : " · candle terbaru"}</div>}
         </section>
         <section aria-label="Ringkasan candle" className="grid grid-cols-4 gap-2 border-t border-border pt-4" data-testid="ohlc-snapshot">{ohlc.map(({ label, key, value }) => <div key={label} className="min-w-0"><div className="text-[10px] text-muted-foreground sm:text-xs">{label}</div><div className="mt-1 truncate font-mono text-xs tabular-nums sm:text-lg" title={value} data-testid={`ohlc-${key}`}>{value}</div></div>)}</section>
       </main>
       {focus && <div role="dialog" aria-label="Mode fokus grafik" aria-modal="true" className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background">
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-3"><div className="min-w-0 truncate font-mono text-sm">{selected} <span className="text-muted-foreground">/ {timeframe}</span></div><Button type="button" size="icon" variant="ghost" onClick={() => setFocus(false)} aria-label="Tutup fokus grafik" title="Tutup fokus grafik"><X /></Button></div>
-         <div className="min-h-0 flex-1" data-testid="focus-chart">{chartBars.length && digits != null ? <MarketCandles bars={chartBars} digits={digits} snrZones={snrZones} snrSwings={snrSwings} onInspect={setInspected} onActivate={() => {}} focus /> : <div className="grid h-full place-items-center text-muted-foreground">DATA GRAFIK TIDAK TERSEDIA</div>}</div>
-         <div className="max-h-28 shrink-0 overflow-y-auto px-3"><SnrOverlayLegend snapshot={snr.snapshot} zones={snrZones} digits={digits} visible={snrVisible} /></div>
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-3"><div className="min-w-0 truncate font-mono text-sm">{selected} <span className="text-muted-foreground">/ {timeframe}</span></div><div className="flex gap-1">{annotationToggle}<Button type="button" size="icon" variant="ghost" onClick={() => setFocus(false)} aria-label="Tutup fokus grafik" title="Tutup fokus grafik"><X /></Button></div></div>
+         <div className="min-h-0 flex-1" data-testid="focus-chart">{chartBars.length && digits != null ? <MarketCandles key={`${selected}:${timeframe}`} bars={chartBars} digits={digits} snrZones={snrZones} snrSwings={snrSwings} annotationsVisible={snrAnnotations} onInspect={setInspected} onActivate={() => {}} focus /> : <div className="grid h-full place-items-center text-muted-foreground">DATA GRAFIK TIDAK TERSEDIA</div>}</div>
+         <div className="max-h-28 shrink-0 overflow-y-auto px-3"><SnrOverlayLegend snapshot={snr.snapshot} zones={snrZones} digits={digits} visible={snrAnnotations || !snr.snapshot?.zones.length} /></div>
         <div className="shrink-0 border-t border-border px-3 py-2"><div className="text-xs text-muted-foreground">{candle ? new Date(candle.raw_time_s * 1000).toISOString().replace("T", " ").replace(".000Z", " UTC") : "Candle tidak tersedia"}</div><div className="mt-1 grid grid-cols-4 gap-2">{ohlc.map(({ label, value }) => <div key={label} className="min-w-0"><div className="text-[10px] text-muted-foreground">{label}</div><div className="truncate font-mono text-xs" title={value}>{value}</div></div>)}</div></div>
         <Button type="button" variant="ghost" className="shrink-0 sm:hidden" onClick={() => setFocus(false)}><ArrowLeft /> Kembali ke pasar</Button>
       </div>}
