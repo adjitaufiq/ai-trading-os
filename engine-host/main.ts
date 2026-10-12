@@ -131,6 +131,7 @@ const runtimes = new Map<string, MarketRuntime>();
 
 let demo: DemoExecutionBridge | null = null;
 let cloudKill = false;
+let reconcilerRef: { blocked(): boolean } | null = null;
 let agent: ControlPlaneAgent | null = null;
 const AGENT_VERSION = "engine-host/control-plane-v1";
 if (pathMode === "DEMO") {
@@ -169,6 +170,7 @@ if (pathMode === "DEMO") {
     mode: pathMode, whitelist, lifecycle, maxPositions: riskPolicy.max_position, maxSymbols: riskPolicy.max_symbol, reconciler,
     gateway: brokerGw,
   });
+  reconcilerRef = reconciler;
   void reconciler.reconcile("STARTUP");
   setInterval(() => { void reconciler.reconcile("PERIODIC").catch((e) => log(`[reconcile] failed ${(e as Error).message}`)); }, RECONCILE_INTERVAL_MS);
   demo = new DemoExecutionBridge({
@@ -226,6 +228,9 @@ try { if (existsSync(buildFile)) buildSrc = JSON.parse(readFileSync(buildFile, "
 const build = resolveBuildInfo({ commit: env.ENGINE_COMMIT ?? buildSrc.commit, build_time: env.ENGINE_BUILD_TIME ?? buildSrc.build_time });
 log(`[engine-host] build ${build.engine_version} commit ${build.commit ?? "UNKNOWN"} built ${build.build_time ?? "UNKNOWN"}`);
 
+// Observation only (health/execution-status labels); order gating stays in DemoExecutionBridge/Layer.
+const killSwitchActive = () => riskPolicy.emergency_stop || existsSync(join(dataDir, "EMERGENCY_STOP")) || existsSync(join(dataDir, "DEMO_KILL_SWITCH"))
+  || cloudKill || (agent ? agent.current().halted : false);
 const host = new EngineHost({
   build,
   onPipelineEvent: (e: EnginePipelineEvent) => { appendFileSync(outboxFile, `${JSON.stringify(e)}\n`); void pushOutbox(); },
@@ -233,10 +238,10 @@ const host = new EngineHost({
   shadowStatus: () => shadow.status(),
   executionState: () => {
     const armed = demo !== null;
-    const killed = riskPolicy.emergency_stop || existsSync(join(dataDir, "EMERGENCY_STOP")) || existsSync(join(dataDir, "DEMO_KILL_SWITCH"))
-      || cloudKill || (agent ? agent.current().halted : false);
-    return { armed, enabled: armed && !shadowActive && !killed };
+    return { armed, enabled: armed && !shadowActive && !killSwitchActive() };
   },
+  killSwitch: () => killSwitchActive(),
+  reconciliationBlocked: () => reconcilerRef ? reconcilerRef.blocked() : null,
   onApprovedOpen: (e: ApprovedPaperOpen, reader: MarketRuntimeReader | null) => {
     const intent = buildDemoIntent(e, reader?.radarSnapshot() ?? null, host.bundle(e.symbol, Date.now())?.slice?.current ?? null);
     const g = shadow.gate(intent);
