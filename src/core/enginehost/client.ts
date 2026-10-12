@@ -3,6 +3,7 @@
 import type { RadarHealth, RadarSnapshot } from "../radar/types";
 import type { VirtualAccountView } from "../paper/LivePaperLoop";
 import { ENGINE_HOST_SCHEMA, type EngineEnvelope, type EngineHostHealth, type EngineSymbolBundle } from "./types";
+import { EXECUTION_STATUS_SCHEMA, type ExecutionStatusView } from "./executionStatus";
 import { parseSnrSnapshot, type SnrSnapshot } from "@/lib/snrOverlay";
 
 export type EngineResult<T> = { readonly ok: true; readonly envelope: EngineEnvelope<T> } | { readonly ok: false; readonly error: string };
@@ -20,9 +21,25 @@ function isEnvelope(x: unknown): x is EngineEnvelope<unknown> {
   return !!e && e["schema"] === ENGINE_HOST_SCHEMA && e["source"] === "ENGINE_HOST" && typeof e["generated_at"] === "number" && "data" in e;
 }
 
+const EXEC_ENUMS: Record<string, readonly unknown[]> = {
+  engine: ["ONLINE", "DEGRADED", "OFFLINE"], mode: ["MONITOR_ONLY", "DEMO_EXECUTION"],
+  execution: ["READY", "WAITING_SIGNAL", "ACTIVE", "BLOCKED", "UNKNOWN"], account: ["PASS", "FAIL", "UNKNOWN"],
+  mt5: ["CONNECTED", "DISCONNECTED", "UNKNOWN"], shadow: ["CLEAR", "BLOCKING"], risk: ["PASS", "BLOCKED", "UNKNOWN"],
+  reconciliation: ["CLEAN", "MISMATCH", "UNKNOWN"], signal: ["READY", "WAITING", "UNKNOWN"],
+};
+export function isExecutionStatus(x: unknown): x is ExecutionStatusView {
+  const e = x as Record<string, unknown> | null;
+  if (!e || e["schema"] !== EXECUTION_STATUS_SCHEMA || typeof e["kill_switch"] !== "boolean" || typeof e["stale"] !== "boolean" || typeof e["checked_at"] !== "number" || !Array.isArray(e["blockers"])) return false;
+  return Object.entries(EXEC_ENUMS).every(([k, v]) => v.includes(e[k]));
+}
+
 export function isEngineHostHealth(x: unknown): x is EngineHostHealth {
   const h = x as Record<string, unknown> | null;
-  if (!h || h["operating_mode"] !== "MONITOR_ONLY" || h["execution_enabled"] !== false || !Array.isArray(h["symbols"])) return false;
+  if (!h || !Array.isArray(h["symbols"]) || typeof h["execution_enabled"] !== "boolean") return false;
+  const mode = h["operating_mode"];
+  // MONITOR_ONLY must report execution disabled; DEMO may report either. Any other mode is rejected.
+  if (mode === "MONITOR_ONLY") { if (h["execution_enabled"] !== false) return false; }
+  else if (mode !== "DEMO") return false;
   return (h["symbols"] as unknown[]).every((s) => {
     const o = s as Record<string, unknown> | null;
     return !!o && typeof o["symbol"] === "string" && STATES.has(o["state"] as string);
@@ -59,6 +76,7 @@ export class EngineHostClient {
   }
 
   health() { return this.get<EngineHostHealth>("/v1/engine/health", isEngineHostHealth); }
+  executionStatus() { return this.get<ExecutionStatusView>("/v1/engine/execution-status", isExecutionStatus); }
   /** Dedicated visual SNR contract; accept raw response or the standard host envelope, never another source. */
   async snr(symbol: string): Promise<{ ok: true; data: SnrSnapshot } | { ok: false; error: string }> {
     const ctl = new AbortController();

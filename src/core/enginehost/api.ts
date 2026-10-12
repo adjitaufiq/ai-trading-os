@@ -19,13 +19,17 @@ export function envelope<T>(data: T, now: number): EngineEnvelope<T> {
   return { schema: ENGINE_HOST_SCHEMA, source: "ENGINE_HOST", generated_at: now, data };
 }
 
-type HostView = Pick<EngineHost, "health" | "reader" | "symbols"> & Partial<Pick<EngineHost, "bundle" | "bundleKey" | "demoStatus" | "pipelineEvents" | "readiness" | "buildInfo" | "monitoring" | "journalStatus" | "shadowStatus">>;
+type HostView = Pick<EngineHost, "health" | "reader" | "symbols"> & Partial<Pick<EngineHost, "bundle" | "bundleKey" | "demoStatus" | "pipelineEvents" | "readiness" | "buildInfo" | "monitoring" | "journalStatus" | "shadowStatus" | "executionStatus">>;
 
 export function routeEngineRequest(host: HostView, method: string, rawPath: string, now: number): EngineHttpResponse {
   if (method === "OPTIONS") return { status: 204, body: "", headers: { ...ENGINE_CORS_HEADERS } };
   if (method !== "GET") return json(405, { error: "METHOD_NOT_ALLOWED", detail: "engine host is read-only" });
   const path = rawPath.split("?")[0]!.replace(/\/+$/, "");
   if (path === "/v1/engine/health") return json(200, envelope(host.health(), now));
+  if (path === "/v1/engine/execution-status") {
+    if (!host.executionStatus) return json(404, { error: "NOT_AVAILABLE" });
+    return json(200, envelope(host.executionStatus(now), now));
+  }
   if (path === "/v1/engine/version") return json(200, envelope(host.buildInfo?.() ?? host.health().build ?? null, now));
   if (path === "/v1/engine/account") return json(200, envelope({ accounts: host.symbols.map((symbol) => ({ symbol, account: host.reader(symbol)?.paperAccount?.() ?? null })) }, now));
   if (path === "/v1/engine/journal") return json(200, envelope({ trades: host.symbols.flatMap((symbol) => host.reader(symbol)?.paperTrades?.() ?? []) }, now));
