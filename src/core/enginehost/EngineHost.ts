@@ -225,7 +225,7 @@ export class EngineHost {
       readiness: [...this.slots.keys()].map((symbol) => this.readiness(symbol, now)),
     });
     const armedFn = this.o.automationArmed;
-    this.automation ??= new AutomationStateTracker({ onTransition: this.o.onAutomationTransition, ...(armedFn ? { userApproved: armedFn } : {}) });
+    this.automation ??= new AutomationStateTracker({ onTransition: this.o.onAutomationTransition, ...(armedFn ? { sessionArmed: armedFn } : {}) });
     let snr: boolean | null = null;
     try {
       snr = this.symbols.some((sym) => (snrPayload(sym, this.bundle(sym, now)?.slice?.current?.operator, now)?.zones.length ?? 0) > 0);

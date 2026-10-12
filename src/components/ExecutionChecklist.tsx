@@ -27,7 +27,7 @@ export function ExecutionChecklist({ automation }: { automation: AutomationView 
             <span className={`w-3 text-center ${TONE[c.state]}`} aria-hidden>{MARK[c.state]}</span>
             <span>{c.label}</span>
             <span className="ml-auto text-muted-foreground">
-              {c.key === "USER_APPROVAL" && c.state !== "PASS" ? "BELUM DISETUJUI" : c.state}
+              {c.key === "SESSION_ARM" && c.state !== "PASS" ? "SESI BELUM DI-ARM" : c.state}
             </span>
           </li>
         ))}

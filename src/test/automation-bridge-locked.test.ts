@@ -11,10 +11,10 @@ const base: ExecutionStatusView = {
 };
 
 describe("automation state machine (LOCKED)", () => {
-  it("defaults to MONITOR_ONLY and never arms without user approval", () => {
+  it("defaults to MONITOR_ONLY and never arms without session arm", () => {
     expect(deriveStage({ ...base, engine: "OFFLINE" }, false).stage).toBe("MONITOR_ONLY");
     expect(deriveStage({ ...base, mode: "MONITOR_ONLY", mt5: "UNKNOWN", account: "UNKNOWN" }, false).stage).toBe("PAPER_READY");
-    expect(deriveStage(base, false)).toEqual({ stage: "DEMO_CONNECTED", reason: "USER_APPROVAL_MISSING" });
+    expect(deriveStage(base, false)).toEqual({ stage: "DEMO_CONNECTED", reason: "SESSION_ARM_REQUIRED" });
     expect(deriveStage(base, true).stage).toBe("DEMO_ARMED");
     expect(deriveStage({ ...base, execution: "ACTIVE" }, true).stage).toBe("DEMO_EXECUTION");
     expect(deriveStage({ ...base, kill_switch: true }, true).stage).toBe("DEMO_CONNECTED");
@@ -26,13 +26,13 @@ describe("automation state machine (LOCKED)", () => {
     t.observe({ ...base, engine: "OFFLINE" }, true, 2);
     const v = t.observe(base, true, 3);
     expect(rec).toEqual(["null->MONITOR_ONLY", "MONITOR_ONLY->DEMO_CONNECTED"]);
-    expect(v.user_approval).toBe("NOT_APPROVED");
+    expect(v.session_arm).toBe("NOT_ARMED");
     expect(v.verdict).toBe("EXECUTION_BLOCKED");
   });
   it("checklist has 9 items; any failure blocks", () => {
     const c = buildChecklist(base, true, false);
     expect(c).toHaveLength(9);
-    expect(c.find((x) => x.key === "USER_APPROVAL")!.state).toBe("FAIL");
+    expect(c.find((x) => x.key === "SESSION_ARM")!.state).toBe("FAIL");
     expect(buildChecklist(base, true, true).every((x) => x.state === "PASS")).toBe(true);
     expect(buildChecklist({ ...base, shadow: "BLOCKING" }, true, true).find((x) => x.key === "SHADOW_GUARD_CLEARED")!.state).toBe("FAIL");
   });
