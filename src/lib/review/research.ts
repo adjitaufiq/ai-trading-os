@@ -18,7 +18,7 @@ export function regimeBucket(label: string | null): RegimeBucket {
   const l = (label ?? "").toUpperCase();
   if (!l) return "UNKNOWN";
   if (/VOLATIL|EXPANSION/.test(l)) return "HIGH_VOLATILITY";
-  if (/RANGE|SIDEWAYS|CONSOLIDAT|CHOP/.test(l)) return "RANGE";
+  if (/RANG|SIDEWAYS|CONSOLIDAT|CHOP/.test(l)) return "RANGE";
   if (/TREND|IMPULS/.test(l)) return "TREND";
   return "UNKNOWN";
 }
