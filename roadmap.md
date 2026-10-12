@@ -1,4 +1,10 @@
 # Stage 3 PRE-2D gap closure
+## Approved SNR eye and zoom controls
+- [ ] Default CLEAN annotation-only eye toggle; retain all selected bands, lines and confirmed markers.
+- [ ] Native chart zoom +/−/reset; preserve viewport across candle refreshes.
+- [ ] Global eight-zone limit (H4 4, H1 3, M15 1; M5 hidden), exact source ranges, no new scores.
+- [ ] Targeted regression and browser verification; no deploy.
+
 ## Approved clean SNR overlay
 - [x] Copy confirmed/available engine swings into dedicated SNR response without recalculation.
 - [x] Clean nearest-zone selection, timeframe styling, supply/demand labels and confirmed swing markers; preserve raw SNR and trading logic.
