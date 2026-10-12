@@ -30,7 +30,10 @@ Sources: demo bridge arm state + last account identity (with timestamp), shadow 
 - Red "EXE BLOCKED": MT5 disconnected, kill switch ON, risk blocked, shadow blocking, mismatch, stale, or MONITOR_ONLY.
 - Remove hardcoded MONITOR_ONLY / EXECUTION OFF text in `MobileTradingView.tsx`, `MobileTerminalChrome.tsx`, desktop trade panel; browser session without host shows "NOT CONNECTED".
 
-Note: your Condition 1 expects yellow WAITING SIGNAL and Condition 2 green READY — plan follows that (green only with a valid signal and all gates).
+User clarifications (approved with notes):
+1. "Valid signal" for green = Decision Gate PASS / READY state, not mere pattern detection.
+2. MONITOR_ONLY keeps meaning "execution permission disabled", never "waiting signal".
+3. UI shows freshness: last_checked_at / age in seconds; stale health or execution-status data can never render green.
 
 ## 5. Acceptance tests (vitest, before any package)
 1. Engine online, no signal → ENGINE ONLINE, MODE DEMO_EXECUTION, EXE yellow WAITING SIGNAL.
