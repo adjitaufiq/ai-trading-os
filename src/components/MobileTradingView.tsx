@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 import { useMobileTerminal } from "./MobileTerminalContext";
 import type { TradingSnapshot } from "@/core/technical/tradingState";
 import type { RuntimeFacts } from "@/lib/cockpitSource";
+import type { ExeLamp } from "@/lib/exeLamp";
 export type LampTone = "healthy" | "waiting" | "attention" | "unknown";
 const toneClass = {
   healthy: "text-bull",
@@ -20,6 +21,7 @@ export function mobileLamps(
   facts: RuntimeFacts | null,
   engineStatus: string,
   connected: boolean,
+  exe?: ExeLamp | null,
 ) {
   const ev = snapshot?.availability === "AVAILABLE" ? snapshot.evidence : null;
   const indicatorTone = (status: string | undefined): LampTone =>
@@ -73,8 +75,8 @@ export function mobileLamps(
     },
     {
       label: "EXE",
-      tone: snapshot?.execution.state === "BLOCKED" ? "attention" : "waiting",
-      detail: `MONITOR_ONLY · ${snapshot?.execution.reasons.join(" · ") ?? "Tidak ada order dari UI"}`,
+      tone: exe?.tone ?? "unknown",
+      detail: exe ? `${exe.label} · ${exe.detail}` : "EXE NOT CONNECTED · status eksekusi Engine Host belum tersedia",
     },
   ] as { label: string; tone: LampTone; detail: string }[];
 }
@@ -299,23 +301,22 @@ export function Direction({ value }: { value: string | undefined }) {
     </span>
   );
 }
-export function MobileBottomNav({ engineStatus }: { engineStatus: string }) {
+export function MobileBottomNav({ engineStatus, exe }: { engineStatus: string; exe?: ExeLamp | null }) {
   const m = useMobileTerminal();
   const [detail, setDetail] = useState(false);
   if (!m) return null;
   const s = m.report?.snapshot;
   const icons = { TRADE: ShieldCheck, RADAR: Radar, ANALYSIS: Activity };
   const result =
-    s?.execution.state === "BLOCKED" ? "BLOCKED" : s?.signal.state === "READY" ? "READY" : "WAIT";
+    exe?.execution === "BLOCKED" ? "BLOCKED" : s?.signal.state === "READY" ? "READY" : "WAIT";
+  const exeClass =
+    exe?.tone === "healthy" ? "text-bull" : exe?.tone === "waiting" ? "text-warn" : exe?.tone === "attention" ? "text-bear" : "text-muted-foreground";
   return (
     <>
       <div className="mobile-execution-bar">
-        <span className={s?.execution.state === "BLOCKED" ? "text-bear" : "text-warn"}>● EXE</span>
-        <span
-          className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground"
-          title={s?.execution.reasons.join(" · ")}
-        >
-          MONITOR_ONLY
+        <span className={exeClass}>● EXE</span>
+        <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground" title={exe?.detail}>
+          {exe ? `ENGINE ${exe.engine} · MODE ${exe.mode} · ${exe.execution}${exe.ageSec !== null ? ` · ${exe.ageSec}s` : ""}` : "NOT CONNECTED"}
         </span>
         <Button disabled size="sm" variant="outline" className="h-8 text-xs">
           <LockKeyhole className="size-3" />

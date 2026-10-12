@@ -20,6 +20,7 @@ import { explainTradingState } from "@/lib/ai-why.functions";
 import { browserWebSocketFactory } from "@/lib/browserWebSocket";
 import { mountCanonicalRuntime, type MountedRuntime } from "@/lib/canonicalRuntimes";
 import { useEngineHostStore } from "@/hooks/use-engine-host";
+import { exeLamp } from "@/lib/exeLamp";
 import { MobileTerminalProvider, useMobileTerminal } from "@/components/MobileTerminalContext";
 import { MobileTerminalChrome } from "@/components/MobileTerminalChrome";
 import { MobileTradingView, MobileBottomNav } from "@/components/MobileTradingView";
@@ -71,6 +72,7 @@ function Terminal() {
   // Strict source ownership: the engine host (VPS) owns every view when LIVE; a local runtime is mounted ONLY in
   // BROWSER SESSION (no engine host configured, or engine host OFFLINE). Never both at once.
   const { store: engine, state: engineState } = useEngineHostStore(SYMBOLS);
+  const exe = exeLamp(engineState.execution, engineState.executionAt, engineState.status, Date.now());
   const browserSession = engineState.status === "DISABLED" || engineState.status === "OFFLINE";
   useEffect(() => {
     if (!browserSession) {
@@ -135,6 +137,7 @@ function Terminal() {
           engineStatus={engineState.status}
           engineDetail={`ENGINE HOST ${engineState.status}\n${fallbackReason ?? ""}\nSOURCE ${engineState.status === "LIVE" ? "ENGINE_HOST" : "BROWSER_SESSION (EPHEMERAL)"}`}
           hasAlerts={alertItems.some((alert) => !alert.read)}
+          exe={exe}
         />
       </div>
       <div
@@ -240,7 +243,7 @@ function Terminal() {
             onSelect={focusAlert}
           />
         ) : null}
-        <MobileBottomNav engineStatus={engineState.status} />
+        <MobileBottomNav engineStatus={engineState.status} exe={exe} />
       </div>
       {tab === "JOURNAL" ? (
         <JournalPanel

@@ -144,7 +144,7 @@ describe("engine host — architecture", () => {
     const dirs = [join(process.cwd(), "src/core/enginehost"), join(process.cwd(), "engine-host")];
     for (const d of dirs) for (const f of readdirSync(d).filter((x) => x.endsWith(".ts"))) {
       const src = readFileSync(join(d, f), "utf8");
-      expect(src, f).not.toMatch(/order_send|placeOrder|src\/probe|engine\/execution/);
+      expect(src, f).not.toMatch(/order_send|placeOrder|src\/probe|engine\/execution(?!-status)/);
     }
   });
 });
@@ -220,7 +220,7 @@ describe("Phase 2 — persistent engine host", () => {
 
   it("no execution surface in engine host or radar volatility path", () => {
     for (const f of ["src/core/enginehost/brokerClock.ts", "src/core/enginehost/api.ts", "engine-host/main.ts", "src/core/radar/RadarRuntimeService.ts"]) {
-      expect(readFileSync(join(process.cwd(), f), "utf8"), f).not.toMatch(/OrderSend|order_send|placeOrder|engine\/execution|engine\/risk|\/v1\/order/i);
+      expect(readFileSync(join(process.cwd(), f), "utf8"), f).not.toMatch(/OrderSend|order_send|placeOrder|engine\/execution(?!-status)|engine\/risk|\/v1\/order/i);
     }
   });
 });

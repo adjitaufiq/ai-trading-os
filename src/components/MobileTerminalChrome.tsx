@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useMobileTerminal } from "./MobileTerminalContext";
 import { Direction, Lamp, mobileLamps } from "./MobileTradingView";
+import type { ExeLamp } from "@/lib/exeLamp";
 import robot from "@/assets/ai-robot-head-3d.png.asset.json";
 export function MobileTerminalChrome({
   selectedSymbol,
@@ -22,12 +23,14 @@ export function MobileTerminalChrome({
   engineStatus,
   engineDetail,
   hasAlerts,
+  exe,
 }: {
   selectedSymbol: string;
   onSymbol: (s: "XAUUSD" | "BTCUSD") => void;
   engineStatus: string;
   engineDetail: string;
   hasAlerts: boolean;
+  exe?: ExeLamp | null;
 }) {
   const m = useMobileTerminal();
   const [drawer, setDrawer] = useState(false);
@@ -40,6 +43,7 @@ export function MobileTerminalChrome({
     report?.facts ?? null,
     engineStatus,
     !!q?.connected && !!q.fresh,
+    exe,
   );
   const accessory = (name: string) => {
     m.setAccessory(name);
@@ -147,7 +151,7 @@ export function MobileTerminalChrome({
       <Dialog open={drawer} onOpenChange={setDrawer}>
         <DialogContent className="mobile-menu-dialog left-0 top-0 translate-x-0 translate-y-0">
           <DialogTitle>Personal AI Trader</DialogTitle>
-          <DialogDescription>MONITOR_ONLY · terminal baca-saja</DialogDescription>
+          <DialogDescription>{exe ? `ENGINE ${exe.engine} · MODE ${exe.mode} · EXECUTION ${exe.execution}` : "ENGINE NOT CONNECTED"} · terminal tanpa tombol order</DialogDescription>
           <div className="space-y-5">
             <MenuGroup title="Catatan">
               <MenuAction icon={NotebookPen} label="Jurnal" onClick={() => accessory("Jurnal")} />
