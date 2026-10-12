@@ -3,6 +3,9 @@ import { CandlestickSeries, ColorType, CrosshairMode, createChart, type IChartAp
 import type { BridgeBar } from "@/core/broker/gateway/types";
 import type { SnrZone, SnrSwing } from "@/lib/snrOverlay";
 import { SnrZonesPrimitive } from "@/components/SnrZonesPrimitive";
+import { Minus, Plus, Scan } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { preserveChartRange, zoomChartRange } from "@/lib/chartViewport";
 
 export interface MarketCandlesProps {
   bars: readonly BridgeBar[];
@@ -12,9 +15,10 @@ export interface MarketCandlesProps {
   focus: boolean;
   snrZones?: readonly SnrZone[] | undefined;
   snrSwings?: readonly SnrSwing[] | undefined;
+  annotationsVisible?: boolean;
 }
 
-function MarketCandlesView({ bars, digits, onInspect, onActivate, focus, snrZones, snrSwings }: MarketCandlesProps) {
+function MarketCandlesView({ bars, digits, onInspect, onActivate, focus, snrZones, snrSwings, annotationsVisible = false }: MarketCandlesProps) {
   const container = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -23,6 +27,8 @@ function MarketCandlesView({ bars, digits, onInspect, onActivate, focus, snrZone
   const inspectRef = useRef(onInspect);
   const activateRef = useRef(onActivate);
   const focusRef = useRef(focus);
+  const previousBars = useRef<readonly BridgeBar[]>([]);
+  const initialized = useRef(false);
   barsRef.current = bars;
   inspectRef.current = onInspect;
   activateRef.current = onActivate;
@@ -74,18 +80,39 @@ function MarketCandlesView({ bars, digits, onInspect, onActivate, focus, snrZone
   useEffect(() => {
     const s = series.current;
     if (!s) return;
+    const scale = chart.current?.timeScale();
+    const range = scale?.getVisibleLogicalRange();
     s.applyOptions({ priceFormat: { type: "price", precision: digits, minMove: 10 ** -digits } });
     s.setData(bars.map((b) => ({ time: b.raw_time_s as UTCTimestamp, open: b.open, high: b.high, low: b.low, close: b.close })));
-    chart.current?.timeScale().fitContent();
+    if (!initialized.current && bars.length) {
+      scale?.fitContent(); initialized.current = true;
+    } else if (range) {
+      scale?.setVisibleLogicalRange(preserveChartRange(range, previousBars.current, bars));
+    }
+    previousBars.current = bars;
   }, [bars, digits]);
 
-  useEffect(() => { overlay.current?.setZones(snrZones ?? [], digits); overlay.current?.setSwings(snrSwings ?? []); }, [snrZones, snrSwings, digits]);
+  useEffect(() => { overlay.current?.setZones(snrZones ?? [], digits); overlay.current?.setSwings(snrSwings ?? []); overlay.current?.setAnnotationsVisible(annotationsVisible); }, [snrZones, snrSwings, digits, annotationsVisible]);
 
-  useEffect(() => {
-    if (focus) requestAnimationFrame(() => chart.current?.timeScale().fitContent());
-  }, [focus]);
-
-  return <div ref={container} className="h-full w-full" data-testid="market-chart" data-candles={bars.length} data-snr-zones={snrZones?.length ?? 0} data-snr-swings={snrSwings?.length ?? 0} aria-label="Broker candlestick chart" />;
+  const zoom = (direction: "in" | "out") => {
+    const c = chart.current;
+    const range = c?.timeScale().getVisibleLogicalRange();
+    if (!c || !range || !bars.length) return;
+    c.priceScale("right").applyOptions({ autoScale: true });
+    c.timeScale().setVisibleLogicalRange(zoomChartRange(range, bars.length, direction));
+  };
+  const reset = () => {
+    chart.current?.priceScale("right").applyOptions({ autoScale: true });
+    chart.current?.timeScale().fitContent();
+  };
+  return <div className="relative h-full w-full">
+    <div ref={container} className="h-full w-full" data-testid="market-chart" data-candles={bars.length} data-snr-zones={snrZones?.length ?? 0} data-snr-swings={snrSwings?.length ?? 0} data-snr-annotations={annotationsVisible} aria-label="Broker candlestick chart" />
+    <div role="group" aria-label="Zoom grafik" className="absolute bottom-9 left-2 z-10 flex gap-1 border border-border bg-background/95 p-1">
+      <Button size="icon" variant="ghost" aria-label="Zoom in" title="Zoom in" onClick={() => zoom("in")}><Plus /></Button>
+      <Button size="icon" variant="ghost" aria-label="Zoom out" title="Zoom out" onClick={() => zoom("out")}><Minus /></Button>
+      <Button size="icon" variant="ghost" aria-label="Reset view" title="Reset view" onClick={reset}><Scan /></Button>
+    </div>
+  </div>;
 }
 
 export const MarketCandles = memo(MarketCandlesView);

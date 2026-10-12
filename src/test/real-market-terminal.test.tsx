@@ -5,8 +5,10 @@ import { RealMarketTerminal, formatMarketPrice } from "@/components/RealMarketTe
 import { EXECUTION_ENABLED, OPERATING_MODE } from "@/core/contracts";
 import type { BrokerGatewayClient } from "@/core/broker/gateway/BrokerGatewayClient";
 import type { BridgeBar } from "@/core/broker/gateway/types";
+import { parseSnrSnapshot } from "@/lib/snrOverlay";
 
-vi.mock("@/components/MarketCandles", () => ({ MarketCandles: ({ bars }: { bars: readonly BridgeBar[] }) => <div data-testid="mock-chart" data-count={bars.length}>{bars[0]?.broker_symbol}</div> }));
+vi.mock("@/components/MarketCandles", () => ({ MarketCandles: ({ bars, annotationsVisible, snrZones }: { bars: readonly BridgeBar[]; annotationsVisible: boolean; snrZones: readonly unknown[] }) => <div data-testid="mock-chart" data-count={bars.length} data-annotations={annotationsVisible} data-zones={snrZones.length}>{bars[0]?.broker_symbol}</div> }));
+vi.mock("@/hooks/use-snr-overlay", () => ({ useSnrOverlay: (symbol: string) => ({ snapshot: parseSnrSnapshot({ symbol, timeframe: "H4", price: 4140, zones: [{ type: "SUPPORT", low: 4130, high: 4140, status: "ACTIVE" }] }, symbol) }) }));
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const original = await importOriginal<typeof import("@tanstack/react-router")>();
   return { ...original, Link: ({ children }: { children: React.ReactNode }) => <a href="/audit">{children}</a> };
@@ -30,6 +32,21 @@ function TerminalHarness({ client = fakeClient(), now = () => 1790974684954 }: {
 const setup = (client = fakeClient(), now = () => 1790974684954) => render(<TerminalHarness client={client} now={now} />);
 
 describe("real dual-market monitor terminal", () => {
+  it("eye toggles only text in both normal and focus charts, default CLEAN retains zones", async () => {
+    setup();
+    await waitFor(() => expect(screen.getByTestId("mock-chart")).toHaveAttribute("data-zones", "1"));
+    expect(screen.getByRole("button", { name: "Detail SNR" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByTestId("snr-legend")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Detail SNR" }));
+    expect(screen.getByTestId("mock-chart")).toHaveAttribute("data-annotations", "true");
+    expect(screen.getByTestId("snr-legend")).toHaveTextContent("DEMAND ZONE H4 4130.000 - 4140.000");
+    fireEvent.click(screen.getByRole("button", { name: "Fokus grafik" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Detail SNR" }).at(-1) as HTMLElement);
+    for (const chart of screen.getAllByTestId("mock-chart")) {
+      expect(chart).toHaveAttribute("data-annotations", "false");
+      expect(chart).toHaveAttribute("data-zones", "1");
+    }
+  });
   it("keeps real gold quote, derived spread, broker candles and explicit monitor-only absence of execution", async () => {
     const client = fakeClient(); setup(client);
     await waitFor(() => expect(screen.getByTestId("bid")).toHaveTextContent("4140.348"));

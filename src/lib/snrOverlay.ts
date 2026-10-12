@@ -62,11 +62,19 @@ export function selectSnrZones(snapshot: SnrSnapshot | null, currentPrice: numbe
   if (!snapshot || price == null || !Number.isFinite(price) || price <= 0) return [];
   const distance = (z: SnrZone) => price < z.low ? z.low - price : price > z.high ? price - z.high : 0;
   const tfs = chartTimeframe === "H4" ? STRUCTURE_TFS.slice(0, 1) : chartTimeframe === "H1" ? STRUCTURE_TFS.slice(0, 2) : STRUCTURE_TFS;
-  return Object.freeze(tfs.flatMap((tf) => (["SUPPORT", "RESISTANCE"] as const).flatMap((type) =>
-    snapshot.zones.filter((z) => z.status === "ACTIVE" && z.timeframe === tf && z.type === type)
-      .sort((a, b) => distance(a) - distance(b) || a.low - b.low || a.high - b.high)
-      .filter((z, i, all) => i === 0 || z.low !== all[i - 1]?.low || z.high !== all[i - 1]?.high)
-      .slice(0, 3))));
+  const caps = { H4: 4, H1: 3, M15: 1 } as const;
+  return Object.freeze(tfs.flatMap((tf) => {
+    const seen = new Set<string>();
+    const counts = { SUPPORT: 0, RESISTANCE: 0 };
+    return snapshot.zones.filter((z) => z.status === "ACTIVE" && z.timeframe === tf)
+      .sort((a, b) => distance(a) - distance(b) || a.low - b.low || a.high - b.high || a.type.localeCompare(b.type))
+      .filter((z) => {
+        const key = `${z.type}:${z.low}:${z.high}`;
+        if (seen.has(key) || (tf === "H4" && counts[z.type] >= 2)) return false;
+        seen.add(key); counts[z.type] += 1;
+        return true;
+      }).slice(0, caps[tf]);
+  }));
 }
 
 export function snrZoneLabel(zone: SnrZone, digits: number | null): string {

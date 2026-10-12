@@ -1,13 +1,19 @@
 # Stage 3 PRE-2D gap closure
+## Approved SNR eye and zoom controls
+- [x] Default CLEAN annotation-only eye toggle; retain all selected bands, lines and confirmed markers.
+- [x] Native chart zoom +/−/reset; preserve viewport across candle refreshes and rolling history.
+- [x] Global eight-zone limit (H4 4, H1 3, M15 1; M5 hidden), exact source ranges, no new scores.
+- [x] 26 targeted tests and full 1102/1102 PASS; automatic build OK. Live XAUUSD chart (200 broker candles, eight host zones) verified at 1280/390 widths, eye toggle and focus controls, unchanged zoom after 32-second refresh, zero browser errors/overflow; no deploy.
+
 ## Approved clean SNR overlay
 - [x] Copy confirmed/available engine swings into dedicated SNR response without recalculation.
 - [x] Clean nearest-zone selection, timeframe styling, supply/demand labels and confirmed swing markers; preserve raw SNR and trading logic.
 - [x] 40 targeted tests and full 1099/1099 PASS; automatic build/typecheck OK; real chart component verified with isolated test zones/swings and toggle (zero page errors); no deploy.
-- [ ] Live end-to-end chart verification — blocked: broker candles unavailable in preview; existing deployed SNR response lacks confirmed swings. Requires external feed availability and approved VPS update, neither changed here.
+- [x] Live zone/chart end-to-end verification completed during eye/zoom task; broker candles and host SNR zones now available. Confirmed marker drawing separately covered by regression tests; no VPS changes.
 
 ## Approved SNR overlay Phase 1
 - [x] Dashboard SNR endpoint consumer, strict validation, shaded ranges/timeframe, toggle and focus chart; 23 targeted tests passed, automatic build/typecheck OK, browser verified with isolated test responses and zero page errors; no trading changes.
-- [ ] Live SNR zones — blocked: external Engine Host GET /v1/analysis/snr/{symbol} currently returns 404; dashboard honestly shows SNR unavailable. No VPS deployment/restart authorized.
+- [x] Live SNR zones verified during eye/zoom task; endpoint now supplies zones. No VPS deployment/restart performed.
 
 - [x] Isolate Chat, Control and Research navigation; removed cross-page tabs and report conversation drawers, retained panels and terminal entry links; verified at 390/1280 widths, no page errors or overflow, 6 assistant tests passed and automatic build OK.
 - [x] Mobile terminal: TRADE/RADAR/ANALISIS, grouped drawer, honest lamps and robot chat shortcut; desktop and existing detail views retained; 29 targeted tests passed, mobile overflow/page errors absent, automatic build OK; offline engine untouched.

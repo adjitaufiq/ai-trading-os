@@ -9,11 +9,13 @@ export class SnrZonesPrimitive implements ISeriesPrimitive<Time> {
   private zones: readonly SnrZone[] = [];
   private swings: readonly SnrSwing[] = [];
   private digits: number | null = null;
+  private annotationsVisible = false;
   constructor(private readonly palette: Palette) {}
   attached(attachment: SeriesAttachedParameter<Time>) { this.attachment = attachment; }
   detached() { this.attachment = null; }
   setZones(zones: readonly SnrZone[], digits: number | null = null) { this.zones = zones; this.digits = digits; this.attachment?.requestUpdate(); }
   setSwings(swings: readonly SnrSwing[]) { this.swings = swings; this.attachment?.requestUpdate(); }
+  setAnnotationsVisible(visible: boolean) { this.annotationsVisible = visible; this.attachment?.requestUpdate(); }
   paneViews(): readonly IPrimitivePaneView[] {
     return [
       { zOrder: () => "bottom", renderer: () => ({ draw: (target) => this.draw(target, false) }) },
@@ -28,6 +30,7 @@ export class SnrZonesPrimitive implements ISeriesPrimitive<Time> {
       context.font = "10px monospace";
       const occupied: { x: number; y: number; width: number; height: number }[] = [];
       const label = (text: string, x: number, y: number, color: string) => {
+        if (!this.annotationsVisible) return;
         const width = context.measureText(text).width + 10;
         if (width > mediaSize.width - 8 || y < 0 || y + 18 > mediaSize.height) return;
         const left = Math.max(4, Math.min(x, mediaSize.width - width - 4));
@@ -49,6 +52,7 @@ export class SnrZonesPrimitive implements ISeriesPrimitive<Time> {
         const color = support ? this.palette.support : this.palette.resistance;
         const left = zone.timeframe === "M15" ? mediaSize.width * 0.55 : 0;
         if (labels) {
+          if (!this.annotationsVisible) continue;
           label(snrZoneLabel(zone, this.digits), mediaSize.width - context.measureText(snrZoneLabel(zone, this.digits)).width - 18, Math.max(2, top - 20), color);
           continue;
         }
