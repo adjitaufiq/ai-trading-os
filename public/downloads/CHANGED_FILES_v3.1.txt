@@ -1,0 +1,15 @@
+# v3.1 (commit 7820854) vs v3 (b47942d)
+CHANGED: engine-host/BUILD_INFO.json
+CHANGED: engine-host/main.ts
+CHANGED: src/components/ExecutionChecklist.tsx
+CHANGED: src/core/enginehost/EngineHost.ts
+CHANGED: src/core/enginehost/automationState.ts
+CHANGED: src/core/enginehost/demoArm.ts
+CHANGED: src/core/execution/demo/AGENTS.md
+CHANGED: src/test/automation-bridge-locked.test.ts
+ADDED: DEPLOY_NOTES_v3.1.md
+ADDED: CHANGED_FILES_v3.1.txt
+REMOVED (docs lama dari zip): DEPLOY_NOTES-bridge-v3-b47942d.md, DEPLOY_NOTES-bridge-only-93819c7_v2.md, CHANGED_FILES.txt, CHANGED_FILES_v3.txt
+NOT IN PACKAGE (source only): src/test/demo-arm.test.ts
+NOT IN PACKAGE (sengaja): .env, engine-host/data/*, demo-arm.json, token apa pun
+UNCHANGED: Signal Logic, Decision Gate, Risk Engine, Shadow Guard, DemoExecutionBridge/Layer, MT5 Gateway (vps/), install-windows.ps1
