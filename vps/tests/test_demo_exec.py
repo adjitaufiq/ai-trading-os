@@ -67,6 +67,26 @@ class DemoExecTests(unittest.TestCase):
             self.assertEqual(self.svc(f).send_order(ORDER)["status"], "FILLED")
             self.assertEqual(f.sent[0]["type_filling"], want)
 
+    def test_status_read_only(self):
+        f = FakeExec()
+        st = self.svc(f).status()
+        self.assertEqual((st["mt5"], st["account"], st["execution"]), ("CONNECTED", "VERIFIED", "DISABLED"))
+        self.assertEqual(self.svc(FakeExec(mode=2)).status()["account"], "UNKNOWN")
+        f.account_info = lambda: None
+        self.assertEqual(self.svc(f).status()["mt5"], "DISCONNECTED")
+        self.assertEqual(f.sent, [])
+
+    def test_symbols_and_margin(self):
+        f = FakeExec()
+        f.acct.margin, f.acct.margin_free, f.acct.margin_level = 10.0, 9990.0, 100000.0
+        f.symbol_info = lambda n: None if n == "NOPE" else NS(volume_min=0.01, volume_max=100.0, volume_step=0.01, trade_tick_size=0.01, trade_tick_value=1.0, visible=True)
+        rows = self.svc(f).symbols(["XAUUSD", "NOPE", ""])
+        self.assertEqual([(r["name"], r["available"]) for r in rows], [("XAUUSD", True), ("NOPE", False)])
+        self.assertEqual(self.svc(f).account()["margin_free"], 9990.0)
+        with self.assertRaises(AccountBlocked):
+            self.svc(FakeExec(mode=2)).symbols(["XAUUSD"])
+        self.assertEqual(f.sent, [])
+
     def test_whitelist_proxy(self):
         p = WhitelistedExecNative(FakeExec())
         with self.assertRaises(ExecCapabilityDenied):

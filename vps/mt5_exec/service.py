@@ -25,6 +25,11 @@ def _mode_name(n: Any, mode: int) -> str:
     return "UNKNOWN"
 
 
+def _f(o: Any, k: str) -> Optional[float]:
+    v = getattr(o, k, None)
+    return float(v) if isinstance(v, (int, float)) else None
+
+
 def _stderr_log(msg: str) -> None:
     print(f"[mt5-exec] {msg}", file=sys.stderr, flush=True)
 
@@ -55,7 +60,40 @@ class DemoExecService:
         if a is None:
             raise AccountBlocked("IDENTITY_UNAVAILABLE")
         return {"login": int(a.login), "server": str(a.server), "trade_mode": _mode_name(self._n, int(a.trade_mode)),
-                "balance": float(a.balance), "equity": float(a.equity), "currency": str(a.currency)}
+                "balance": float(a.balance), "equity": float(a.equity), "currency": str(a.currency),
+                "margin": _f(a, "margin"), "margin_free": _f(a, "margin_free"), "margin_level": _f(a, "margin_level"),
+                "leverage": int(getattr(a, "leverage", 0) or 0) or None}
+
+    def status(self) -> Dict[str, Any]:
+        """Read-only connection/identity status. Never raises; EXECUTION is always DISABLED here because
+        execution permission is owned by the engine host (Shadow Guard + approval), not by this service."""
+        try:
+            a = self.account()
+        except AccountBlocked:
+            return {"mt5": "DISCONNECTED", "account": "UNKNOWN", "reason": "IDENTITY_UNAVAILABLE", "execution": "DISABLED"}
+        except Exception:  # noqa: BLE001
+            return {"mt5": "DISCONNECTED", "account": "UNKNOWN", "reason": "TERMINAL_ERROR", "execution": "DISABLED"}
+        try:
+            self._require_demo()
+            verdict, reason = "VERIFIED", None
+        except AccountBlocked as e:
+            verdict, reason = "UNKNOWN", str(e)
+        return {"mt5": "CONNECTED", "account": verdict, "reason": reason, "execution": "DISABLED",
+                "login": a["login"], "server": a["server"], "trade_mode": a["trade_mode"]}
+
+    def symbols(self, names: list) -> list:
+        """Availability + contract spec for several symbols (max 20). Read-only; does not select symbols."""
+        self._require_demo()
+        out = []
+        for name in [str(x).strip() for x in names if str(x).strip()][:20]:
+            s = self._n.symbol_info(name)
+            if s is None:
+                out.append({"name": name, "available": False})
+                continue
+            out.append({"name": name, "available": True, "visible": bool(getattr(s, "visible", False)),
+                        "volume_min": float(s.volume_min), "volume_max": float(s.volume_max), "volume_step": float(s.volume_step),
+                        "tick_size": float(s.trade_tick_size), "tick_value": float(s.trade_tick_value)})
+        return out
 
     def _require_demo(self) -> Dict[str, Any]:
         a = self.account()
@@ -79,7 +117,9 @@ class DemoExecService:
     def positions(self) -> list:
         self._require_demo()
         rows = self._n.positions_get() or ()
-        return [{"ticket": int(p.ticket), "symbol": str(p.symbol), "comment": str(p.comment)} for p in rows if int(p.magic) == MAGIC]
+        return [{"ticket": int(p.ticket), "symbol": str(p.symbol), "comment": str(p.comment),
+                 "volume": _f(p, "volume"), "price_open": _f(p, "price_open"), "sl": _f(p, "sl"), "tp": _f(p, "tp"), "profit": _f(p, "profit")}
+                for p in rows if int(p.magic) == MAGIC]
 
     def close_deal(self, position: int) -> Optional[Dict[str, Any]]:
         self._require_demo()

@@ -4,6 +4,7 @@
 // orders. Missing data ⇒ UNKNOWN, old data ⇒ stale; neither is ever reported as READY.
 import type { EngineReadiness } from "./readiness";
 import type { SymbolEngineHealth } from "./types";
+import type { AutomationView } from "./automationState";
 
 export const EXECUTION_STATUS_SCHEMA = "engine-execution-status-v1" as const;
 
@@ -29,6 +30,8 @@ export interface ExecutionStatusView {
   readonly stale: boolean;
   readonly blockers: readonly string[];
   readonly checked_at: number;
+  /** Automation stage + 9-point pre-execution checklist (observability only; never gates orders). */
+  readonly automation?: AutomationView;
 }
 
 const rec = (v: unknown): Record<string, unknown> | null =>
