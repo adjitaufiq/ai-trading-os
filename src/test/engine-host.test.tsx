@@ -146,7 +146,7 @@ describe("engine host — architecture", () => {
       const src = readFileSync(join(d, f), "utf8");
       expect(src, f).not.toMatch(/order_send|OrderSend|sendOrder|placeOrder|executeTrade|order_check|src\/probe/i);
       // engine/execution is blocked everywhere except the exact read-only endpoint path constant
-      const stripped = src.split('"/v1/engine/execution-status"').join("");
+      const stripped = src.split("/v1/engine/execution-status").join("");
       expect(stripped, f).not.toMatch(/engine\/execution/);
     }
   });
@@ -225,7 +225,7 @@ describe("Phase 2 — persistent engine host", () => {
     for (const f of ["src/core/enginehost/brokerClock.ts", "src/core/enginehost/api.ts", "engine-host/main.ts", "src/core/radar/RadarRuntimeService.ts"]) {
       const src = readFileSync(join(process.cwd(), f), "utf8");
       expect(src, f).not.toMatch(/OrderSend|order_send|sendOrder|placeOrder|executeTrade|order_check|engine\/risk|\/v1\/order/i);
-      const stripped = src.split('"/v1/engine/execution-status"').join("");
+      const stripped = src.split("/v1/engine/execution-status").join("");
       expect(stripped, f).not.toMatch(/engine\/execution/);
     }
   });
