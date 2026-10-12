@@ -1,7 +1,7 @@
 // Automation execution state machine + pre-execution checklist (observability only).
 // Pure projection of the ExecutionStatusView facts the host already holds. It never gates, sends or arms
-// anything: order gating stays in DemoExecutionBridge/Layer + Shadow Guard. LOCKED by construction —
-// there is no approval write path, so user_approval is always NOT_APPROVED and DEMO_ARMED is unreachable.
+// anything: order gating stays in DemoExecutionBridge/Layer + Shadow Guard. Approval = session-level DEMO arm
+// file validated by demoArm.ts (read-only; no write path). Without it user_approval stays NOT_APPROVED.
 import type { ExecutionStatusView } from "./executionStatus";
 
 export type AutomationStage = "MONITOR_ONLY" | "PAPER_READY" | "DEMO_CONNECTED" | "DEMO_ARMED" | "DEMO_EXECUTION";
@@ -83,7 +83,7 @@ export class AutomationStateTracker {
     }
     const checklist = buildChecklist(s, snrAvailable, approved);
     return Object.freeze({
-      stage, user_approval: approved ? "APPROVED" as const : "NOT_APPROVED" as const, checklist,
+      stage, phase: derivePhase(s, approved), shadow_blocked: s.shadow !== "CLEAR", user_approval: approved ? "APPROVED" as const : "NOT_APPROVED" as const, checklist,
       verdict: checklist.every((c) => c.state === "PASS") ? "CLEARED" as const : "EXECUTION_BLOCKED" as const,
       transitions: Object.freeze(this.log.slice(-20)),
     });
