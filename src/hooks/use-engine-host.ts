@@ -9,7 +9,7 @@ export function useEngineHostStore(symbols: readonly string[], urlOverride?: str
   const key = symbols.join(",");
   const store = useMemo(() => {
     let client: EngineHostClient | null = null;
-    try { client = url ? new EngineHostClient({ baseUrl: url, timeoutMs: 3_000 }) : null; } catch { client = null; }
+    try { client = url ? new EngineHostClient({ baseUrl: url, timeoutMs: 10_000 }) : null; } catch { client = null; }
     return new EngineHostStore({ client, symbols: key.split(","), now: () => Date.now(), eventSource: browserEventSource() });
   }, [url, key]);
   useEffect(() => { void store.start(); return () => store.stop(); }, [store]);
