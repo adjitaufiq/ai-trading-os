@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef } from "react";
 import { CandlestickSeries, ColorType, CrosshairMode, createChart, type IChartApi, type ISeriesApi, type MouseEventParams, type Time, type UTCTimestamp } from "lightweight-charts";
 import type { BridgeBar } from "@/core/broker/gateway/types";
-import type { SnrZone } from "@/lib/snrOverlay";
+import type { SnrZone, SnrSwing } from "@/lib/snrOverlay";
 import { SnrZonesPrimitive } from "@/components/SnrZonesPrimitive";
 
 export interface MarketCandlesProps {
@@ -11,9 +11,10 @@ export interface MarketCandlesProps {
   onActivate: () => void;
   focus: boolean;
   snrZones?: readonly SnrZone[] | undefined;
+  snrSwings?: readonly SnrSwing[] | undefined;
 }
 
-function MarketCandlesView({ bars, digits, onInspect, onActivate, focus, snrZones }: MarketCandlesProps) {
+function MarketCandlesView({ bars, digits, onInspect, onActivate, focus, snrZones, snrSwings }: MarketCandlesProps) {
   const container = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -50,7 +51,7 @@ function MarketCandlesView({ bars, digits, onInspect, onActivate, focus, snrZone
     });
     chart.current = c;
     series.current = s;
-    const snr = new SnrZonesPrimitive({ support: color("--canvas-up"), resistance: color("--canvas-down"), supportFill: color("--canvas-snr-support-fill"), resistanceFill: color("--canvas-snr-resistance-fill") });
+    const snr = new SnrZonesPrimitive({ support: color("--canvas-up"), resistance: color("--canvas-down"), supportFill: color("--canvas-snr-support-fill"), resistanceFill: color("--canvas-snr-resistance-fill"), background: color("--canvas-background") });
     s.attachPrimitive(snr);
     overlay.current = snr;
     const inspect = (param: MouseEventParams<Time>) => {
@@ -78,13 +79,13 @@ function MarketCandlesView({ bars, digits, onInspect, onActivate, focus, snrZone
     chart.current?.timeScale().fitContent();
   }, [bars, digits]);
 
-  useEffect(() => { overlay.current?.setZones(snrZones ?? []); }, [snrZones]);
+  useEffect(() => { overlay.current?.setZones(snrZones ?? [], digits); overlay.current?.setSwings(snrSwings ?? []); }, [snrZones, snrSwings, digits]);
 
   useEffect(() => {
     if (focus) requestAnimationFrame(() => chart.current?.timeScale().fitContent());
   }, [focus]);
 
-  return <div ref={container} className="h-full w-full" data-testid="market-chart" data-candles={bars.length} data-snr-zones={snrZones?.length ?? 0} aria-label="Broker candlestick chart" />;
+  return <div ref={container} className="h-full w-full" data-testid="market-chart" data-candles={bars.length} data-snr-zones={snrZones?.length ?? 0} data-snr-swings={snrSwings?.length ?? 0} aria-label="Broker candlestick chart" />;
 }
 
 export const MarketCandles = memo(MarketCandlesView);

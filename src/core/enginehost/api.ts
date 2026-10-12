@@ -44,7 +44,7 @@ export function routeEngineRequest(host: HostView, method: string, rawPath: stri
   if (snr) {
     const symbol = snr[1]!;
     if (!host.symbols.includes(symbol)) return json(404, { error: "SYMBOL_NOT_HOSTED", symbol });
-    const data = snrPayload(symbol, host.bundle?.(symbol, now)?.slice?.current?.operator);
+    const data = snrPayload(symbol, host.bundle?.(symbol, now)?.slice?.current?.operator, now);
     return data ? json(200, envelope(data, now)) : json(503, { error: "SNR_NOT_READY", symbol });
   }
   const m = /^\/v1\/engine\/([A-Z0-9._]+)\/(radar|market-context|account|journal|snapshot|readiness)$/.exec(path);
