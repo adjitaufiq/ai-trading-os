@@ -223,7 +223,33 @@ describe("Phase 2 — persistent engine host", () => {
 
   it("no execution surface in engine host or radar volatility path", () => {
     for (const f of ["src/core/enginehost/brokerClock.ts", "src/core/enginehost/api.ts", "engine-host/main.ts", "src/core/radar/RadarRuntimeService.ts"]) {
-      expect(readFileSync(join(process.cwd(), f), "utf8"), f).not.toMatch(/OrderSend|order_send|placeOrder|engine\/execution(?!-status)|engine\/risk|\/v1\/order/i);
+      const src = readFileSync(join(process.cwd(), f), "utf8");
+      expect(src, f).not.toMatch(/OrderSend|order_send|sendOrder|placeOrder|executeTrade|order_check|engine\/risk|\/v1\/order/i);
+      const stripped = src.split('"/v1/engine/execution-status"').join("");
+      expect(stripped, f).not.toMatch(/engine\/execution/);
     }
+  });
+
+  it("GET /v1/engine/execution-status only reads executionStatus(); no order/broker/risk module is touched", () => {
+    const view = { schema: "engine-execution-status-v1", engine: "ONLINE", mode: "MONITOR_ONLY", execution: "BLOCKED" };
+    const executionStatus = vi.fn(() => view);
+    const forbidden = () => { throw new Error("ORDER/BROKER/RISK MODULE CALLED"); };
+    const host = {
+      symbols: ["XAUUSD"],
+      health: () => ({ operating_mode: "MONITOR_ONLY", execution_enabled: false, symbols: [] }),
+      executionStatus,
+      // any order/broker/risk surface must never be reached by this handler
+      sendOrder: forbidden, placeOrder: forbidden, executeTrade: forbidden,
+      broker: { send: forbidden }, risk: { validate: forbidden },
+    } as never;
+    const res = routeEngineRequest(host, "GET", "/v1/engine/execution-status", 42);
+    expect(res.status).toBe(200);
+    expect(executionStatus).toHaveBeenCalledTimes(1);
+    expect(executionStatus).toHaveBeenCalledWith(42);
+    expect(JSON.parse(res.body).data).toMatchObject({ schema: "engine-execution-status-v1" });
+    // handler source itself carries no order/broker/risk call
+    const apiSrc = readFileSync(join(process.cwd(), "src/core/enginehost/api.ts"), "utf8");
+    const handler = apiSrc.slice(apiSrc.indexOf('"/v1/engine/execution-status"'), apiSrc.indexOf('"/v1/engine/execution-status"') + 400);
+    expect(handler).not.toMatch(/sendOrder|placeOrder|executeTrade|order_send|broker|risk/i);
   });
 });
