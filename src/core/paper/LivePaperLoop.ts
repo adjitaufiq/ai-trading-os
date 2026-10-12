@@ -432,6 +432,7 @@ export class LivePaperLoop {
       trigger: ss.trigger ?? null, reactionQuality: ss.reactionQuality ?? null,
       plannedEntry: plan.entry ?? null, stopLoss: plan.sl ?? null, takeProfit: plan.tp ?? null, plannedRr: plan.rr ?? null,
       lot: o.trade.snapshot.lot ?? null, riskUSD: o.trade.snapshot.riskUSD ?? null,
+      regime: regimeLabel(setup.marketContext?.regime ?? this.readRegime()),
     });
     this.open = { trade: o.trade, plan, bars: [], h1Phase: bias.h1.phase, tier: loc.context.locationTier, primaryBias: pb, entryDecision };
     this.record({ kind: "ORDER", at: bar.close_time, signalId: setup.id, direction: plan.direction, arenaStatus: g.arenaStatus, outcome: "CREATED", reason: `PAPER OPEN ${plan.direction}` });
