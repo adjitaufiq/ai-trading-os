@@ -1,4 +1,10 @@
 # Stage 3 PRE-2D gap closure
+## Approved clean SNR overlay
+- [x] Copy confirmed/available engine swings into dedicated SNR response without recalculation.
+- [x] Clean nearest-zone selection, timeframe styling, supply/demand labels and confirmed swing markers; preserve raw SNR and trading logic.
+- [x] 40 targeted tests and full 1099/1099 PASS; automatic build/typecheck OK; real chart component verified with isolated test zones/swings and toggle (zero page errors); no deploy.
+- [ ] Live end-to-end chart verification — blocked: broker candles unavailable in preview; existing deployed SNR response lacks confirmed swings. Requires external feed availability and approved VPS update, neither changed here.
+
 ## Approved SNR overlay Phase 1
 - [x] Dashboard SNR endpoint consumer, strict validation, shaded ranges/timeframe, toggle and focus chart; 23 targeted tests passed, automatic build/typecheck OK, browser verified with isolated test responses and zero page errors; no trading changes.
 - [ ] Live SNR zones — blocked: external Engine Host GET /v1/analysis/snr/{symbol} currently returns 404; dashboard honestly shows SNR unavailable. No VPS deployment/restart authorized.

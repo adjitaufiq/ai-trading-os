@@ -2,7 +2,7 @@ import React from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { EngineHostClient } from "@/core/enginehost/client";
-import { parseSnrSnapshot } from "@/lib/snrOverlay";
+import { parseSnrSnapshot, selectSnrZones } from "@/lib/snrOverlay";
 import { useSnrOverlay } from "@/hooks/use-snr-overlay";
 import { SnrOverlayLegend } from "@/components/SnrOverlayLegend";
 import { SnrZonesPrimitive } from "@/components/SnrZonesPrimitive";
@@ -57,11 +57,11 @@ describe("visual-only SNR contract", () => {
     fetchImpl.mockResolvedValueOnce(Response.json(payload()));
     expect((await client.snr("XAUUSD")).ok).toBe(false);
   });
-  it("displays source timeframe, exact range and calibration without confidence percentages", () => {
+  it("displays source timeframe, exact range without strength labels or confidence percentages", () => {
     const { rerender } = render(<SnrOverlayLegend snapshot={snapshot()} digits={2} />);
-    expect(screen.getByTestId("snr-legend")).toHaveTextContent("Support · H4 · 68000.00–68200.00");
-    expect(screen.getByTestId("snr-legend")).toHaveTextContent("Resistance · H4 · 71000.00–71200.00");
-    expect(screen.getByTestId("snr-legend")).toHaveTextContent("Under Calibration");
+    expect(screen.getByTestId("snr-legend")).toHaveTextContent("DEMAND ZONE H4 68000.00 - 68200.00");
+    expect(screen.getByTestId("snr-legend")).toHaveTextContent("SUPPLY ZONE H4 71000.00 - 71200.00");
+    expect(screen.getByTestId("snr-legend").textContent).not.toMatch(/Strength|Calibration|HIGH|MEDIUM|LOW/);
     expect(screen.getByTestId("snr-legend").textContent).not.toMatch(/85%|78%/);
     rerender(<SnrOverlayLegend snapshot={null} digits={2} />);
     expect(screen.getByTestId("snr-unavailable")).toHaveTextContent("SNR unavailable");

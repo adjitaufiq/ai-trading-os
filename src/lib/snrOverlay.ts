@@ -8,17 +8,30 @@ const zone = z.object({
   status: z.enum(["ACTIVE", "INACTIVE"]),
   timeframe: timeframe.optional(),
 }).refine((value) => value.low <= value.high, "Invalid zone range");
+const swing = z.object({
+  kind: z.enum(["HIGH", "LOW"]), price: z.number().finite().positive(),
+  timeframe: z.enum(["H4", "H1", "M15"]),
+  pivot_time: z.number().finite().nonnegative(), confirmed_at: z.number().finite().nonnegative(),
+  available_at: z.number().finite().nonnegative(),
+}).refine((s) => s.confirmed_at > s.pivot_time && s.available_at >= s.confirmed_at, "Unconfirmed swing");
 const response = z.object({
   symbol: z.string().min(1).max(32),
   timeframe,
   zones: z.array(zone).max(200),
+  as_of: z.number().finite().nonnegative().optional(),
+  price: z.number().finite().positive().optional(),
+  swings: z.array(swing).max(100).optional(),
 });
 
 export type SnrZone = Readonly<z.infer<typeof zone> & { timeframe: z.infer<typeof timeframe> }>;
+export type SnrSwing = Readonly<z.infer<typeof swing>>;
 export type SnrSnapshot = Readonly<{
   symbol: string;
   timeframe: z.infer<typeof timeframe>;
   zones: readonly SnrZone[];
+  swings: readonly SnrSwing[];
+  price: number | null;
+  as_of: number | null;
   strength: null;
   strength_status: "RESEARCH_REQUIRED";
   volume_score_status: "RESEARCH_REQUIRED";
@@ -33,8 +46,30 @@ export function parseSnrSnapshot(input: unknown, symbol: string): SnrSnapshot | 
     timeframe: parsed.data.timeframe,
     zones: Object.freeze(parsed.data.zones.filter((item) => item.status === "ACTIVE")
       .map((item) => Object.freeze({ ...item, timeframe: item.timeframe ?? parsed.data.timeframe }))),
+    price: parsed.data.price ?? null,
+    as_of: parsed.data.as_of ?? null,
+    swings: Object.freeze((parsed.data.swings ?? []).filter((s) => parsed.data.as_of != null && s.confirmed_at <= parsed.data.as_of && s.available_at <= parsed.data.as_of).map((s) => Object.freeze(s))),
     strength: null,
     strength_status: "RESEARCH_REQUIRED",
     volume_score_status: "RESEARCH_REQUIRED",
   });
+}
+
+const STRUCTURE_TFS = ["H4", "H1", "M15"] as const;
+/** Display selection only: retains exact host ranges/roles. Never ranks strength or derives a level. */
+export function selectSnrZones(snapshot: SnrSnapshot | null, currentPrice: number | null, chartTimeframe: string = "M5"): readonly SnrZone[] {
+  const price = currentPrice ?? snapshot?.price;
+  if (!snapshot || price == null || !Number.isFinite(price) || price <= 0) return [];
+  const distance = (z: SnrZone) => price < z.low ? z.low - price : price > z.high ? price - z.high : 0;
+  const tfs = chartTimeframe === "H4" ? STRUCTURE_TFS.slice(0, 1) : chartTimeframe === "H1" ? STRUCTURE_TFS.slice(0, 2) : STRUCTURE_TFS;
+  return Object.freeze(tfs.flatMap((tf) => (["SUPPORT", "RESISTANCE"] as const).flatMap((type) =>
+    snapshot.zones.filter((z) => z.status === "ACTIVE" && z.timeframe === tf && z.type === type)
+      .sort((a, b) => distance(a) - distance(b) || a.low - b.low || a.high - b.high)
+      .filter((z, i, all) => i === 0 || z.low !== all[i - 1]?.low || z.high !== all[i - 1]?.high)
+      .slice(0, 3))));
+}
+
+export function snrZoneLabel(zone: SnrZone, digits: number | null): string {
+  const format = (value: number) => digits == null ? String(value) : value.toFixed(digits);
+  return `${zone.type === "SUPPORT" ? "DEMAND" : "SUPPLY"} ZONE ${zone.timeframe} ${format(zone.low)} - ${format(zone.high)}`;
 }
