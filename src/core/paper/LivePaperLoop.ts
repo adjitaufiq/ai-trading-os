@@ -12,6 +12,7 @@ import { buildStructure, detectStructureShift } from "../../engine/core/swing/st
 import { SwingDetector } from "../../engine/core/swing/swingDetector";
 import type { SwingTimeframe } from "../../engine/core/swing/types";
 import type { DataSource } from "../../engine/contracts/dataSource";
+import type { MarketRegimeSnapshot } from "../../engine/core/market/regime/types";
 import { createPaperTrade } from "../../engine/execution/paperExecution";
 import { updatePosition } from "../../engine/execution/positionManager";
 import { openPaperTrade } from "../../engine/execution/tradeLifecycle";
@@ -188,7 +189,13 @@ export class LivePaperLoop {
   /** Account source that sized/approved this trade (recorded at close in this process; null if before restart). */
   tradeAccountSource(tradeId: string): "PAPER_SIMULATED" | "EXNESS_DEMO" | null { return this.sourceByTrade.get(tradeId) ?? null; }
 
-  constructor(readonly symbol: string, readonly dataSource: DataSource, private readonly spec: SymbolSpecification, private readonly primaryBiasProvider?: PrimaryBiasProvider) {}
+  constructor(readonly symbol: string, readonly dataSource: DataSource, private readonly spec: SymbolSpecification, private readonly primaryBiasProvider?: PrimaryBiasProvider, private readonly regimeProvider?: () => MarketRegimeSnapshot | null) {}
+
+  /** Fail closed: missing/erroring provider ⇒ null ⇒ regime label UNCERTAIN (never recomputed here). */
+  private readRegime(): MarketRegimeSnapshot | null {
+    if (!this.regimeProvider) return null;
+    try { return this.regimeProvider() ?? null; } catch { return null; }
+  }
 
   /** Fail closed: no provider, provider error, or malformed reading ⇒ null (treated as NO_PRIMARY_BIAS). */
   private readPrimaryBias(): PrimaryBiasReading | null {
