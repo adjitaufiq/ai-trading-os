@@ -144,7 +144,10 @@ describe("engine host — architecture", () => {
     const dirs = [join(process.cwd(), "src/core/enginehost"), join(process.cwd(), "engine-host")];
     for (const d of dirs) for (const f of readdirSync(d).filter((x) => x.endsWith(".ts"))) {
       const src = readFileSync(join(d, f), "utf8");
-      expect(src, f).not.toMatch(/order_send|placeOrder|src\/probe|engine\/execution(?!-status)/);
+      expect(src, f).not.toMatch(/order_send|OrderSend|sendOrder|placeOrder|executeTrade|order_check|src\/probe/i);
+      // engine/execution is blocked everywhere except the exact read-only endpoint path constant
+      const stripped = src.split('"/v1/engine/execution-status"').join("");
+      expect(stripped, f).not.toMatch(/engine\/execution/);
     }
   });
 });
