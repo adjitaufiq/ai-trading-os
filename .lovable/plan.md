@@ -1,119 +1,166 @@
-# Audit final: Engine Host, Dashboard, Shadow Guard, dan Permission
+# Post-SNR Overlay: Engine Host & MT5 Demo Commissioning Audit
 
-**Status: PASS untuk perilaku fail-closed.** Dashboard menampilkan fakta yang benar dari VPS saat ini. Respons live pada 12 Oct 2026 sekitar 09:31 UTC menunjukkan build `83c752f`, engine XAUUSD/BTCUSD `ONLINE`, tetapi mode `MONITOR_ONLY`, Shadow Guard aktif, account/MT5 `UNKNOWN`, dan execution `BLOCKED`.
+## Objective
 
-Tidak ada kode, konfigurasi, flag, execution, atau deploy yang diubah.
+Audit read-only kondisi execution pipeline yang sedang berjalan, lalu siapkan commissioning DEMO secara fail-closed. Tahap pertama hanya menghasilkan temuan; tidak mengubah kode, konfigurasi, flag, service, atau membuka posisi.
 
-## 1. Engine Host
+## Guardrails
 
-### Respons VPS saat audit
+- Jangan redesign Engine Host.
+- Jangan ubah strategy, Decision Gate, risk calculation, SL/TP, Shadow Guard, atau jalur order.
+- Jangan mengaktifkan live/real trading; kapabilitas real tetap tidak ada.
+- Jangan memanggil `/v1/demo/orders`.
+- Jangan menampilkan token, secret, login penuh, atau data sensitif.
+- Jangan mengubah flag sampai blocker spesifik terbukti dan ada approval terpisah.
+- Setiap data hilang, stale, atau tidak konsisten tetap `UNKNOWN`/`BLOCKED`, tidak boleh diasumsikan aman.
 
-- `GET /v1/engine/health` → HTTP 200:
-  - `operating_mode: MONITOR_ONLY`
-  - `execution_enabled: false`
-  - `demo_execution: REAL_DISABLED`
-  - build `engine-host-v1.2`, commit `83c752f`
-  - XAUUSD dan BTCUSD `ONLINE`, radar `ACTIVE`
-  - Shadow Guard `active: true`, label `SHADOW — NO ORDERS`
-- `GET /v1/engine/execution-status` → HTTP 200:
-  - `engine: ONLINE`
-  - `mode: MONITOR_ONLY`
-  - `execution: BLOCKED`
-  - `account: UNKNOWN`, `mt5: UNKNOWN`
-  - `shadow: BLOCKING`, `kill_switch: false`
-  - blockers: `EXECUTION_PERMISSION_DISABLED`, `SHADOW_GUARD_ACTIVE`
+## Current verified baseline
 
-### Sumber response
+Respons live Engine Host build `83c752f` saat audit:
 
-- Route health: `src/core/enginehost/api.ts:28` memanggil `host.health()`.
-- Route execution status: `src/core/enginehost/api.ts:29-32` hanya memanggil `host.executionStatus(now)`.
-- Health memilih `DEMO` hanya ketika demo bridge benar-benar armed; selain itu `MONITOR_ONLY`: `src/core/enginehost/EngineHost.ts:185-195`.
-- Execution status menyalin arm state, Shadow Guard, kill switch, demo status, reconciliation, dan readiness: `src/core/enginehost/EngineHost.ts:202-219`.
-- `account` dan `mt5` sengaja `UNKNOWN` saat host tidak armed: `src/core/enginehost/executionStatus.ts:58-67`.
-- Status akun berasal dari `DemoExecutionBridge.status().account`: `src/core/execution/demo/DemoExecutionBridge.ts:170-185`.
-- MT5 bukan health ping tersendiri; `CONNECTED` disimpulkan dari account identity demo yang valid. Saat demo bridge tidak dibuat, datanya tidak ada dan hasilnya `UNKNOWN`.
-- Control-plane execution agent dibuat hanya jika URL dan secret control plane tersedia: `engine-host/main.ts:142-149`. Identitas/konektivitas agent **tidak menjadi field** di dua endpoint tersebut; hanya efek `agent.current().halted` yang masuk kill switch melalui `engine-host/main.ts:231-243`.
+- Engine XAUUSD dan BTCUSD: `ONLINE`, radar `ACTIVE`.
+- Health: `operating_mode=MONITOR_ONLY`, `execution_enabled=false`, `demo_execution=REAL_DISABLED`.
+- Execution status: `mode=MONITOR_ONLY`, `execution=BLOCKED`, `account=UNKNOWN`, `mt5=UNKNOWN`, `shadow=BLOCKING`.
+- Blockers: `EXECUTION_PERMISSION_DISABLED`, `SHADOW_GUARD_ACTIVE`.
+- Kill switch dilaporkan `false`.
 
-**Kesimpulan:** account/MT5 `UNKNOWN` bukan karena engine market mati. Demo execution bridge tidak armed, sehingga host sengaja tidak mengklaim akun atau koneksi execution.
+Baseline ini menunjukkan host market hidup, tetapi `DemoExecutionBridge` belum armed. Dashboard menyalin status tersebut dari endpoint Engine Host; belum ada bukti masalah cache atau URL lama.
 
-## 2. Dashboard
+## Phase 1 — Running Environment Audit
 
-- URL host berasal dari `VITE_ENGINE_HOST_URL`: `src/core/enginehost/client.ts:109-114`.
-- Endpoint yang dipakai:
-  - health: `src/core/enginehost/client.ts:78`
-  - execution status: `src/core/enginehost/client.ts:79`
-  - SSE: `src/core/enginehost/client.ts:102`
-- Dashboard bootstrap membaca health + snapshot, lalu membuka SSE dan mengambil execution status: `src/lib/engineHostStore.ts:83-100`.
-- Execution status diperbarui saat health SSE masuk dan setiap watchdog 5 detik: `src/lib/engineHostStore.ts:123-139,142-152`.
-- Fetch gagal langsung menghapus execution status, sehingga nilai lama tidak bisa tetap hijau: `src/lib/engineHostStore.ts:132-139`.
-- Lampu EXE hanya membaca `/v1/engine/execution-status`; `MONITOR_ONLY` atau `BLOCKED` selalu merah, dan data lebih dari 30 detik tidak boleh hijau: `src/lib/exeLamp.ts:17-33`.
-- Wiring UI: `src/routes/index.tsx:74-76`.
+Periksa environment milik proses Engine Host yang benar-benar aktif, bukan hanya file konfigurasi:
 
-Tidak ada localStorage, sessionStorage, IndexedDB, atau service worker untuk status Engine Host. URL tersimpan sebagai literal saat dashboard dibuild; risiko URL lama hanya jika browser/CDN masih menyajikan bundle dashboard lama. Namun respons live yang diperiksa sekarang persis sama dengan status dashboard, jadi penyebab saat ini **bukan cache/URL lama**.
+- `EXECUTION_MODE`
+- `SHADOW_MODE`
+- `ACCOUNT_MODE`
+- `RISK_POLICY_FILE`
+- keberadaan `DEMO_EXEC_TOKEN`
+- keberadaan whitelist login/server
+- `DEMO_EXEC_URL`
+- konfigurasi control-plane agent bila digunakan
+- file `EMERGENCY_STOP` dan `DEMO_KILL_SWITCH`
 
-## 3. Shadow Guard
+Laporkan hanya `exists/missing`, `enabled/disabled`, atau `valid/invalid`. Jangan tampilkan nilainya.
 
-Shadow Guard bukan monitoring saja. Ia memblokir order secara nyata pada dua lapis:
+**Catatan kontrak aktual:** `EXECUTION_MODE=DEMO` adalah flag pemberi arm. `ACCOUNT_MODE` otomatis dipaksa ke DEMO pada mode tersebut. `SHADOW_MODE=ON` memaksa blokir; nilai `OFF` tidak memberi akses tambahan dan tidak diperlukan untuk arm.
 
-- Intent gate mengembalikan `allow: false` saat shadow aktif: `src/core/execution/shadow/ShadowGuard.ts:136-151`.
-- Gateway wrapper mencegah pemanggilan `sendOrder`: `src/core/execution/shadow/ShadowGuard.ts:179-190`.
-- Flag dibaca dari `EXECUTION_MODE`; default/non-DEMO menjadi SHADOW. `SHADOW_MODE=ON` selalu memaksa shadow aktif: `src/core/execution/shadow/ShadowGuard.ts:36-44` dan `src/core/execution/demo/DemoExecutionLayer.ts:12-17`.
-- Host membaca hasil tersebut pada startup: `engine-host/main.ts:93-103`.
+## Phase 2 — Engine Host Status Verification
 
-Pada VPS saat audit, health melaporkan `SHADOW — NO ORDERS`, sehingga Shadow Guard memang sedang memblokir.
+Periksa ulang:
 
-## 4. Permission gate
+- `GET /v1/engine/health`
+- `GET /v1/engine/execution-status`
+- startup log Engine Host
 
-- `EXECUTION_PERMISSION_DISABLED` dihasilkan oleh projection status saat mode `MONITOR_ONLY`: `src/core/enginehost/executionStatus.ts:56,86-94`.
-- Mode menjadi `DEMO_EXECUTION` hanya jika `armed === true`.
-- `armed` berarti objek `DemoExecutionBridge` berhasil dibuat: `engine-host/main.ts:132-200,238-242`.
-- Bridge hanya dibuat saat `resolveExecutionPathMode(env) === DEMO`: `engine-host/main.ts:105-108,135-141`.
-- Startup DEMO juga mensyaratkan:
-  - `risk-policy.json` valid dan tersedia: `engine-host/main.ts:80-89,136-138`
-  - `DEMO_EXEC_TOKEN`: `engine-host/main.ts:138-139`
-  - login/server whitelist tidak kosong: `engine-host/main.ts:139-141`
-- Agar permission aman, bukan sekadar armed, juga perlu Shadow Guard clear, kill switch off, account PASS, MT5 CONNECTED, reconciliation CLEAN, engine tidak offline, dan data tidak stale: `src/core/enginehost/executionStatus.ts:96-108`.
-- `READY` selanjutnya memerlukan readiness fresh dengan Decision Gate M2 PASS dan Risk M4 PASS: `src/core/enginehost/executionStatus.ts:72-82,100-108`.
+Tentukan alasan persis `DemoExecutionBridge` tidak dibuat atau gagal armed. Cocokkan response dengan environment dan startup log, termasuk risk policy, token, whitelist, kill switch, control plane, dan reconciliation.
 
-**Flag utama untuk ARMED adalah `EXECUTION_MODE=DEMO`** (legacy `DEMO_STRESS_TEST` juga diterima). Audit ini tidak mengubah flag tersebut. `SHADOW_MODE=OFF` bukan flag pemberi akses; hanya `SHADOW_MODE=ON` yang punya efek sebagai pemaksa blokir.
+Gunakan state kontrak aktual:
 
-## 5. Jalur dummy order
+- Health mode: `MONITOR_ONLY` atau `DEMO`.
+- Execution mode: `MONITOR_ONLY` atau `DEMO_EXECUTION`.
+- Account: `PASS`, `FAIL`, atau `UNKNOWN`.
+- MT5: `CONNECTED`, `DISCONNECTED`, atau `UNKNOWN`.
+- Permission: `BLOCKED`, `UNKNOWN`, `WAITING_SIGNAL`, `READY`, atau `ACTIVE`.
 
-**Tidak ada jalur dummy end-to-end ke MT5 yang berhenti aman setelah broker check.**
+`ARMED` dipakai sebagai istilah commissioning, bukan nilai literal endpoint. Kondisi armed tetapi belum ada setup yang benar adalah `mode=DEMO_EXECUTION` dan `execution=WAITING_SIGNAL`.
 
-Jalur produksi yang tersedia adalah:
+## Phase 3 — MT5 Demo Bridge Read-only Audit
 
-1. Signal READY dan Decision Gate ALLOW: `src/core/paper/LivePaperLoop.ts:362-384`.
-2. Plan dan Risk M4 APPROVED: `src/core/paper/LivePaperLoop.ts:389-415`.
-3. Approved open event: `src/core/paper/LivePaperLoop.ts:440-445`.
-4. Engine Host membangun intent lalu melewati Shadow Guard: `engine-host/main.ts:244-250`.
-5. Demo bridge/layer melakukan preflight dan request: `src/core/execution/demo/DemoExecutionLayer.ts:94-137`.
-6. Gateway POST ke `/v1/demo/orders`: `src/core/execution/demo/gatewayClient.ts:50-55`.
-7. MT5 service menjalankan `order_check`, lalu langsung `order_send` jika check lolos: `vps/mt5_exec/service.py:135-145`.
+Dari loopback VPS dan menggunakan autentikasi lokal tanpa menampilkan secret, periksa hanya endpoint read-only:
 
-Pilihan aman yang sudah ada:
+- `/v1/demo/account`
+- `/v1/demo/positions`
+- symbol status untuk XAUUSD dan BTCUSD
 
-- Paper path menguji Signal → Decision Gate → Risk tanpa menyentuh MT5.
-- Shadow path menguji approved intent sampai gerbang execution dan mencatat alasan blokir, tetapi tidak mencapai MT5 bridge.
-- Unit/integration tests memakai fake MT5, bukan terminal VPS nyata.
+Konfirmasi:
 
-Karena `order_check` tidak diekspos sebagai endpoint terpisah dan langsung diikuti `order_send`, tidak ada safe dummy request yang membuktikan seluruh jalur sampai MT5 tanpa risiko membuka posisi demo.
+- terminal terhubung ke akun DEMO, bukan REAL;
+- identity login/server cocok dengan whitelist;
+- balance dan equity tersedia;
+- XAUUSD dan BTCUSD tersedia pada demo executor;
+- service `vps/mt5_exec` dapat dijangkau dari Engine Host.
 
-## Yang masih perlu dicek langsung di VPS
+Jangan panggil endpoint order. Jika account identity tidak valid atau bridge tidak dapat dijangkau, commissioning berhenti dalam keadaan blocked.
 
-1. Environment milik **proses Engine Host yang benar-benar berjalan**, bukan hanya isi file konfigurasi:
-   - `EXECUTION_MODE`
-   - `SHADOW_MODE`
-   - `ACCOUNT_MODE`
-   - lokasi `RISK_POLICY_FILE`
-   - keberadaan token serta whitelist tanpa memperlihatkan nilai rahasia.
-2. Startup log proses: cari apakah muncul `EXECUTION_MODE=DEMO armed` atau justru mode SHADOW, serta apakah control plane `STANDALONE`/terhubung.
-3. Service `vps/mt5_exec` di loopback port 8100 dan respons read-only `/v1/demo/account`, `/v1/demo/positions`, serta symbol endpoint menggunakan token lokal. Jangan panggil `/v1/demo/orders`.
-4. Identitas terminal harus DEMO dan cocok dengan whitelist login/server.
-5. File kill switch di `ENGINE_DATA_DIR`: `EMERGENCY_STOP` dan `DEMO_KILL_SWITCH`.
-6. Record reconciliation terakhir di `reconcile-events.jsonl`; ketika DEMO belum armed, dashboard memang melaporkan `UNKNOWN`.
-7. Jika control plane digunakan: heartbeat agent terbaru, `halted`, allowed symbols, dan konfigurasi cloud yang ditarik. Kedua endpoint Engine Host saat ini tidak memperlihatkan kesehatan agent secara eksplisit.
+## Phase 4 — Shadow Guard and Safety Review
 
-## Kesimpulan
+Buktikan perilaku saat ini tanpa menonaktifkannya:
 
-Dashboard tidak salah baca. Root cause yang didukung response live adalah Engine Host berjalan tanpa demo bridge armed: `MONITOR_ONLY` + Shadow Guard aktif. Akibat langsungnya account dan MT5 tidak diprobe oleh status execution, lalu permission projection menghasilkan `EXECUTION_PERMISSION_DISABLED` dan `SHADOW_GUARD_ACTIVE`. Tidak ada safe full-chain dummy order menuju MT5; validasi tanpa posisi harus berhenti di paper/shadow atau memakai test doubles.
+- Shadow aktif menghasilkan `SHADOW_GUARD_ACTIVE`.
+- Intent yang approved dicatat tetapi diblokir sebelum broker send.
+- Gateway wrapper tetap mencegah `sendOrder`.
+- Duplicate, SL/TP, emergency stop, max position, max symbol, dan daily trade guard tetap aktif.
+
+Setelah semua audit PASS, siapkan perubahan konfigurasi minimum sebagai rekomendasi saja. Jangan menerapkannya tanpa approval terpisah. Target commissioning adalah `EXECUTION_MODE=DEMO`, Shadow Guard `CLEAR`, dan seluruh safety gate tetap terpasang.
+
+## Phase 5 — Safe Flow Validation
+
+Jangan membuat dummy order baru karena tidak ada broker-check-only endpoint. Validasi menggunakan jalur aman yang sudah ada:
+
+```text
+Paper:
+Signal → Decision Gate → Plan → Risk Check → Paper Execution
+
+Shadow:
+Approved Intent → Shadow Guard → Block Record
+```
+
+Buktikan dari event/journal/readiness bahwa:
+
+- signal lifecycle berjalan;
+- Decision Gate menghasilkan hasil yang tercatat;
+- risk layer menghasilkan M4 outcome;
+- approved intent mencapai Shadow Guard;
+- Shadow Guard memblokir tanpa request ke `/v1/demo/orders`;
+- tidak ada posisi baru di MT5.
+
+`order_check` tidak boleh dipakai sebagai dummy mode karena implementasi saat ini langsung melanjutkan ke `order_send` saat check lolos.
+
+## Phase 6 — Final Readiness Report
+
+Laporkan matriks berikut beserta evidence waktu dan sumbernya:
+
+- Engine: `ONLINE / DEGRADED / OFFLINE`
+- XAUUSD market/radar: `READY / NOT READY`
+- BTCUSD market/radar: `READY / NOT READY`
+- Demo account: `PASS / FAIL / UNKNOWN`
+- MT5 execution bridge: `CONNECTED / DISCONNECTED / UNKNOWN`
+- Shadow Guard: `CLEAR / BLOCKING`
+- Kill switch: `OFF / ON`
+- Reconciliation: `CLEAN / MISMATCH / UNKNOWN`
+- Risk/readiness: `PASS / BLOCKED / UNKNOWN`
+- Execution permission: `BLOCKED / UNKNOWN / WAITING_SIGNAL / READY / ACTIVE`
+- Remaining blockers: daftar literal dari `/v1/engine/execution-status`
+
+## Success Criteria
+
+Commissioning dinyatakan **DEMO ARMED, WAITING SIGNAL** hanya jika:
+
+- Engine `ONLINE`.
+- Mode `DEMO_EXECUTION`.
+- Account `PASS`.
+- MT5 `CONNECTED`.
+- Shadow `CLEAR`.
+- Kill switch `false`.
+- Reconciliation `CLEAN`.
+- Data tidak stale.
+- Execution `WAITING_SIGNAL` ketika belum ada setup valid.
+
+Execution menjadi `READY` hanya ketika ada readiness fresh dengan Decision Gate M2 `PASS` dan Risk M4 `PASS`. `ACTIVE` hanya ketika posisi demo benar-benar terbuka; tahap audit ini tidak mencapainya.
+
+## Stop Conditions
+
+Stop dan laporkan tanpa perubahan bila ditemukan salah satu dari berikut:
+
+- account REAL atau identity tidak cocok whitelist;
+- token/risk policy/whitelist hilang atau invalid;
+- bridge tidak terjangkau;
+- kill switch aktif;
+- reconciliation mismatch/unknown pada tahap arm;
+- data stale;
+- jalur aman membutuhkan pemanggilan order endpoint;
+- konfigurasi aktual berbeda dari startup process environment.
+
+## Deliverable Tahap Pertama
+
+Audit findings per phase dengan file/line evidence, response endpoint yang sudah disanitasi, blocker list, dan daftar pemeriksaan VPS yang belum dapat dibuktikan. Tidak ada perubahan kode atau konfigurasi sampai blocker spesifik direview dan disetujui terpisah.
