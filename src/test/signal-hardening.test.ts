@@ -29,7 +29,7 @@ function rig(o: { pbAsOf?: () => number | null; m15Shift?: number } = {}) {
   let k = 0;
   const provider = () => { const a = o.pbAsOf ? o.pbAsOf() : T0; return a === null ? null : { bias: "BUY" as const, asOf: a, source: "TECHNICAL_H4_CLOSED" as const, arenaStatus: "CARI_BUY" }; };
   const loop = new LivePaperLoop("XAUUSD", "REAL_MT5", spec, provider);
-  const closed = (tf: Timeframe) => tf === "M5" ? hist("M5", 20 + k, M5) : tf === "M15" ? hist("M15", 20, 3 * M5).map((b) => ({ ...b, open_time: b.open_time - (o.m15Shift ?? (k - 40) * M5), close_time: b.close_time - (o.m15Shift ?? (k - 40) * M5) })) : [];
+  const closed = (tf: Timeframe) => tf === "M5" ? hist("M5", 20 + k, M5) : tf === "M15" ? hist("M15", 20, 3 * M5).map((b) => ({ ...b, open_time: b.open_time - (o.m15Shift ?? (40 - k) * M5), close_time: b.close_time - (o.m15Shift ?? (40 - k) * M5) })) : [];
   const step = () => { k++; loop.onClosedM5(hist("M5", 20 + k, M5).at(-1)!, closed, null); };
   return { loop, step, kinds: () => loop.decisions().map((d) => [d.kind, d.outcome, d.reason]) };
 }
@@ -99,7 +99,7 @@ describe("Signal Lifecycle Hardening V1", () => {
   it("8d. regime provider wires the engine regime into the decision log (else UNCERTAIN)", () => {
     const spec = Object.freeze({ symbol: "XAUUSD", origin: "BROKER_REPORTED" as const, digits: 3, point: 0.001, tick_size: 0.001, contract_size: 100, broker_utc_offset_ms: 0 });
     const provider = () => ({ bias: "BUY" as const, asOf: T0, source: "TECHNICAL_H4_CLOSED" as const, arenaStatus: "CARI_BUY" });
-    const closed = (tf: Timeframe) => tf === "M5" ? hist("M5", 21, M5) : tf === "M15" ? hist("M15", 20, 3 * M5).map((b) => ({ ...b, open_time: b.open_time - 20 * 3 * M5, close_time: b.close_time - 20 * 3 * M5 })) : [];
+    const closed = (tf: Timeframe) => tf === "M5" ? hist("M5", 21, M5) : tf === "M15" ? hist("M15", 20, 3 * M5).map((b) => ({ ...b, open_time: b.open_time - 39 * M5, close_time: b.close_time - 39 * M5 })) : [];
     const regime = { regime: "TREND_CONTINUATION" } as never;
     const a = new LivePaperLoop("XAUUSD", "REAL_MT5", spec, provider, () => regime);
     a.onClosedM5(hist("M5", 21, M5).at(-1)!, closed, null);
