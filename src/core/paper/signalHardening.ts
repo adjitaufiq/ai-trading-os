@@ -6,9 +6,11 @@ import type { MarketRegimeSnapshot } from "../../engine/core/market/regime/types
 export const SIGNAL_HARDENING_VERSION = "signal-hardening-v1" as const;
 
 export const HARDENING_LIMITS = {
-  /** Last CLOSED M15 must be at most this old at the M5 close (covers session gaps, rejects dead feeds). */
-  MAX_M15_AGE_MS: 3 * 3_600_000,
-  /** H4 primaryBias reading must be at most this old (≤ 3 H4 bars). */
+  /** Last CLOSED M15 must be at most this old at the M5 close (setup validation context). */
+  MAX_M15_AGE_MS: 3_600_000,
+  /** Previous CLOSED M5 must be at most this old (trigger validation; catches feed gaps). */
+  MAX_M5_AGE_MS: 15 * 60_000,
+  /** H4 primaryBias reading must be at most this old (macro context, ≤ 3 H4 bars). */
   MAX_PRIMARY_BIAS_AGE_MS: 12 * 3_600_000,
 } as const;
 
@@ -18,12 +20,15 @@ export type SignalRejectReason =
   | "CONTEXT_PRIMARY_BIAS_FUTURE"
   | "CONTEXT_M15_MISSING"
   | "CONTEXT_M15_STALE"
+  | "CONTEXT_M5_STALE"
   | "DUPLICATE_BLOCKED";
 
 export interface ContextCheckInput {
   readonly barCloseMs: number;
   readonly m15LastCloseMs: number | null;
   readonly primaryBiasAsOfMs: number | null;
+  /** Close time of the M5 bar BEFORE the triggering one; absent ⇒ M5 freshness not checked. */
+  readonly m5PrevCloseMs?: number | null;
 }
 
 /** Pre-READY context validation. Returns null when the context is available and fresh. */
@@ -33,6 +38,7 @@ export function validateSignalContext(i: ContextCheckInput): Exclude<SignalRejec
   if (i.barCloseMs - i.primaryBiasAsOfMs > HARDENING_LIMITS.MAX_PRIMARY_BIAS_AGE_MS) return "CONTEXT_PRIMARY_BIAS_STALE";
   if (i.m15LastCloseMs === null || !Number.isFinite(i.m15LastCloseMs)) return "CONTEXT_M15_MISSING";
   if (i.barCloseMs - i.m15LastCloseMs > HARDENING_LIMITS.MAX_M15_AGE_MS) return "CONTEXT_M15_STALE";
+  if (i.m5PrevCloseMs != null && Number.isFinite(i.m5PrevCloseMs) && i.barCloseMs - i.m5PrevCloseMs > HARDENING_LIMITS.MAX_M5_AGE_MS) return "CONTEXT_M5_STALE";
   return null;
 }
 
