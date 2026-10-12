@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bar, Timeframe } from "@/core/contracts";
 import { ActiveSignalRegistry, regimeLabel, validateSignalContext } from "@/core/paper/signalHardening";
 
-const h = vi.hoisted(() => ({ ev: null as unknown, created: 0, planned: false, expiry: undefined as number | undefined, terminal: false }));
+const h = vi.hoisted(() => ({ ev: null as unknown, created: 0, planned: false, expiry: undefined as number | undefined, terminal: false, promote: false }));
 vi.mock("@/engine/core/location/priceLocationEngine", () => ({
   classifyPriceLocation: () => ({ ok: true, context: { priceLocation: "AT_SUPPORT", locationTier: "T1", keyLevelPrice: 1999 } }),
   computeAtr: () => 3,
@@ -13,7 +13,7 @@ vi.mock("@/engine/core/reaction/reactionEvaluator", () => ({ evaluateReaction: (
 vi.mock("@/engine/signal/signalEvaluator", () => ({ evaluateSetup: () => h.ev }));
 vi.mock("@/engine/signal/signalLifecycle", () => ({
   createSetup: (ev: { direction: "BUY" | "SELL"; state: string }) => { h.created++; return { setup: { id: `s${h.created}`, symbol: "XAUUSD", direction: ev.direction, state: ev.state, triggerPattern: "ENGULFING", keyLevel: 1999, expiryTimestamp: h.expiry } }; },
-  updateSetup: (s: { state: string }) => ({ setup: h.terminal ? { ...s, state: "INVALIDATED" } : s }),
+  updateSetup: (s: { state: string }) => ({ setup: h.terminal ? { ...s, state: "INVALIDATED" } : h.promote ? { ...s, state: "READY" } : s }),
   isTerminal: (s: { state: string }) => s.state === "INVALIDATED" || s.state === "EXPIRED",
 }));
 vi.mock("@/engine/plan/tradePlanEngine", () => ({ buildTradePlan: () => ({ status: "HOLD", holdReason: "TEST_STOP_AT_PLAN" }) }));
@@ -34,7 +34,7 @@ function rig(o: { pbAsOf?: () => number | null; m15Shift?: number } = {}) {
   return { loop, step, kinds: () => loop.decisions().map((d) => [d.kind, d.outcome, d.reason]) };
 }
 
-beforeEach(() => { h.ev = { kind: "CANDIDATE", direction: "BUY", state: "READY", trace: { state: "READY", checks: [], at: 0 } }; h.created = 0; h.expiry = undefined; h.terminal = false; });
+beforeEach(() => { h.ev = { kind: "CANDIDATE", direction: "BUY", state: "READY", trace: { state: "READY", checks: [], at: 0 } }; h.created = 0; h.expiry = undefined; h.terminal = false; h.promote = false; });
 
 describe("Signal Lifecycle Hardening V1", () => {
   it("1. valid context → processed by the existing gates", () => {
@@ -53,11 +53,9 @@ describe("Signal Lifecycle Hardening V1", () => {
     const r = rig({ pbAsOf: () => (stale ? T0 - 13 * 3_600_000 : T0) });
     r.step(); // REACTION_CONFIRMED setup (not consumed)
     expect(r.kinds().map((x) => x[0])).toEqual(["CANDIDATE"]);
-    // hand-promote: mocked updateSetup keeps state; switch the loop's setup to READY via a fresh READY evaluation is not possible here,
-    // so verify the invalidation path through updateSetup terminal + the pure validator instead.
-    h.terminal = true; stale = true; r.step();
-    expect(r.loop.readiness().m2?.state).not.toBe("READY");
-    expect(r.kinds().some((x) => x[1] === "SIGNAL_REJECTED" || x[0] === "CANDIDATE")).toBe(true);
+    h.promote = true; stale = true; r.step(); // promoted to READY, but H4 context now stale
+    expect(r.kinds().at(-1)).toEqual(["REJECTED", "SIGNAL_REJECTED", "CONTEXT_LOST CONTEXT_PRIMARY_BIAS_STALE"]);
+    expect(r.kinds().some((x) => x[0] === "GATE")).toBe(false);
   });
   it("4. identical active signal → DUPLICATE_BLOCKED (audited)", () => {
     h.expiry = (T0 + 100 * M5) / 1000;
