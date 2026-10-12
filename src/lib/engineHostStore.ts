@@ -3,6 +3,7 @@
 // A slow watchdog only decides ownership (LIVE vs OFFLINE fallback) and re-syncs snapshots after a gap.
 // Read-only: GET + EventSource only. MONITOR_ONLY, no order path.
 import { EngineHostClient, isBundle, isEngineHostHealth } from "@/core/enginehost/client";
+import type { ExecutionStatusView } from "@/core/enginehost/executionStatus";
 import type { EngineHostHealth, EngineSymbolBundle } from "@/core/enginehost/types";
 
 /** DISABLED = no engine host URL; CHECKING = first attach attempt; LIVE = engine host owns every view; OFFLINE = browser fallback. */
@@ -31,6 +32,9 @@ export interface EngineStoreState {
   readonly bundles: Readonly<Record<string, EngineSymbolBundle>>;
   readonly error: string | null;
   readonly lastEventAt: number | null;
+  /** Copy of /v1/engine/execution-status; null when unavailable (never assumed safe). */
+  readonly execution: ExecutionStatusView | null;
+  readonly executionAt: number | null;
 }
 
 export class EngineHostStore {
@@ -50,7 +54,7 @@ export class EngineHostStore {
     eventSource?: EventSourceFactory | null;
     policy?: typeof ENGINE_ATTACH_POLICY;
   }) {
-    this.state = { status: o.client ? "CHECKING" : "DISABLED", health: null, bundles: {}, error: null, lastEventAt: null };
+    this.state = { status: o.client ? "CHECKING" : "DISABLED", health: null, bundles: {}, error: null, lastEventAt: null, execution: null, executionAt: null };
   }
 
   private get p() { return this.o.policy ?? ENGINE_ATTACH_POLICY; }
@@ -92,6 +96,7 @@ export class EngineHostStore {
       this.fails = 0;
       this.set({ status: "LIVE", health: h.envelope.data, bundles, error: null, lastEventAt: this.o.now() });
       this.openStream();
+      void this.refreshExecution();
       return true;
     } finally { this.busy = false; }
   }
@@ -100,7 +105,7 @@ export class EngineHostStore {
     this.fails++;
     // CHECKING resolves to OFFLINE immediately; LIVE only after the hysteresis threshold.
     const drop = this.state.status !== "LIVE" || this.fails >= this.p.fail_threshold;
-    if (drop) { this.es?.close(); this.es = null; this.set({ status: "OFFLINE", error, bundles: {}, health: null }); }
+    if (drop) { this.es?.close(); this.es = null; this.set({ status: "OFFLINE", error, bundles: {}, health: null, execution: null, executionAt: null }); }
     else this.set({ error });
     return false;
   }
@@ -119,12 +124,24 @@ export class EngineHostStore {
       const ev = parse(e.data);
       if (!ev || !isEngineHostHealth(ev.data) || this.state.status !== "LIVE") return;
       this.set({ health: ev.data, lastEventAt: this.o.now() });
+      void this.refreshExecution();
     });
     es.onerror = () => { /* EventSource retries itself; silence is handled by the watchdog */ };
   }
 
+  /** Pull execution-status (read-only GET). Failure clears it so the lamp can never stay green on old data. */
+  async refreshExecution(): Promise<void> {
+    const c = this.o.client;
+    if (!c || this.state.status !== "LIVE") return;
+    const r = await c.executionStatus();
+    if (this.state.status !== "LIVE") return;
+    if (r.ok) this.set({ execution: r.envelope.data, executionAt: this.o.now() });
+    else this.set({ execution: null, executionAt: null });
+  }
+
   async watchdog(): Promise<void> {
     const now = this.o.now();
+    if (this.state.status === "LIVE") void this.refreshExecution();
     if (this.state.status === "LIVE") {
       if (this.state.lastEventAt !== null && now - this.state.lastEventAt < this.p.silence_ms) return;
       this.es?.close(); this.es = null;
