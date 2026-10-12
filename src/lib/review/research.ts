@@ -89,7 +89,7 @@ export function setupPerformance(trades: readonly TradeFact[]): SetupRow[] {
     return {
       setup, trades: ts.length, status: "RANKED", winRate: rd(ts.filter((t) => t.result === "WIN").length / ts.length, 4),
       avgR: avgR(ts), totalR: rd(rs.reduce((a, b) => a + b, 0), 3),
-      bestCondition: conds[0]?.k ?? null, worstCondition: conds.length > 1 ? conds[conds.length - 1].k : null,
+      bestCondition: conds[0]?.k ?? null, worstCondition: conds.length > 1 ? conds.at(-1)?.k ?? null : null,
       confidence: ts.length >= 100 ? "HIGH" : ts.length >= STRATEGY_MIN_SAMPLE ? "MEDIUM" : "LOW",
     };
   });
@@ -110,7 +110,7 @@ export function regimeMemory(trades: readonly TradeFact[]): RegimeMemory[] {
     if (ts.length < SETUP_MIN_SAMPLE) return { regime, trades: ts.length, status: "INSUFFICIENT_SAMPLE", bestSetup: null, worstSetup: null, avgR: null, failurePattern: null };
     const setups = [...byKey(ts, setupOf).entries()].filter(([, g]) => g.length >= 5).map(([k, g]) => ({ k, a: avgR(g) ?? 0 })).sort((a, b) => b.a - a.a);
     const fails = [...byKey(ts.filter((t) => t.result === "LOSS" && t.failure_category), (t) => t.failure_category as string).entries()].sort((a, b) => b[1].length - a[1].length);
-    return { regime, trades: ts.length, status: "OK", bestSetup: setups[0]?.k ?? null, worstSetup: setups.length > 1 ? setups[setups.length - 1].k : null, avgR: avgR(ts), failurePattern: fails[0]?.[0] ?? null };
+    return { regime, trades: ts.length, status: "OK", bestSetup: setups[0]?.k ?? null, worstSetup: setups.length > 1 ? setups.at(-1)?.k ?? null : null, avgR: avgR(ts), failurePattern: fails[0]?.[0] ?? null };
   });
 }
 

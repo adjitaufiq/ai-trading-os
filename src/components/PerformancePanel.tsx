@@ -56,7 +56,7 @@ function ResearchSection({ r }: { r: ResearchReport }) {
   const m = r.metrics, f = (v: number | null, s = "") => (v === null ? "—" : `${v}${s}`);
   return <div className="space-y-3 rounded border border-border p-3">
     <h3 className="text-xs font-semibold uppercase text-muted-foreground">Research Intelligence V1 (post-trade)</h3>
-    {r.note && <p className="font-mono text-xs text-warning">{r.note}</p>}
+    {r.note && <p className="font-mono text-xs text-destructive">{r.note}</p>}
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       {[["Expectancy", f(m.expectancyR, "R")], ["Profit factor", f(m.profitFactor)], ["Max DD", `${m.maxDrawdownR}R`], ["Avg hold", f(m.avgHoldingMinutes, "m")]].map(([k, v]) =>
         <div key={k} className="rounded border border-border p-2"><p className="text-[10px] uppercase text-muted-foreground">{k}</p><p className="font-mono text-sm">{v}</p></div>)}
@@ -71,7 +71,7 @@ function ResearchSection({ r }: { r: ResearchReport }) {
     </div>)}</div>
     <div className="space-y-2">{r.attributions.slice(0, 5).map((a) => <div key={a.trade_id} className="rounded border border-border p-2 text-xs">
       <p className="font-mono">{a.trade_id} · {a.result} · {a.regime} · {a.setup}</p>
-      {a.win_factors.map((x) => <p key={x} className="text-success">+ {x}</p>)}
+      {a.win_factors.map((x) => <p key={x} className="text-primary">+ {x}</p>)}
       {a.loss_factors.map((x) => <p key={x} className="text-destructive">- {x}</p>)}
       <p className="text-muted-foreground">Pola berulang: {a.repeatable_pattern ?? "belum terlihat"}</p>
     </div>)}</div>
