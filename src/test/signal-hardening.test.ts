@@ -38,7 +38,7 @@ beforeEach(() => { h.ev = { kind: "CANDIDATE", direction: "BUY", state: "READY",
 
 describe("Signal Lifecycle Hardening V1", () => {
   it("1. valid context → processed by the existing gates", () => {
-    const r = rig(); r.step();
+    const r = rig(); r.step(); console.log("DEC", r.loop.readiness().decision);
     expect(r.kinds().map((x) => x[0])).toEqual(["CANDIDATE", "GATE"]);
   });
   it("2. invalid context → no READY, rejection audited", () => {
