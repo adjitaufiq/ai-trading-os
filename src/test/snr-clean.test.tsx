@@ -17,22 +17,23 @@ describe("clean SNR projection", () => {
     const snapshot = parseSnrSnapshot({ symbol: "XAUUSD", timeframe: "H4", zones: zones(), price: 141 }, "XAUUSD");
     const before = JSON.stringify(snapshot);
     const shown = selectSnrZones(snapshot, null);
-    expect(shown).toHaveLength(18);
+    expect(shown).toHaveLength(8);
     expect(shown.some((z) => z.timeframe === "M5")).toBe(false);
-    for (const timeframe of ["H4", "H1", "M15"]) for (const type of ["SUPPORT", "RESISTANCE"]) {
-      expect(shown.filter((z) => z.timeframe === timeframe && z.type === type).map((z) => z.low)).toEqual([140, 130, 150]);
-    }
+    expect(shown.filter((z) => z.timeframe === "H4")).toHaveLength(4);
+    expect(shown.filter((z) => z.timeframe === "H1")).toHaveLength(3);
+    expect(shown.filter((z) => z.timeframe === "M15")).toHaveLength(1);
+    for (const type of ["SUPPORT", "RESISTANCE"]) expect(shown.filter((z) => z.timeframe === "H4" && z.type === type).map((z) => z.low)).toEqual([140, 130]);
     expect(JSON.stringify(snapshot)).toBe(before);
     expect(snapshot?.zones).toHaveLength(80);
-    expect(selectSnrZones(snapshot, 141, "H4")).toHaveLength(6);
-    expect(selectSnrZones(snapshot, 141, "H1")).toHaveLength(12);
+    expect(selectSnrZones(snapshot, 141, "H4")).toHaveLength(4);
+    expect(selectSnrZones(snapshot, 141, "H1")).toHaveLength(7);
   });
   it("does not fabricate a price, render inactive zones or repeat identical ranges", () => {
     const snapshot = parseSnrSnapshot({ symbol: "XAUUSD", timeframe: "H4", zones: [...zones(), ...zones(), { type: "SUPPORT", low: 140, high: 142, status: "INACTIVE" }] }, "XAUUSD");
     expect(selectSnrZones(snapshot, null)).toEqual([]);
     expect(selectSnrZones(snapshot, Infinity)).toEqual([]);
     const shown = selectSnrZones(snapshot, 141);
-    expect(shown).toHaveLength(18);
+    expect(shown).toHaveLength(8);
     expect(shown.every((z) => z.status === "ACTIVE")).toBe(true);
   });
   it("copies only engine-confirmed and available swings, with legacy absence remaining empty", () => {
@@ -66,12 +67,16 @@ describe("clean SNR projection", () => {
     const snapshot = parseSnrSnapshot({ symbol: "XAUUSD", timeframe: "H4", price: 141, zones: zones(), as_of: 2100, swings: [swing] }, "XAUUSD");
     primitive.setZones(selectSnrZones(snapshot, 141), 2);
     primitive.setSwings(snapshot?.swings ?? []);
+    primitive.setAnnotationsVisible(true);
     const context = { save: vi.fn(), restore: vi.fn(), measureText: () => ({ width: 150 }), fillRect: vi.fn(), fillText: vi.fn(), setLineDash: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(), closePath: vi.fn(), fill: vi.fn() };
     const draw = () => primitive.paneViews()[1]?.renderer()?.draw({ useMediaCoordinateSpace: (cb: (scope: unknown) => void) => cb({ context, mediaSize: { width: 800, height: 600 } }) } as never);
     draw();
     expect(timeToCoordinate).toHaveBeenCalledWith(1);
     expect(context.fillText.mock.calls.filter(([text]) => String(text).includes("ZONE"))).toHaveLength(1);
     expect(context.fillText).toHaveBeenCalledWith("Swing High H4", 160, 83);
+    primitive.setAnnotationsVisible(false); context.fillText.mockClear(); context.fill.mockClear(); draw();
+    expect(context.fillText).not.toHaveBeenCalled();
+    expect(context.fill).toHaveBeenCalled(); // confirmed markers survive CLEAN mode
     primitive.setZones([]); primitive.setSwings([]); context.fillText.mockClear(); draw();
     expect(context.fillText).not.toHaveBeenCalled();
   });
