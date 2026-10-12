@@ -28,4 +28,4 @@
 - vite.config.ts aliases @vercel/oidc to its fs-free browser build. Why: its Node build makes the Worker bundle call createRequire(import.meta.url) at startup, which 500s every request.
 - Separate chat/control/research routes keep chat clear.
 - Mobile context projects existing quote/cockpit outputs, without polling or evaluation. Why: shared source authority.
-- SNR chart overlay consumes only the dedicated Engine Host SNR endpoint, validates ranges and confirmed/available swing timestamps, selects nearest active zones for display, and projects timeframe bands/labels and engine swing markers through a chart primitive; raw engine zones and trading decisions stay untouched. Why: visualization cannot become a second analysis or execution authority.
+- SNR overlay copies dedicated host ranges and confirmed/available swings into capped nearest bands/markers. Annotation visibility is independent of geometry; chartViewport preserves logical candle anchors on refresh. Raw zones and trading decisions stay untouched. Why: visualization is not analysis authority; refresh must not undo navigation.
