@@ -29,7 +29,7 @@ function rig(o: { pbAsOf?: () => number | null; m15Shift?: number } = {}) {
   let k = 0;
   const provider = () => { const a = o.pbAsOf ? o.pbAsOf() : T0; return a === null ? null : { bias: "BUY" as const, asOf: a, source: "TECHNICAL_H4_CLOSED" as const, arenaStatus: "CARI_BUY" }; };
   const loop = new LivePaperLoop("XAUUSD", "REAL_MT5", spec, provider);
-  const closed = (tf: Timeframe) => tf === "M5" ? hist("M5", 20 + k, M5) : tf === "M15" ? hist("M15", 20, 3 * M5).map((b) => ({ ...b, open_time: b.open_time - (o.m15Shift ?? 0), close_time: b.close_time - (o.m15Shift ?? 0) })) : [];
+  const closed = (tf: Timeframe) => tf === "M5" ? hist("M5", 20 + k, M5) : tf === "M15" ? hist("M15", 20, 3 * M5).map((b) => ({ ...b, open_time: b.open_time - (o.m15Shift ?? 20 * 3 * M5), close_time: b.close_time - (o.m15Shift ?? 20 * 3 * M5) })) : [];
   const step = () => { k++; loop.onClosedM5(hist("M5", 20 + k, M5).at(-1)!, closed, null); };
   return { loop, step, kinds: () => loop.decisions().map((d) => [d.kind, d.outcome, d.reason]) };
 }
@@ -38,11 +38,11 @@ beforeEach(() => { h.ev = { kind: "CANDIDATE", direction: "BUY", state: "READY",
 
 describe("Signal Lifecycle Hardening V1", () => {
   it("1. valid context → processed by the existing gates", () => {
-    const r = rig(); r.step(); console.log("DEC", r.loop.readiness().decision);
+    const r = rig(); r.step();
     expect(r.kinds().map((x) => x[0])).toEqual(["CANDIDATE", "GATE"]);
   });
   it("2. invalid context → no READY, rejection audited", () => {
-    const r = rig({ m15Shift: 10 * 3_600_000 }); r.step();
+    const r = rig({ m15Shift: 20 * 3 * M5 + 10 * 3_600_000 }); r.step();
     expect(r.kinds()).toEqual([["REJECTED", "SIGNAL_REJECTED", "CONTEXT_M15_STALE"]]);
     expect(r.loop.readiness().m2?.state).not.toBe("READY");
     expect(validateSignalContext({ barCloseMs: 10, m15LastCloseMs: 5, primaryBiasAsOfMs: null })).toBe("CONTEXT_PRIMARY_BIAS_MISSING");
