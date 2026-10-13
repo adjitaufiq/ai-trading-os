@@ -91,6 +91,12 @@ def resolve(method: str, target: str) -> "str | Rejection":
 
     if seg == ("v1", "health"):
         return "/v1/health" if not a else Rejection(400, "INVALID_REQUEST")
+    if seg in (("v1", "engine", "health"), ("v1", "engine", "snapshot")):
+        return "/" + "/".join(seg) if not a else Rejection(400, "INVALID_REQUEST")
+    if len(seg) == 4 and seg[:3] == ("v1", "analysis", "snr"):
+        if seg[3] not in ALLOWED_SYMBOLS:
+            return Rejection(403, "SYMBOL_NOT_ALLOWED")
+        return f"/v1/analysis/snr/{seg[3]}" if not a else Rejection(400, "INVALID_REQUEST")
     if len(seg) == 4 and seg[:3] == ("v1", "ticks", "latest"):
         if seg[3] not in ALLOWED_SYMBOLS:
             return Rejection(403, "SYMBOL_NOT_ALLOWED")
