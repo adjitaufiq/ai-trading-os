@@ -71,7 +71,7 @@ class Rejected(unittest.TestCase):
     def test_non_allowlisted_paths(self):
         for t in ("/", "/v1", "/v1/terminal", "/v1/symbols", "/v1/symbols?group=*", "/v1/ticks/XAUUSD?mode=from&from=x&count=1",
                   "/v1/stream", "/v1/demo/orders", "/v1/demo/account", "/v1/demo/status", "/v1/demo/positions",
-                  "/v1/orders", "/v1/account", "/v1/engine/execution-status", "/v1/engine/journal", "/v1/journal", "/v1/engine/health", "/v1/engine/account", "/v2/health",
+                  "/v1/orders", "/v1/account", "/v1/engine/execution-status", "/v1/engine/journal", "/v1/journal", "/v1/engine/account", "/v2/health",
                   "/v1/health/", "//v1/health", "/v1/../v1/health", "/v1/%74erminal", "/v1/ticks/latest/XAUUSD/x",
                   "http://127.0.0.1:8100/v1/demo/orders", "/v1/health\\x"):
             res, f = run("GET", t)
