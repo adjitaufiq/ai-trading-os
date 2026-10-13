@@ -3,7 +3,7 @@ import type { PublicEngineStatus } from "@/lib/engineStatus/relay";
 
 /** Status-only proxy (VPS, own Quick Tunnel) when configured; otherwise the same-origin relay. Both return the
  *  same sanitized PublicEngineStatus shape; no Engine Host URL and no secret in the browser. */
-const STATUS_PROXY = (import.meta.env.VITE_ENGINE_STATUS_URL as string | undefined)?.replace(/\/+$/, "") || "";
+const STATUS_PROXY = (import.meta.env['VITE_ENGINE_STATUS_URL'] as string | undefined)?.replace(/\/+$/, "") || "";
 export const STATUS_SOURCE = STATUS_PROXY ? "STATUS PROXY" : "STATUS RELAY";
 const STATUS_URL = STATUS_PROXY ? `${STATUS_PROXY}/v1/public/engine-status` : "/api/public/engine-status";
 
