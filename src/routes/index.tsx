@@ -20,6 +20,7 @@ import { explainTradingState } from "@/lib/ai-why.functions";
 import { browserWebSocketFactory } from "@/lib/browserWebSocket";
 import { mountCanonicalRuntime, type MountedRuntime } from "@/lib/canonicalRuntimes";
 import { useEngineHostStore } from "@/hooks/use-engine-host";
+import { useRelayStatus, relayLine } from "@/hooks/use-relay-status";
 import { exeLamp } from "@/lib/exeLamp";
 import { MobileTerminalProvider, useMobileTerminal } from "@/components/MobileTerminalContext";
 import { MobileTerminalChrome } from "@/components/MobileTerminalChrome";
@@ -72,6 +73,7 @@ function Terminal() {
   // Strict source ownership: the engine host (VPS) owns every view when LIVE; a local runtime is mounted ONLY in
   // BROWSER SESSION (no engine host configured, or engine host OFFLINE). Never both at once.
   const { store: engine, state: engineState } = useEngineHostStore(SYMBOLS);
+  const relay = useRelayStatus();
   const exe = exeLamp(engineState.execution, engineState.executionAt, engineState.status, Date.now());
   const browserSession = engineState.status === "DISABLED" || engineState.status === "OFFLINE";
   useEffect(() => {
@@ -157,6 +159,14 @@ function Terminal() {
           <p className="text-xs text-warn">
             SOURCE: BROWSER SESSION (EPHEMERAL) — engine host belum dikonfigurasi, refresh akan
             me-reset state.
+          </p>
+        )}
+        {engineState.status !== "LIVE" && (
+          <p
+            className={`text-xs font-semibold ${relay.status?.status === "ONLINE" ? "text-bull" : "text-warn"}`}
+            data-testid="relay-status"
+          >
+            {relayLine(relay.status, relay.error)}
           </p>
         )}
       </div>
