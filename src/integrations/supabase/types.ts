@@ -348,6 +348,24 @@ export type Database = {
           },
         ]
       }
+      engine_status_relay: {
+        Row: {
+          agent_id: string
+          received_at: string
+          snapshot: Json
+        }
+        Insert: {
+          agent_id: string
+          received_at?: string
+          snapshot: Json
+        }
+        Update: {
+          agent_id?: string
+          received_at?: string
+          snapshot?: Json
+        }
+        Relationships: []
+      }
       engine_trades: {
         Row: {
           approach: string | null
