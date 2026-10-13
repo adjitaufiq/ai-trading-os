@@ -157,8 +157,8 @@ function Terminal() {
           </p>
         ) : (
           <p className="text-xs text-warn">
-            SOURCE: BROWSER SESSION (EPHEMERAL) — engine host belum dikonfigurasi, refresh akan
-            me-reset state.
+            SOURCE: BROWSER SESSION (EPHEMERAL) — detail engine host tidak dibuka ke publik; status engine
+            dibaca dari status-only di bawah. Refresh akan me-reset state.
           </p>
         )}
         {engineState.status !== "LIVE" && (
