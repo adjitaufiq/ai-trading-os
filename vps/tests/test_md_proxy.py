@@ -71,7 +71,7 @@ class Rejected(unittest.TestCase):
     def test_non_allowlisted_paths(self):
         for t in ("/", "/v1", "/v1/terminal", "/v1/symbols", "/v1/symbols?group=*", "/v1/ticks/XAUUSD?mode=from&from=x&count=1",
                   "/v1/stream", "/v1/demo/orders", "/v1/demo/account", "/v1/demo/status", "/v1/demo/positions",
-                  "/v1/orders", "/v1/account", "/v1/engine/health", "/v1/engine/account", "/v2/health",
+                  "/v1/orders", "/v1/account", "/v1/engine/execution-status", "/v1/engine/journal", "/v1/journal", "/v1/engine/health", "/v1/engine/account", "/v2/health",
                   "/v1/health/", "//v1/health", "/v1/../v1/health", "/v1/%74erminal", "/v1/ticks/latest/XAUUSD/x",
                   "http://127.0.0.1:8100/v1/demo/orders", "/v1/health\\x"):
             res, f = run("GET", t)
@@ -120,7 +120,38 @@ class Rejected(unittest.TestCase):
         self.assertEqual(res.status, 502)
 
 
+class RateLimit(unittest.TestCase):
+    def test_per_client_and_global(self):
+        now = [0.0]
+        lim = P.RateLimiter(per_client_rps=1, per_client_burst=2, global_rps=1, global_burst=3, clock=lambda: now[0])
+        f = Recorder()
+        h = dict(OK_HDR, **{"cf-connecting-ip": "1.1.1.1"})
+        codes = [P.handle("GET", "/v1/health", h, f, ORIGINS, lambda t: True, lim).status for _ in range(3)]
+        self.assertEqual(codes, [200, 200, 429])
+        self.assertEqual(len(f.calls), 2)
+        h2 = dict(OK_HDR, **{"cf-connecting-ip": "2.2.2.2"})
+        self.assertEqual(P.handle("GET", "/v1/health", h2, f, ORIGINS, None, lim).status, 200)
+        h3 = dict(OK_HDR, **{"cf-connecting-ip": "3.3.3.3"})
+        self.assertEqual(P.handle("GET", "/v1/health", h3, f, ORIGINS, None, lim).status, 429)  # global exhausted
+        now[0] = 5.0
+        self.assertEqual(P.handle("GET", "/v1/health", h, f, ORIGINS, None, lim).status, 200)
+
+    def test_rejected_requests_never_reach_limiter_upstream(self):
+        lim = P.RateLimiter(per_client_burst=1, global_burst=1, clock=lambda: 0.0)
+        f = Recorder()
+        self.assertEqual(P.handle("GET", "/v1/demo/orders", OK_HDR, f, ORIGINS, None, lim).status, 404)
+        self.assertEqual(f.calls, [])
+
+
 class Config(unittest.TestCase):
+    def test_access_mode_default_and_strict(self):
+        self.assertEqual(P.resolve_access_mode(None), "cf_access")
+        self.assertEqual(P.resolve_access_mode(""), "cf_access")
+        self.assertEqual(P.resolve_access_mode("public_market_data"), "public_market_data")
+        for bad in ("0", "off", "none", "PUBLIC", "disabled"):
+            with self.assertRaises(ValueError):
+                P.resolve_access_mode(bad)
+
     def test_origin_parsing_strict(self):
         o = P.parse_origins(" https://a.app ,*,http://b.app,https://*.c.app,https://d.app/path, ")
         self.assertEqual(o, frozenset({"https://a.app"}))
