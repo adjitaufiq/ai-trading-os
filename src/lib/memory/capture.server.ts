@@ -2,7 +2,8 @@
 // Insert-only with ignoreDuplicates; never updates or deletes. Never writes to the engine host.
 import { EngineHostClient } from "@/core/enginehost/client";
 import type { JournalTrade } from "@/engine/journal/types";
-import { captureEngineEvents, recordEngineHealth } from "@/lib/events/events.server";
+import { captureEngineEvents } from "@/lib/events/events.server";
+import { syncRelayHealth } from "@/lib/engineStatus/relay.server";
 import { bundleToMemoryRow, demoRecordToRow, tradeToRow } from "./mappers";
 import type { DemoTradeRecord } from "@/core/execution/demo/types";
 
@@ -12,15 +13,14 @@ function engineUrl(): string | null {
 }
 
 export async function captureEngineMemory() {
+  // ENGINE ONLINE/OFFLINE alerts come only from the status relay heartbeat (stale threshold = debounce),
+  // never from a direct fetch to an Engine Host URL.
+  const health = await syncRelayHealth(Date.now());
   const url = engineUrl();
-  if (!url) return { ok: false as const, error: "ENGINE_HOST_NOT_CONFIGURED" };
+  if (!url) return { ok: false as const, error: "ENGINE_HOST_NOT_CONFIGURED", health };
   const client = new EngineHostClient({ baseUrl: url, timeoutMs: 10_000 });
   const snap = await client.snapshots();
-  if (!snap.ok) {
-    try { await recordEngineHealth(false, `Engine Host unreachable: ${snap.error}`); } catch { /* never fail capture */ }
-    return { ok: false as const, error: `ENGINE_HOST ${snap.error}` };
-  }
-  try { await recordEngineHealth(true, "Engine Host reachable again"); } catch { /* ignore */ }
+  if (!snap.ok) return { ok: false as const, error: `ENGINE_HOST ${snap.error}`, health };
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
   const rows = snap.envelope.data.bundles.map(bundleToMemoryRow).filter((x) => x !== null);
