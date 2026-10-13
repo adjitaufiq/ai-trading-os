@@ -11,9 +11,10 @@ validated values; the client's raw path/query is never forwarded. No request hea
 credentials are forwarded upstream. The proxy has no route to the demo execution service (8100).
 
 Auth design: the proxy binds loopback only and is meant to be reached exclusively through a
-Cloudflare named tunnel protected by Cloudflare Access. With MD_PROXY_REQUIRE_CF_ACCESS=1 (default)
-requests lacking the Cf-Access-Jwt-Assertion header are rejected (defence in depth; signature
-verification is Cloudflare's job at the edge).
+Cloudflare named tunnel protected by Cloudflare Access. By default (MD_PROXY_REQUIRE_CF_ACCESS=1) every
+GET must carry a Cf-Access-Jwt-Assertion that verifies cryptographically (access.AccessVerifier:
+RS256 signature vs team JWKS, issuer, audience, exp/nbf); startup fails if team domain / AUD are unset.
+Upstream redirects are never followed.
 """
 from __future__ import annotations
 
@@ -28,6 +29,8 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable, Optional, Tuple
 from urllib.parse import parse_qs, unquote
+
+from .access import NO_REDIRECT_OPENER, AccessVerifier
 
 ALLOWED_SYMBOLS = frozenset({"XAUUSD", "BTCUSD"})
 ALLOWED_TIMEFRAMES = frozenset({"M5", "M15", "H1", "H4"})
@@ -119,6 +122,11 @@ def parse_origins(raw: Optional[str]) -> frozenset[str]:
 
 
 Fetch = Callable[[str], Tuple[int, bytes]]
+AccessCheck = Callable[[Optional[str]], bool]
+
+
+class RedirectRefused(Exception):
+    pass
 
 
 def make_upstream_fetch(base: str, timeout: float = UPSTREAM_TIMEOUT_S, max_bytes: int = MAX_RESPONSE_BYTES) -> Fetch:
@@ -129,10 +137,11 @@ def make_upstream_fetch(base: str, timeout: float = UPSTREAM_TIMEOUT_S, max_byte
     def fetch(upstream_path: str) -> Tuple[int, bytes]:
         req = urllib.request.Request(base.rstrip("/") + upstream_path, method="GET", headers={"Accept": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 (loopback only)
-                status, stream = r.status, r
-                body = stream.read(max_bytes + 1)
+            with NO_REDIRECT_OPENER.open(req, timeout=timeout) as r:  # noqa: S310 (loopback only)
+                status, body = r.status, r.read(max_bytes + 1)
         except urllib.error.HTTPError as e:
+            if 300 <= e.code < 400:
+                raise RedirectRefused() from None
             status, body = e.code, e.read(max_bytes + 1)
         if len(body) > max_bytes:
             raise OverflowError("upstream response too large")
@@ -148,7 +157,8 @@ class ProxyResponse:
 
 
 def handle(method: str, target: str, headers: dict[str, str], fetch: Fetch, origins: frozenset[str],
-           require_cf_access: bool) -> ProxyResponse:
+           access: Optional[AccessCheck]) -> ProxyResponse:
+    """`access` None ⇒ Access check explicitly disabled (MD_PROXY_REQUIRE_CF_ACCESS=0, local testing only)."""
     """Full request handling, transport-independent (unit-testable)."""
     origin = headers.get("origin")
     cors: Tuple[Tuple[str, str], ...] = ()
@@ -163,12 +173,14 @@ def handle(method: str, target: str, headers: dict[str, str], fetch: Fetch, orig
         return _err(r.status, r.code, cors)
     if method == "OPTIONS":
         return ProxyResponse(204, b"", cors)
-    if require_cf_access and not headers.get("cf-access-jwt-assertion"):
+    if access is not None and not access(headers.get("cf-access-jwt-assertion")):
         return _err(401, "ACCESS_REQUIRED", cors)
     try:
         status, body = fetch(r)
     except OverflowError:
         return _err(502, "UPSTREAM_TOO_LARGE", cors)
+    except RedirectRefused:
+        return _err(502, "UPSTREAM_REDIRECT_REFUSED", cors)
     except Exception:  # timeout / refused — no internal detail leaves the process
         return _err(504, "UPSTREAM_UNAVAILABLE", cors)
     return ProxyResponse(status, body, cors + (("Content-Type", "application/json"),
@@ -188,7 +200,7 @@ class _Handler(BaseHTTPRequestHandler):
         t0 = time.monotonic()
         hdrs = {k.lower(): v for k, v in self.headers.items()}
         cfg = self.server.cfg  # type: ignore[attr-defined]
-        res = handle(self.command, self.path, hdrs, cfg["fetch"], cfg["origins"], cfg["require_cf_access"])
+        res = handle(self.command, self.path, hdrs, cfg["fetch"], cfg["origins"], cfg["access"])
         self.send_response(res.status)
         for k, v in res.headers:
             self.send_header(k, v)
@@ -206,11 +218,11 @@ class _Handler(BaseHTTPRequestHandler):
         return
 
 
-def build_server(host: str, port: int, fetch: Fetch, origins: frozenset[str], require_cf_access: bool) -> ThreadingHTTPServer:
+def build_server(host: str, port: int, fetch: Fetch, origins: frozenset[str], access: Optional[AccessCheck]) -> ThreadingHTTPServer:
     if host not in LOOPBACK_HOSTS:
         raise ValueError("md_proxy binds loopback only")
     srv = ThreadingHTTPServer((host, port), _Handler)
-    srv.cfg = {"fetch": fetch, "origins": origins, "require_cf_access": require_cf_access}  # type: ignore[attr-defined]
+    srv.cfg = {"fetch": fetch, "origins": origins, "access": access}  # type: ignore[attr-defined]
     srv.timeout = 10
     return srv
 
@@ -221,8 +233,9 @@ def main() -> None:
     upstream = os.environ.get("MD_PROXY_UPSTREAM", "http://127.0.0.1:8765")
     origins = parse_origins(os.environ.get("MD_PROXY_ALLOWED_ORIGINS"))
     require = os.environ.get("MD_PROXY_REQUIRE_CF_ACCESS", "1") != "0"
-    srv = build_server("127.0.0.1", port, make_upstream_fetch(upstream), origins, require)
-    log.info("md_proxy listening 127.0.0.1:%d origins=%d require_cf_access=%s", port, len(origins), require)
+    access = AccessVerifier(os.environ.get("MD_PROXY_CF_TEAM_DOMAIN", ""), os.environ.get("MD_PROXY_CF_AUD", "")) if require else None
+    srv = build_server("127.0.0.1", port, make_upstream_fetch(upstream), origins, access)
+    log.info("md_proxy listening 127.0.0.1:%d origins=%d access_verified=%s", port, len(origins), require)
     srv.serve_forever()
 
 
