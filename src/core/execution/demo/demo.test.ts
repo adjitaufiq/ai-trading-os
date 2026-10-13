@@ -45,7 +45,7 @@ describe("demo account validator", () => {
 describe("demo safety", () => {
   const base = { mode: "DEMO_STRESS_TEST" as const, killSwitch: false, consumedSignalIds: new Set<string>(), openPositions: 0, tradesToday: 0, dayStartBalance: 10_000, equity: 10_000 };
   it.each([
-    [{ killSwitch: true }, "KILL_SWITCH"], [{ consumedSignalIds: new Set(["s"]) }, "DUPLICATE_SIGNAL"], [{ openPositions: 1 }, "MAX_OPEN_POSITIONS"],
+    [{ killSwitch: true }, "KILL_SWITCH"], [{ consumedSignalIds: new Set(["s"]) }, "DUPLICATE_SIGNAL"], [{ openPositions: DEMO_RISK_PROFILE.maxOpenPositions }, "MAX_OPEN_POSITIONS"],
     [{ tradesToday: 5 }, "MAX_DAILY_TRADES"], [{ equity: 9_800 }, "DAILY_LOSS_LIMIT"], [{ mode: "REAL_DISABLED" as const }, "MODE_NOT_DEMO"],
   ])("%o ⇒ %s", (patch, reason) => expect(checkDemoSafety("s", { ...base, ...patch }, DEMO_RISK_PROFILE)).toEqual({ ok: false, reason }));
 });
@@ -69,7 +69,7 @@ describe("DemoExecutionBridge", () => {
   });
   it.each([
     [{ acct: { ...demoAcct, tradeMode: "REAL" as const } }, "ACCOUNT_NOT_DEMO"],
-    [{ kill: true }, "KILL_SWITCH"], [{ positions: 1 }, "MAX_OPEN_POSITIONS"], [{ mode: "REAL_DISABLED" as const }, "MODE_NOT_DEMO"],
+    [{ kill: true }, "KILL_SWITCH"], [{ positions: DEMO_RISK_PROFILE.maxOpenPositions }, "MAX_OPEN_POSITIONS"], [{ mode: "REAL_DISABLED" as const }, "MODE_NOT_DEMO"],
   ])("%o never sends (%s)", async (over, reason) => {
     const r = rig(over); const e = await r.mk().handle(intent());
     expect(e.type).toBe("BLOCKED"); expect(e.detail).toContain(reason); expect(r.sent).toHaveLength(0);

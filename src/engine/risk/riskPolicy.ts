@@ -13,9 +13,9 @@ export interface RiskPolicy {
   readonly emergency_stop: boolean;
 }
 
-/** Locked operator values (Phase 4A decision). risk-policy.json must match the schema; these are the shipped values. */
+/** Locked operator values (Phase 4A decision; position/symbol caps raised to 2 by operator decision 2026-10-13). risk-policy.json must match the schema; these are the shipped values. */
 export const DEFAULT_RISK_POLICY: RiskPolicy = Object.freeze({
-  risk_per_trade: 0.005, max_position: 1, max_symbol: 1, max_daily_trade: 5, max_daily_loss: 0.02, emergency_stop: false,
+  risk_per_trade: 0.005, max_position: 2, max_symbol: 2, max_daily_trade: 5, max_daily_loss: 0.02, emergency_stop: false,
 });
 
 /** Percent form (0.5) for M4 AccountProfile.riskValue. Derived, never a second value. */
