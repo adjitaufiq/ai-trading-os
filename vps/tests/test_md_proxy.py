@@ -26,7 +26,8 @@ class Recorder:
 
 def run(method, target, headers=None, fetch=None, require=True):
     f = fetch or Recorder()
-    return P.handle(method, target, OK_HDR if headers is None else headers, f, ORIGINS, require), f
+    access = (lambda t: t == "x") if require else None
+    return P.handle(method, target, OK_HDR if headers is None else headers, f, ORIGINS, access), f
 
 
 class Allowed(unittest.TestCase):
@@ -133,7 +134,7 @@ class Config(unittest.TestCase):
 
     def test_bind_loopback_only(self):
         with self.assertRaises(ValueError):
-            P.build_server("0.0.0.0", 0, Recorder(), ORIGINS, True)
+            P.build_server("0.0.0.0", 0, Recorder(), ORIGINS, None)
 
     def test_no_execution_surface_in_source(self):
         src = (Path(P.__file__)).read_text(encoding="utf8")
@@ -160,7 +161,7 @@ class LiveLoopback(unittest.TestCase):
 
         up = ThreadingHTTPServer(("127.0.0.1", 0), Up)
         threading.Thread(target=up.serve_forever, daemon=True).start()
-        px = P.build_server("127.0.0.1", 0, P.make_upstream_fetch(f"http://127.0.0.1:{up.server_port}"), ORIGINS, True)
+        px = P.build_server("127.0.0.1", 0, P.make_upstream_fetch(f"http://127.0.0.1:{up.server_port}"), ORIGINS, lambda t: t == "jwt")
         threading.Thread(target=px.serve_forever, daemon=True).start()
         base = f"http://127.0.0.1:{px.server_port}"
         try:
@@ -170,7 +171,7 @@ class LiveLoopback(unittest.TestCase):
                 self.assertEqual((r.status, r.read()), (200, b'{"tick":1}'))
             self.assertEqual(seen[0][0], "/v1/ticks/latest/XAUUSD")
             self.assertTrue({"cookie", "authorization", "cf-access-jwt-assertion", "origin"}.isdisjoint(seen[0][1]))
-            req = urllib.request.Request(base + "/v1/ticks/latest/BTCUSD", headers={"Origin": ORIGIN, "Cf-Access-Jwt-Assertion": "j"})
+            req = urllib.request.Request(base + "/v1/ticks/latest/BTCUSD", headers={"Origin": ORIGIN, "Cf-Access-Jwt-Assertion": "jwt"})
             with self.assertRaises(urllib.error.HTTPError) as cm:
                 urllib.request.urlopen(req, timeout=5)
             self.assertEqual(cm.exception.code, 502)
