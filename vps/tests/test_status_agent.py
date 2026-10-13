@@ -69,6 +69,11 @@ class Push(unittest.TestCase):
         body = req.data.decode()
         self.assertEqual(req.get_header("X-agent-signature"), A.sign("k", "42", "POST", A.RELAY_PATH, body))
         self.assertNotIn("k", req.get_header("X-agent-timestamp"))
+        self.assertEqual(req.get_header("User-agent"), "ArenaStatusAgent/2")
+
+    def test_user_agent_is_explicit_not_python_default(self):
+        self.assertEqual(A.USER_AGENT, "ArenaStatusAgent/2")
+        self.assertNotIn("Python", A.USER_AGENT)
 
     def test_no_redirect_follow(self):
         self.assertIsNone(A._NoRedirect().redirect_request(None, None, 302, "", {}, "https://evil"))
