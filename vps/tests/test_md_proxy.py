@@ -138,7 +138,7 @@ class Config(unittest.TestCase):
     def test_no_execution_surface_in_source(self):
         src = (Path(P.__file__)).read_text(encoding="utf8")
         for forbidden in ("8100", "DEMO_EXEC_TOKEN", "order_send", "MetaTrader5", "Authorization", "/v1/demo"):
-            self.assertNotIn(forbidden, src.split('"""', 2)[2] if forbidden == "8100" else src)
+            self.assertNotIn(forbidden, src.split('"""', 2)[2])
         self.assertEqual([r[0] for r in P.APPROVED_ROUTES], ["GET"] * 4)
 
 
