@@ -57,7 +57,7 @@ const SYMBOLS = ["XAUUSD", "BTCUSD"] as const;
 function Terminal() {
   const mobile = useMobileTerminal();
   const [selectedSymbol, setSelectedSymbol] = useState<TerminalMarket>("XAUUSD");
-  const config = useMemo(() => makeGatewayConfig({ timeoutMs: 15_000 }), []);
+  const config = useMemo(() => makeGatewayConfig({ timeoutMs: 30_000 }), []);
   const client = useMemo(
     () =>
       new BrokerGatewayClient({
