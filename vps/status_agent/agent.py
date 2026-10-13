@@ -18,6 +18,7 @@ import urllib.request
 ENGINE_BASE = "http://127.0.0.1:8090"
 RELAY_PATH = "/api/public/agent/engine-status"
 SCHEMA = "engine-status-relay-v1"
+USER_AGENT = "ArenaStatusAgent/2"
 SYMBOLS = ("XAUUSD", "BTCUSD")
 CODE = re.compile(r"^[A-Z0-9_]{1,48}$")
 ENUMS = {
@@ -92,7 +93,7 @@ def push(relay_base, secret, agent_id, snapshot, now_ms, opener=None, timeout=10
     body = json.dumps({"agent_id": agent_id, "snapshot": snapshot}, separators=(",", ":"))
     ts = str(int(now_ms))
     req = urllib.request.Request(relay_base.rstrip("/") + RELAY_PATH, data=body.encode("utf-8"), method="POST", headers={
-        "Content-Type": "application/json", "x-agent-timestamp": ts, "x-agent-signature": sign(secret, ts, "POST", RELAY_PATH, body)})
+        "User-Agent": USER_AGENT, "Content-Type": "application/json", "x-agent-timestamp": ts, "x-agent-signature": sign(secret, ts, "POST", RELAY_PATH, body)})
     op = opener or urllib.request.build_opener(_NoRedirect)
     try:
         with op.open(req, timeout=timeout) as r:
