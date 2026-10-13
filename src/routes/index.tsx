@@ -161,7 +161,7 @@ function Terminal() {
             dibaca dari status-only di bawah. Refresh akan me-reset state.
           </p>
         )}
-        {engineState.status !== "LIVE" && (
+        {(
           <p
             className={`text-xs font-semibold ${relay.status?.status === "ONLINE" ? "text-bull" : "text-warn"}`}
             data-testid="relay-status"
@@ -256,7 +256,7 @@ function Terminal() {
         <MobileBottomNav
           engineStatus={engineState.status}
           exe={exe}
-          relay={engineState.status !== "LIVE" ? { text: relayLine(relay.status, relay.error), online: relay.status?.status === "ONLINE" } : null}
+          relay={{ text: relayLine(relay.status, relay.error), online: relay.status?.status === "ONLINE" }}
         />
       </div>
       {tab === "JOURNAL" ? (

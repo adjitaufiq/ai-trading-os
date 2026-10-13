@@ -8,7 +8,9 @@ import { bundleToMemoryRow, demoRecordToRow, tradeToRow } from "./mappers";
 import type { DemoTradeRecord } from "@/core/execution/demo/types";
 
 function engineUrl(): string | null {
-  const v = (import.meta.env["VITE_ENGINE_HOST_URL"] as string | undefined) ?? process.env["VITE_ENGINE_HOST_URL"];
+  // Private capture URL (server-only). Never the dashboard's VITE_ENGINE_HOST_URL, which may point at the
+  // public sanitized view proxy (account/trades stripped) and would silently empty the journal capture.
+  const v = process.env["ENGINE_HOST_CAPTURE_URL"];
   return v && v.trim() ? v.trim() : null;
 }
 
