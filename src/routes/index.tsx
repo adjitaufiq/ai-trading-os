@@ -253,7 +253,11 @@ function Terminal() {
             onSelect={focusAlert}
           />
         ) : null}
-        <MobileBottomNav engineStatus={engineState.status} exe={exe} />
+        <MobileBottomNav
+          engineStatus={engineState.status}
+          exe={exe}
+          relay={engineState.status !== "LIVE" ? { text: relayLine(relay.status, relay.error), online: relay.status?.status === "ONLINE" } : null}
+        />
       </div>
       {tab === "JOURNAL" ? (
         <JournalPanel

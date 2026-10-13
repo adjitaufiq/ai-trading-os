@@ -301,7 +301,7 @@ export function Direction({ value }: { value: string | undefined }) {
     </span>
   );
 }
-export function MobileBottomNav({ engineStatus, exe }: { engineStatus: string; exe?: ExeLamp | null }) {
+export function MobileBottomNav({ engineStatus, exe, relay }: { engineStatus: string; exe?: ExeLamp | null; relay?: { text: string; online: boolean } | null }) {
   const m = useMobileTerminal();
   const [detail, setDetail] = useState(false);
   if (!m) return null;
@@ -309,14 +309,15 @@ export function MobileBottomNav({ engineStatus, exe }: { engineStatus: string; e
   const icons = { TRADE: ShieldCheck, RADAR: Radar, ANALYSIS: Activity };
   const result =
     exe?.execution === "BLOCKED" ? "BLOCKED" : s?.signal.state === "READY" ? "READY" : "WAIT";
-  const exeClass =
-    exe?.tone === "healthy" ? "text-bull" : exe?.tone === "waiting" ? "text-warn" : exe?.tone === "attention" ? "text-bear" : "text-muted-foreground";
+  const exeClass = relay
+    ? relay.online ? "text-warn" : "text-bear"
+    : exe?.tone === "healthy" ? "text-bull" : exe?.tone === "waiting" ? "text-warn" : exe?.tone === "attention" ? "text-bear" : "text-muted-foreground";
   return (
     <>
       <div className="mobile-execution-bar">
         <span className={exeClass}>● EXE</span>
-        <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground" title={exe?.detail}>
-          {exe ? `ENGINE ${exe.engine} · MODE ${exe.mode} · ${exe.execution}${exe.ageSec !== null ? ` · ${exe.ageSec}s` : ""}` : "NOT CONNECTED"}
+        <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground" title={relay?.text ?? exe?.detail} data-testid="mobile-engine-status">
+          {relay ? relay.text : exe ? `ENGINE ${exe.engine} · MODE ${exe.mode} · ${exe.execution}${exe.ageSec !== null ? ` · ${exe.ageSec}s` : ""}` : "NOT CONNECTED"}
         </span>
         <Button disabled size="sm" variant="outline" className="h-8 text-xs">
           <LockKeyhole className="size-3" />
