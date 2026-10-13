@@ -5,6 +5,8 @@ Stdlib only. Static allowlist — NOT a generic forwarder:
   GET /v1/ticks/latest/{XAUUSD|BTCUSD}
   GET /v1/symbols/{XAUUSD|BTCUSD}
   GET /v1/bars/{XAUUSD|BTCUSD}/{M5|M15|H1|H4}?mode=pos&start=<0..1000>&count=<1..500>
+  GET /v1/engine/health, /v1/engine/snapshot, /v1/analysis/snr/{XAUUSD|BTCUSD}  (engine_view: loopback 8090,
+      field allowlist; account=null, trades=[]; no other Engine Host route; MD_PROXY_ENGINE_VIEW=off disables)
   OPTIONS on the same paths (CORS preflight, allowlisted origins only)
 Everything else -> 404/405/400 before any upstream call. The upstream path is rebuilt from
 validated values; the client's raw path/query is never forwarded. No request headers, cookies or
@@ -33,6 +35,7 @@ from typing import Callable, Optional, Tuple
 from urllib.parse import parse_qs, unquote
 
 from .access import NO_REDIRECT_OPENER, AccessVerifier
+from . import engine_view
 
 ALLOWED_SYMBOLS = frozenset({"XAUUSD", "BTCUSD"})
 ALLOWED_TIMEFRAMES = frozenset({"M5", "M15", "H1", "H4"})
@@ -91,6 +94,12 @@ def resolve(method: str, target: str) -> "str | Rejection":
 
     if seg == ("v1", "health"):
         return "/v1/health" if not a else Rejection(400, "INVALID_REQUEST")
+    if seg in (("v1", "engine", "health"), ("v1", "engine", "snapshot")):
+        return "/" + "/".join(seg) if not a else Rejection(400, "INVALID_REQUEST")
+    if len(seg) == 4 and seg[:3] == ("v1", "analysis", "snr"):
+        if seg[3] not in ALLOWED_SYMBOLS:
+            return Rejection(403, "SYMBOL_NOT_ALLOWED")
+        return f"/v1/analysis/snr/{seg[3]}" if not a else Rejection(400, "INVALID_REQUEST")
     if len(seg) == 4 and seg[:3] == ("v1", "ticks", "latest"):
         if seg[3] not in ALLOWED_SYMBOLS:
             return Rejection(403, "SYMBOL_NOT_ALLOWED")
@@ -188,7 +197,8 @@ class ProxyResponse:
 
 
 def handle(method: str, target: str, headers: dict[str, str], fetch: Fetch, origins: frozenset[str],
-           access: Optional[AccessCheck], limiter: Optional[RateLimiter] = None) -> ProxyResponse:
+           access: Optional[AccessCheck], limiter: Optional[RateLimiter] = None,
+           engine_fetch: Optional[Fetch] = None) -> ProxyResponse:
     """`access` None ⇒ public_market_data mode (allowlisted market data only)."""
     """Full request handling, transport-independent (unit-testable)."""
     origin = headers.get("origin")
@@ -208,14 +218,24 @@ def handle(method: str, target: str, headers: dict[str, str], fetch: Fetch, orig
         return _err(401, "ACCESS_REQUIRED", cors)
     if limiter is not None and not limiter.allow(headers.get("cf-connecting-ip") or "local"):
         return _err(429, "RATE_LIMITED", cors + (("Retry-After", "1"),))
+    engine = engine_view.is_engine_path(r)
+    if engine and engine_fetch is None:
+        return _err(404, "ENGINE_VIEW_DISABLED", cors)
     try:
-        status, body = fetch(r)
+        status, body = (engine_fetch if engine else fetch)(r)  # type: ignore[misc]
     except OverflowError:
         return _err(502, "UPSTREAM_TOO_LARGE", cors)
     except RedirectRefused:
         return _err(502, "UPSTREAM_REDIRECT_REFUSED", cors)
     except Exception:  # timeout / refused — no internal detail leaves the process
         return _err(504, "UPSTREAM_UNAVAILABLE", cors)
+    if engine:
+        if status != 200:
+            return _err(503 if status >= 500 else 502, "ENGINE_VIEW_UNAVAILABLE", cors)
+        clean = engine_view.sanitize(r, body)
+        if clean is None:
+            return _err(502, "ENGINE_VIEW_INVALID", cors)
+        body = clean
     return ProxyResponse(status, body, cors + (("Content-Type", "application/json"),
                                                ("X-Proxy-Authority", "READ_ONLY_MARKET_DATA"),
                                                ("Cache-Control", "no-store")))
@@ -233,7 +253,7 @@ class _Handler(BaseHTTPRequestHandler):
         t0 = time.monotonic()
         hdrs = {k.lower(): v for k, v in self.headers.items()}
         cfg = self.server.cfg  # type: ignore[attr-defined]
-        res = handle(self.command, self.path, hdrs, cfg["fetch"], cfg["origins"], cfg["access"], cfg.get("limiter"))
+        res = handle(self.command, self.path, hdrs, cfg["fetch"], cfg["origins"], cfg["access"], cfg.get("limiter"), cfg.get("engine_fetch"))
         self.send_response(res.status)
         for k, v in res.headers:
             self.send_header(k, v)
@@ -252,11 +272,11 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def build_server(host: str, port: int, fetch: Fetch, origins: frozenset[str], access: Optional[AccessCheck],
-                 limiter: Optional[RateLimiter] = None) -> ThreadingHTTPServer:
+                 limiter: Optional[RateLimiter] = None, engine_fetch: Optional[Fetch] = None) -> ThreadingHTTPServer:
     if host not in LOOPBACK_HOSTS:
         raise ValueError("md_proxy binds loopback only")
     srv = ThreadingHTTPServer((host, port), _Handler)
-    srv.cfg = {"fetch": fetch, "origins": origins, "access": access, "limiter": limiter}  # type: ignore[attr-defined]
+    srv.cfg = {"fetch": fetch, "origins": origins, "access": access, "limiter": limiter, "engine_fetch": engine_fetch}  # type: ignore[attr-defined]
     srv.timeout = 10
     return srv
 
@@ -281,7 +301,9 @@ def main() -> None:
     access = AccessVerifier(os.environ.get("MD_PROXY_CF_TEAM_DOMAIN", ""), os.environ.get("MD_PROXY_CF_AUD", "")) if mode == "cf_access" else None
     if mode == "public_market_data":
         log.warning("PUBLIC_MARKET_DATA mode: allowlisted XAUUSD/BTCUSD market data is public; Access check skipped for this proxy only")
-    srv = build_server("127.0.0.1", port, make_upstream_fetch(upstream), origins, access, RateLimiter())
+    engine_up = os.environ.get("MD_PROXY_ENGINE_UPSTREAM", "http://127.0.0.1:8090")
+    engine_fetch = None if os.environ.get("MD_PROXY_ENGINE_VIEW", "on") == "off" else make_upstream_fetch(engine_up)
+    srv = build_server("127.0.0.1", port, make_upstream_fetch(upstream), origins, access, RateLimiter(), engine_fetch)
     log.info("md_proxy listening 127.0.0.1:%d origins=%d access_mode=%s", port, len(origins), mode)
     srv.serve_forever()
 
