@@ -10,8 +10,9 @@ Everything else -> 404/405/400 before any upstream call. The upstream path is re
 validated values; the client's raw path/query is never forwarded. No request headers, cookies or
 credentials are forwarded upstream. The proxy has no route to the demo execution service (8100).
 
-Auth design: the proxy binds loopback only and is meant to be reached exclusively through a
-Cloudflare named tunnel protected by Cloudflare Access. By default (MD_PROXY_REQUIRE_CF_ACCESS=1) every
+Auth design (MD_PROXY_ACCESS_MODE, default cf_access; public_market_data = Quick Tunnel phase, allowlisted
+market data only, still rate limited): the proxy binds loopback only and is meant to be reached exclusively through a
+Cloudflare named tunnel protected by Cloudflare Access. In cf_access mode every
 GET must carry a Cf-Access-Jwt-Assertion that verifies cryptographically (access.AccessVerifier:
 RS256 signature vs team JWKS, issuer, audience, exp/nbf); startup fails if team domain / AUD are unset.
 Upstream redirects are never followed.
@@ -22,6 +23,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -121,6 +123,35 @@ def parse_origins(raw: Optional[str]) -> frozenset[str]:
     return frozenset(out)
 
 
+class RateLimiter:
+    """Token buckets: one global, one per client key (Cf-Connecting-IP via cloudflared). Injectable clock."""
+
+    def __init__(self, per_client_rps: float = 5.0, per_client_burst: int = 20, global_rps: float = 30.0,
+                 global_burst: int = 60, max_clients: int = 10000, clock: Callable[[], float] = time.monotonic):
+        self.pc, self.pb, self.gr, self.gb, self.max, self.clock = per_client_rps, per_client_burst, global_rps, global_burst, max_clients, clock
+        self.g = [float(global_burst), clock()]
+        self.c: dict[str, list] = {}
+        self.lock = threading.Lock()
+
+    @staticmethod
+    def _take(b: list, rate: float, burst: int, now: float) -> bool:
+        b[0] = min(burst, b[0] + (now - b[1]) * rate); b[1] = now
+        if b[0] >= 1:
+            b[0] -= 1
+            return True
+        return False
+
+    def allow(self, key: str) -> bool:
+        with self.lock:
+            now = self.clock()
+            if len(self.c) >= self.max and key not in self.c:
+                self.c.clear()
+            b = self.c.setdefault(key[:64], [float(self.pb), now])
+            if not self._take(b, self.pc, self.pb, now):
+                return False
+            return self._take(self.g, self.gr, self.gb, now)
+
+
 Fetch = Callable[[str], Tuple[int, bytes]]
 AccessCheck = Callable[[Optional[str]], bool]
 
@@ -157,8 +188,8 @@ class ProxyResponse:
 
 
 def handle(method: str, target: str, headers: dict[str, str], fetch: Fetch, origins: frozenset[str],
-           access: Optional[AccessCheck]) -> ProxyResponse:
-    """`access` None ⇒ Access check explicitly disabled (MD_PROXY_REQUIRE_CF_ACCESS=0, local testing only)."""
+           access: Optional[AccessCheck], limiter: Optional[RateLimiter] = None) -> ProxyResponse:
+    """`access` None ⇒ public_market_data mode (allowlisted market data only)."""
     """Full request handling, transport-independent (unit-testable)."""
     origin = headers.get("origin")
     cors: Tuple[Tuple[str, str], ...] = ()
@@ -175,6 +206,8 @@ def handle(method: str, target: str, headers: dict[str, str], fetch: Fetch, orig
         return ProxyResponse(204, b"", cors)
     if access is not None and not access(headers.get("cf-access-jwt-assertion")):
         return _err(401, "ACCESS_REQUIRED", cors)
+    if limiter is not None and not limiter.allow(headers.get("cf-connecting-ip") or "local"):
+        return _err(429, "RATE_LIMITED", cors + (("Retry-After", "1"),))
     try:
         status, body = fetch(r)
     except OverflowError:
@@ -200,7 +233,7 @@ class _Handler(BaseHTTPRequestHandler):
         t0 = time.monotonic()
         hdrs = {k.lower(): v for k, v in self.headers.items()}
         cfg = self.server.cfg  # type: ignore[attr-defined]
-        res = handle(self.command, self.path, hdrs, cfg["fetch"], cfg["origins"], cfg["access"])
+        res = handle(self.command, self.path, hdrs, cfg["fetch"], cfg["origins"], cfg["access"], cfg.get("limiter"))
         self.send_response(res.status)
         for k, v in res.headers:
             self.send_header(k, v)
@@ -218,13 +251,25 @@ class _Handler(BaseHTTPRequestHandler):
         return
 
 
-def build_server(host: str, port: int, fetch: Fetch, origins: frozenset[str], access: Optional[AccessCheck]) -> ThreadingHTTPServer:
+def build_server(host: str, port: int, fetch: Fetch, origins: frozenset[str], access: Optional[AccessCheck],
+                 limiter: Optional[RateLimiter] = None) -> ThreadingHTTPServer:
     if host not in LOOPBACK_HOSTS:
         raise ValueError("md_proxy binds loopback only")
     srv = ThreadingHTTPServer((host, port), _Handler)
-    srv.cfg = {"fetch": fetch, "origins": origins, "access": access}  # type: ignore[attr-defined]
+    srv.cfg = {"fetch": fetch, "origins": origins, "access": access, "limiter": limiter}  # type: ignore[attr-defined]
     srv.timeout = 10
     return srv
+
+
+ACCESS_MODES = ("cf_access", "public_market_data")
+
+
+def resolve_access_mode(raw: Optional[str]) -> str:
+    """Default cf_access. Only the exact value 'public_market_data' skips Access (this proxy only); anything else fails."""
+    mode = (raw or "cf_access").strip()
+    if mode not in ACCESS_MODES:
+        raise ValueError("MD_PROXY_ACCESS_MODE must be cf_access or public_market_data")
+    return mode
 
 
 def main() -> None:
@@ -232,10 +277,12 @@ def main() -> None:
     port = int(os.environ.get("MD_PROXY_PORT", "8780"))
     upstream = os.environ.get("MD_PROXY_UPSTREAM", "http://127.0.0.1:8765")
     origins = parse_origins(os.environ.get("MD_PROXY_ALLOWED_ORIGINS"))
-    require = os.environ.get("MD_PROXY_REQUIRE_CF_ACCESS", "1") != "0"
-    access = AccessVerifier(os.environ.get("MD_PROXY_CF_TEAM_DOMAIN", ""), os.environ.get("MD_PROXY_CF_AUD", "")) if require else None
-    srv = build_server("127.0.0.1", port, make_upstream_fetch(upstream), origins, access)
-    log.info("md_proxy listening 127.0.0.1:%d origins=%d access_verified=%s", port, len(origins), require)
+    mode = resolve_access_mode(os.environ.get("MD_PROXY_ACCESS_MODE"))
+    access = AccessVerifier(os.environ.get("MD_PROXY_CF_TEAM_DOMAIN", ""), os.environ.get("MD_PROXY_CF_AUD", "")) if mode == "cf_access" else None
+    if mode == "public_market_data":
+        log.warning("PUBLIC_MARKET_DATA mode: allowlisted XAUUSD/BTCUSD market data is public; Access check skipped for this proxy only")
+    srv = build_server("127.0.0.1", port, make_upstream_fetch(upstream), origins, access, RateLimiter())
+    log.info("md_proxy listening 127.0.0.1:%d origins=%d access_mode=%s", port, len(origins), mode)
     srv.serve_forever()
 
 
