@@ -1,0 +1,1 @@
+- History→live bootstrap runs through BootstrapCoordinator (src/core/broker/bootstrap): LIVE is buffered during bootstrap, history stays BACKFILL, only LIVE_MUTATION moves LiveAcceptedFrontier, and failure or unresolved handoff uncertainty ends in DEGRADED, never SYNCHRONIZED. Why: PRE-2D R4, request completion ≠ market synchronization.

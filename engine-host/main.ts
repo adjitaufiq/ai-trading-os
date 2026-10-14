@@ -61,6 +61,7 @@ import { createHash } from "node:crypto";
 import { checkDemoArm } from "../src/core/enginehost/demoArm";
 import { resolveBuildInfo } from "../src/core/enginehost/buildInfo";
 import { ENGINE_CORS_HEADERS, buildEngineEvents, routeEngineRequest, sseFrame } from "../src/core/enginehost/api";
+import { SseHub } from "../src/core/enginehost/sseHub";
 
 const env = process.env;
 const gatewayUrl = env.ENGINE_GATEWAY_URL ?? "http://127.0.0.1:8765";
@@ -306,12 +307,12 @@ setInterval(() => {
   } catch (x) { log(`[chart-snapshot] ${(x as Error).message}`); }
 }, 10_000);
 
-const sse = new Set<import("node:http").ServerResponse>();
+const sse = new SseHub({ now: () => Date.now() });
 const seen = new Map<string, number>();
 const seenBundle = new Map<string, string>();
 setInterval(() => {
   const frames = buildEngineEvents(host, Date.now(), seen, seenBundle).map(sseFrame).join("");
-  for (const r of sse) r.write(frames);
+  sse.broadcast(frames);
 }, 2_000);
 
 createServer((req, res) => {
@@ -320,8 +321,9 @@ createServer((req, res) => {
     res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive", ...ENGINE_CORS_HEADERS });
     // New subscriber gets every symbol's current bundle immediately (refresh recovery), then deltas.
     const now = Date.now();
-    for (const symbol of host.symbols) { const b = host.bundle(symbol, now); if (b) res.write(sseFrame({ type: "SNAPSHOT_UPDATE", symbol, timestamp: new Date(now).toISOString(), data: b })); }
-    sse.add(res); req.on("close", () => sse.delete(res));
+    let initial = "";
+    for (const symbol of host.symbols) { const b = host.bundle(symbol, now); if (b) initial += sseFrame({ type: "SNAPSHOT_UPDATE", symbol, timestamp: new Date(now).toISOString(), data: b }); }
+    sse.add(req, res, initial);
     return;
   }
   if (req.method === "GET" && (path === "/v1/evaluation/trades" || path === "/v1/evaluation/export.csv" || path === "/v1/evaluation/stats")) {
