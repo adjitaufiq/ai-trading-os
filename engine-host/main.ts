@@ -26,6 +26,10 @@
 // The env EXECUTION_MODE still has to be DEMO to wire any order path; the cloud can only
 // halt or set limits within it, never arm a host started without it, and never target a real account.
 import { createServer } from "node:http";
+import { connect } from "node:net";
+import { unlinkSync } from "node:fs";
+import { decideInstance } from "../src/core/enginehost/instanceGuard";
+import { evaluateArmRenewal } from "../src/core/enginehost/armRenewal";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, appendFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { BrokerGatewayClient } from "../src/core/broker/gateway/BrokerGatewayClient";
@@ -69,6 +73,22 @@ const port = Number(env.ENGINE_HOST_PORT ?? 8090);
 const symbols = (env.ENGINE_SYMBOLS ?? "XAUUSD,BTCUSD").split(",").map((s) => s.trim()).filter(Boolean);
 const dataDir = resolve(env.ENGINE_DATA_DIR ?? join(import.meta.dirname ?? ".", "data"));
 mkdirSync(dataDir, { recursive: true });
+
+// ---- Single-instance guard: runs BEFORE any runtime/reconciler/order wiring. Second instance exits code 3. ----
+{
+  const portInUse = await new Promise<boolean>((done) => {
+    const s = connect({ host: "127.0.0.1", port }, () => { s.destroy(); done(true); });
+    s.on("error", () => done(false)); s.setTimeout(1_500, () => { s.destroy(); done(true); });
+  });
+  const lockFile = join(dataDir, "engine-host.lock");
+  const d = decideInstance({
+    portInUse, lockRaw: existsSync(lockFile) ? readFileSync(lockFile, "utf8") : null, selfPid: process.pid,
+    isPidAlive: (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } },
+  });
+  if (!d.start) { console.log(`${new Date().toISOString()} [engine-host] REFUSING TO START: ${d.reason} (port ${port}) — another instance is running`); process.exit(3); }
+  writeFileSync(lockFile, JSON.stringify({ pid: process.pid, port, started_at: Date.now() }));
+  process.on("exit", () => { try { const l = JSON.parse(readFileSync(lockFile, "utf8")) as { pid?: number }; if (l.pid === process.pid) unlinkSync(lockFile); } catch { /* ignore */ } });
+}
 
 const safe = (s: string) => s.replace(/[^A-Za-z0-9._-]/g, "_");
 const store: EngineStorePort = {
@@ -277,6 +297,37 @@ const host = new EngineHost({
     onRuntime: (rt) => { rt.setPaperAccountStateSource(accountStateSource); runtimes.set(symbol, rt); onRuntime(rt); } }),
 });
 host.start();
+
+// ---- DEMO-only session-arm auto-renewal (extends an ALREADY valid arm; never creates/revives one). ----
+// Gates: DEMO account+execution mode, no kill switch, Shadow clear, risk-policy preflight (not trade risk),
+// fresh whitelisted account read, clean recent reconciliation, all symbols ONLINE. Failure ⇒ no write, arm expires.
+const renewalFile = join(dataDir, "arm-renewals.jsonl");
+let lastRenewalReason = "";
+const renewArm = () => {
+  try {
+    let raw: string | null = null;
+    try { raw = existsSync(armFile) ? readFileSync(armFile, "utf8") : null; } catch { raw = null; }
+    const now = Date.now();
+    const rec = reconcilerRef as { blocked(): boolean; lastRecord?: () => { ok: boolean; at: number } | null } | null;
+    const res = evaluateArmRenewal({
+      raw, now, whitelistHashes: armHashes, accountMode, executionPathMode: pathMode,
+      killSwitch: killSwitchActive(), shadowActive, riskPolicyReady: policyLoaded && !riskPolicy.emergency_stop,
+      accountVerifiedAt: accountCache?.at ?? null,
+      reconciliation: rec?.lastRecord?.() ?? null, reconciliationBlocked: rec ? rec.blocked() : true,
+      dataFresh: host.health().symbols.every((s) => s.state === "ONLINE"),
+    });
+    if (res.renew) {
+      writeFileSync(`${armFile}.tmp`, res.next_raw); renameSync(`${armFile}.tmp`, armFile);
+      appendFileSync(renewalFile, `${JSON.stringify({ at: new Date(now).toISOString(), result: "RENEWED", previous_expires_at: new Date(res.previous_expires_at).toISOString(), expires_at: new Date(res.expires_at).toISOString() })}\n`);
+      log(`[demo-arm] RENEWED until ${new Date(res.expires_at).toISOString()}`); lastRenewalReason = "RENEWED";
+    } else if (res.reason !== lastRenewalReason) {
+      lastRenewalReason = res.reason;
+      appendFileSync(renewalFile, `${JSON.stringify({ at: new Date(now).toISOString(), result: "NOT_RENEWED", reason: res.reason })}\n`);
+      log(`[demo-arm] renewal skipped: ${res.reason}`);
+    }
+  } catch (e) { log(`[demo-arm] renewal failed (fail-closed, arm left unchanged) ${(e as Error).message}`); }
+};
+if (pathMode === "DEMO" && accountMode === "DEMO") setInterval(renewArm, 60_000);
 
 // Automation stage observation (records transitions even without dashboard polling). Observability only.
 setInterval(() => { try { host.executionStatus(Date.now()); } catch { /* observability only */ } }, 5_000);
