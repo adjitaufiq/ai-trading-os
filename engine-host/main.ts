@@ -310,7 +310,6 @@ const sse = new SseHub({ now: () => Date.now() });
 const seen = new Map<string, number>();
 const seenBundle = new Map<string, string>();
 setInterval(() => {
-  if (sse.size === 0) return;
   const frames = buildEngineEvents(host, Date.now(), seen, seenBundle).map(sseFrame).join("");
   sse.broadcast(frames);
 }, 2_000);
