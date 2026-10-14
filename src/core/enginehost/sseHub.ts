@@ -55,9 +55,10 @@ export class SseHub {
       if (done) return;
       done = true;
       this.clients.delete(res);
-      res.off?.("close", cleanup); res.off?.("error", cleanup); res.off?.("drain", onDrain);
-      req.off?.("close", cleanup); req.off?.("error", cleanup);
-      socket?.off?.("close", cleanup); socket?.off?.("error", cleanup);
+      // 'error' handlers stay attached on purpose: a late stream error with no listener would crash the process.
+      res.off?.("close", cleanup); res.off?.("drain", onDrain);
+      req.off?.("close", cleanup);
+      socket?.off?.("close", cleanup);
     };
     const client: Client = { res, congestedSince: null, cleanup };
     this.clients.set(res, client);

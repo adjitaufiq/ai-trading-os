@@ -32,7 +32,9 @@ describe("SseHub", () => {
     hub.add(a.req, a.res);
     expect(() => { a.res.emit("close"); a.res.emit("error"); a.req.emit("close"); a.res.socket.emit("close"); }).not.toThrow();
     expect(hub.size).toBe(0);
-    expect(listeners(a.res) + listeners(a.req) + listeners(a.res.socket)).toBe(0);
+    // only the permanent error guards remain (one per emitter); close/drain listeners are gone
+    expect(listeners(a.res) + listeners(a.req) + listeners(a.res.socket)).toBe(3);
+    expect(() => a.res.emit("error", new Error("late"))).not.toThrow();
   });
 
   it("never writes after the response or socket is closed", () => {
