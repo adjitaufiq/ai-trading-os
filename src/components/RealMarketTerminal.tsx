@@ -102,6 +102,7 @@ export function RealMarketTerminal({ client, selectedSymbol: selected, onSelecte
   const [health, setHealth] = useState<Slot<BridgeHealth>>(blank);
   const [healthBusy, setHealthBusy] = useState(false);
   const [terminal, setTerminal] = useState<Slot<TerminalInfoObservation>>(blank);
+  const [terminalNotExposed, setTerminalNotExposed] = useState(false);
   const [clock, setClock] = useState<number | null>(null);
   const [inspected, setInspected] = useState<BridgeBar | null>(null);
   const [focus, setFocus] = useState(false);
@@ -174,10 +175,12 @@ export function RealMarketTerminal({ client, selectedSymbol: selected, onSelecte
       } catch { if (active) setHealth((old) => ({ ...old, failed: true, error: "Gateway tidak dapat dijangkau" })); }
       try {
         const t = await client.getTerminal();
+        // The market-data proxy deliberately does not expose /v1/terminal (HTTP 404): route absent, not a terminal failure.
+        if (active) setTerminalNotExposed(!t.ok && t.error.http_status === 404);
         if (active) setTerminal((old) => t.ok && t.envelope.source === "EXNESS_MT5" && t.envelope.source_mode === "REAL" && t.data.authority === "OBSERVATION_ONLY"
           ? { value: t.data, failed: false, error: null }
           : { ...old, failed: true, error: errorOf(t) });
-      } catch { if (active) setTerminal((old) => ({ ...old, failed: true, error: "Status terminal tidak dapat dijangkau" })); }
+      } catch { if (active) { setTerminalNotExposed(false); setTerminal((old) => ({ ...old, failed: true, error: "Status terminal tidak dapat dijangkau" })); } }
       finally { busy = false; if (active) setHealthBusy(false); }
     };
     void poll();
@@ -242,10 +245,12 @@ export function RealMarketTerminal({ client, selectedSymbol: selected, onSelecte
   const candle = inspected && chartBars.includes(inspected) ? inspected : chartBars.at(-1) ?? null;
   const ageMs = quote && clock != null ? clock - quote.raw_time_msc : null;
   const freshness = quoteFreshness(ageMs, state.quote.failed, !!quote);
-  // Verified terminal connectivity requires BOTH health.terminal_connected and /v1/terminal connected=true.
-  const termOk = !!terminal.value?.connected && !terminal.failed;
-  const connection = health.value?.terminal_connected && !health.failed && termOk ? "TERHUBUNG" : health.value?.terminal_connected || terminal.value?.connected ? "DATA TERGANGGU" : health.value || terminal.value ? "TERPUTUS" : healthBusy ? "MENGHUBUNGKAN" : "DATA TIDAK TERSEDIA";
-  const terminalLine = terminal.value ? `Terminal MT5 ${terminal.value.connected ? "terhubung" : "terputus"} · ping ${terminal.value.terminal_ping_ms.toFixed(1)} ms · ${terminal.value.authority}${terminal.failed ? " · VALIDASI TERAKHIR" : ""}` : terminal.failed ? `Status terminal MT5 tidak tersedia · ${terminal.error ?? ""}` : "Menunggu status terminal MT5";
+  // Verified terminal connectivity requires health.terminal_connected AND /v1/terminal connected=true,
+  // unless the proxy does not expose /v1/terminal (404 by design): then health alone is the evidence.
+  const healthOk = !!health.value?.terminal_connected && !health.failed;
+  const termOk = (!!terminal.value?.connected && !terminal.failed) || (terminalNotExposed && !terminal.value);
+  const connection = healthOk && termOk ? "TERHUBUNG" : health.value?.terminal_connected || terminal.value?.connected ? "DATA TERGANGGU" : health.value || terminal.value ? "TERPUTUS" : healthBusy ? "MENGHUBUNGKAN" : "DATA TIDAK TERSEDIA";
+  const terminalLine = terminal.value ? `Terminal MT5 ${terminal.value.connected ? "terhubung" : "terputus"} · ping ${terminal.value.terminal_ping_ms.toFixed(1)} ms · ${terminal.value.authority}${terminal.failed ? " · VALIDASI TERAKHIR" : ""}` : terminalNotExposed && healthOk ? "Terminal MT5 terhubung · via health gateway · detail terminal tidak diekspos proxy" : terminal.failed ? `Status terminal MT5 tidak tersedia · ${terminal.error ?? ""}` : "Menunggu status terminal MT5";
   const price = (n: number | null) => formatMarketPrice(n, digits);
   const ohlc = ([{ label: "OPEN", key: "open" }, { label: "HIGH", key: "high" }, { label: "LOW", key: "low" }, { label: "CLOSE", key: "close" }] as const).map(({ label, key }) => ({ label, key, value: candle ? price(candle[key]) : "—" }));
   const publishObservation = mobile?.setObservation;

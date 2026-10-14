@@ -97,6 +97,20 @@ describe("real dual-market monitor terminal", () => {
     await waitFor(() => expect(screen.getByTestId("terminal-status")).toHaveTextContent("terputus"));
     expect(screen.getByTestId("connection")).toHaveTextContent("DATA TERGANGGU");
   });
+  it("terminal route not exposed by proxy (404) + health connected → TERHUBUNG via health", async () => {
+    const client = fakeClient();
+    client.getTerminal.mockImplementation((async () => ({ ok: false as const, error: { kind: "HTTP_PROTOCOL_ERROR", message: "HTTP 404 without envelope", http_status: 404 } })) as never);
+    setup(client);
+    await waitFor(() => expect(screen.getByTestId("connection")).toHaveTextContent("TERHUBUNG"));
+    expect(screen.getByTestId("terminal-status")).toHaveTextContent("via health gateway");
+  });
+  it("terminal route 404 but health disconnected is not CONNECTED", async () => {
+    const client = fakeClient();
+    client.getHealth.mockImplementation(async () => ok({ terminal_connected: false }));
+    client.getTerminal.mockImplementation((async () => ({ ok: false as const, error: { kind: "HTTP_PROTOCOL_ERROR", message: "HTTP 404", http_status: 404 } })) as never);
+    setup(client);
+    await waitFor(() => expect(screen.getByTestId("connection")).toHaveTextContent("TERPUTUS"));
+  });
   it("preserves precision policy without altering raw market values", () => {
     expect(formatMarketPrice(4140.348, null)).toBe("4140.348");
     expect(formatMarketPrice(4140.53, 3)).toBe("4140.530");
