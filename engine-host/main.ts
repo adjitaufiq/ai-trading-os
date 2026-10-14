@@ -61,6 +61,7 @@ import { createHash } from "node:crypto";
 import { checkDemoArm } from "../src/core/enginehost/demoArm";
 import { resolveBuildInfo } from "../src/core/enginehost/buildInfo";
 import { ENGINE_CORS_HEADERS, buildEngineEvents, routeEngineRequest, sseFrame } from "../src/core/enginehost/api";
+import { SseHub } from "../src/core/enginehost/sseHub";
 
 const env = process.env;
 const gatewayUrl = env.ENGINE_GATEWAY_URL ?? "http://127.0.0.1:8765";
