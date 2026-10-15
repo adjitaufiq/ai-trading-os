@@ -15,15 +15,24 @@ export function useRelayStatus(intervalMs = 15_000): { status: PublicEngineStatu
   useEffect(() => {
     let alive = true;
     const tick = async () => {
-      try {
+      const attempt = async (url: string) => {
         const ctl = new AbortController();
         const t = setTimeout(() => ctl.abort(), 10_000);
-        const r = await fetch(STATUS_URL, { signal: ctl.signal, cache: "no-store" });
-        clearTimeout(t);
-        if (!alive) return;
-        if (!r.ok) { setError(`HTTP_${r.status}`); setStatus(null); return; }
-        setStatus((await r.json()) as PublicEngineStatus); setError(null);
-      } catch (e) { if (alive) { setError((e as Error).name === "AbortError" ? "TIMEOUT" : "NETWORK"); setStatus(null); } }
+        try {
+          const r = await fetch(url, { signal: ctl.signal, cache: "no-store" });
+          if (!r.ok) return { err: `HTTP_${r.status}` } as const;
+          return { data: (await r.json()) as PublicEngineStatus } as const;
+        } catch (e) {
+          return { err: (e as Error).name === "AbortError" ? "TIMEOUT" : "NETWORK" } as const;
+        } finally {
+          clearTimeout(t);
+        }
+      };
+      let res = await attempt(STATUS_URL);
+      if ("err" in res && FALLBACK_URL) res = await attempt(FALLBACK_URL);
+      if (!alive) return;
+      if ("err" in res) { setError(res.err); setStatus(null); return; }
+      setStatus(res.data); setError(null);
     };
     void tick();
     const id = setInterval(() => void tick(), intervalMs);
