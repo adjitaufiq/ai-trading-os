@@ -309,9 +309,7 @@ export function MobileBottomNav({ engineStatus, exe, relay }: { engineStatus: st
   const icons = { TRADE: ShieldCheck, RADAR: Radar, ANALYSIS: Activity };
   const result =
     exe?.execution === "BLOCKED" ? "BLOCKED" : s?.signal.state === "READY" ? "READY" : "WAIT";
-  const exeClass = relay
-    ? relay.online ? "text-warn" : "text-bear"
-    : exe?.tone === "healthy" ? "text-bull" : exe?.tone === "waiting" ? "text-warn" : exe?.tone === "attention" ? "text-bear" : "text-muted-foreground";
+  const exeClass = exe?.tone === "healthy" ? "text-bull" : exe?.tone === "waiting" ? "text-warn" : exe?.tone === "attention" ? "text-bear" : relay ? (relay.online ? "text-warn" : "text-bear") : "text-muted-foreground";
   return (
     <>
       <div className="mobile-execution-bar">
