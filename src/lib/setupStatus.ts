@@ -3,7 +3,7 @@
 import type { TradingSnapshot } from "@/core/technical/tradingState";
 import type { ExeLamp } from "@/lib/exeLamp";
 
-export type SetupStatusKind = "SIAP_EXEC" | "EXEC_BLOCKED" | "EXEC_UNKNOWN" | "BAD_RR" | "WAIT" | "PROJECTION" | "UNAVAILABLE";
+export type SetupStatusKind = "CANDIDATE_READY" | "EXEC_BLOCKED" | "EXEC_UNKNOWN" | "BAD_RR" | "WAIT" | "PROJECTION" | "UNAVAILABLE";
 export type SetupTone = "healthy" | "waiting" | "attention" | "unknown";
 
 export interface PlanView {
@@ -60,8 +60,10 @@ export function setupStatus(s: TradingSnapshot | null, exe: ExeLamp | null | und
       return mk("EXEC_UNKNOWN", "unknown", "STATUS EKSEKUSI TIDAK DIKETAHUI", exe ? `${exe.label} · ${exe.detail}` : "Status runtime eksekusi belum tersedia", "STATUS EKSEKUSI TIDAK DIKETAHUI");
     if (exe.execution === "BLOCKED" || exe.tone === "attention")
       return mk("EXEC_BLOCKED", "attention", "DIBLOKIR EKSEKUSI", `${exe.label} · ${exe.detail}`, `ORDER DITAHAN · ${exe.label.replace(/^EXE /, "")}`);
+    // Global runtime READY never proves this candidate passed Decision Gate + Risk; the dashboard receives no
+    // per-candidate authorization, so this stays neutral (never green / never SIAP EXEC).
     if (exe.tone === "healthy" && (exe.execution === "READY" || exe.execution === "ACTIVE"))
-      return mk("SIAP_EXEC", "healthy", "SIAP EXEC", "Sinyal READY, plan eksekusi valid, runtime eksekusi fresh dan tidak diblokir", "AUTO DEMO · SIAP EXEC");
+      return mk("CANDIDATE_READY", "waiting", "KANDIDAT READY · OTORISASI BELUM TERKONFIRMASI", "Sinyal READY dan plan eksekusi valid; hasil Decision Gate/Risk untuk kandidat ini tidak tersedia di dashboard", "KANDIDAT READY · OTORISASI BELUM TERKONFIRMASI");
     return mk("EXEC_UNKNOWN", "unknown", "STATUS EKSEKUSI TIDAK DIKETAHUI", `${exe.label} · ${exe.detail}`, "STATUS EKSEKUSI TIDAK DIKETAHUI");
   }
   // Not READY: never an order plan.

@@ -13,9 +13,13 @@ const readySnap = (p = ref()) => snap({ signal: { state: "READY", reason: "READY
 
 describe("setupStatus precedence", () => {
   it("unavailable snapshot", () => expect(setupStatus(null, exe()).kind).toBe("UNAVAILABLE"));
-  it("full READY + valid plan + fresh runtime READY ⇒ SIAP_EXEC", () => {
-    const s = setupStatus(readySnap(), exe());
-    expect(s.kind).toBe("SIAP_EXEC"); expect(s.tone).toBe("healthy");
+  it("global runtime READY/ACTIVE alone never yields green or SIAP EXEC", () => {
+    for (const e of [exe(), exe({ execution: "ACTIVE", label: "EXE ACTIVE" })]) {
+      const s = setupStatus(readySnap(), e);
+      expect(s.kind).toBe("CANDIDATE_READY"); expect(s.tone).not.toBe("healthy");
+      expect(s.badge).toBe("KANDIDAT READY · OTORISASI BELUM TERKONFIRMASI");
+      expect(`${s.label} ${s.badge}`).not.toMatch(/SIAP EXEC/);
+    }
   });
   it("READY uses reference_plan only, never radar values", () => {
     const s = setupStatus(readySnap(), exe());
