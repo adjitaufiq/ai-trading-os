@@ -6,6 +6,8 @@ import type { PublicEngineStatus } from "@/lib/engineStatus/relay";
 const STATUS_PROXY = (import.meta.env['VITE_ENGINE_STATUS_URL'] as string | undefined)?.replace(/\/+$/, "") || "";
 export const STATUS_SOURCE = STATUS_PROXY ? "STATUS PROXY" : "STATUS RELAY";
 const STATUS_URL = STATUS_PROXY ? `${STATUS_PROXY}/v1/public/engine-status` : "/api/public/engine-status";
+// Same-origin relay fallback when the status proxy is unreachable (e.g. CORS from a different origin).
+const FALLBACK_URL = STATUS_PROXY ? "/api/public/engine-status" : null;
 
 export function useRelayStatus(intervalMs = 15_000): { status: PublicEngineStatus | null; error: string | null } {
   const [status, setStatus] = useState<PublicEngineStatus | null>(null);
