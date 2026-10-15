@@ -236,6 +236,7 @@ function Terminal() {
       <div className="mobile-terminal-only mobile-content">
         {!mobile?.accessory ? (
           <MobileTradingView
+            exe={exe}
             onWhy={() => {
               mobile?.setAccessory("Detail Radar & Teknikal");
             }}

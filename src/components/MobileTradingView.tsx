@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Check, X, Minus, LockKeyhole, Radar, Activity, ShieldCheck } from "lucide-react";
+import { Check, X, Minus, Radar, Activity, ShieldCheck } from "lucide-react";
+import { setupStatus } from "@/lib/setupStatus";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useMobileTerminal } from "./MobileTerminalContext";
@@ -102,15 +103,13 @@ export function Lamp({
     </Button>
   );
 }
-export function MobileTradingView({ onWhy }: { onWhy: () => void }) {
+export function MobileTradingView({ onWhy, exe }: { onWhy: () => void; exe?: ExeLamp | null }) {
   const mobile = useMobileTerminal();
   if (!mobile) return null;
   const s = mobile.report?.snapshot ?? null;
   const op = s?.availability === "AVAILABLE" ? s.operator : null;
   const ev = s?.availability === "AVAILABLE" ? s.evidence : null;
-  const plan = s?.reference_plan.status === "AVAILABLE" ? s.reference_plan : null;
-  const rp = s?.radar_plan?.status === "AVAILABLE" ? s.radar_plan : null;
-  const values = plan ?? rp;
+  const st = setupStatus(s, exe);
   const frames = ["H4", "H1", "M15", "M5"] as const;
   const ready = s?.signal.state === "READY";
   const why = s?.why ?? [];
@@ -216,20 +215,24 @@ export function MobileTradingView({ onWhy }: { onWhy: () => void }) {
             COUNTER TREND WARNING: {s.counter_trend_condition} — pullback melawan arah utama, bukan sinyal
           </p>
         ) : null}
-        <div className="mb-3 flex justify-between">
+        <div className="mb-2 flex items-baseline justify-between gap-3">
           <h2 className="mobile-label">Setup</h2>
-          <span className={ready ? "text-bull text-[10px]" : "text-warn text-[10px]"}>
-            {ready ? "READY" : "PROYEKSI"}
+          <span className={`text-right text-[10px] font-semibold ${toneClass[st.tone]}`} data-testid="mobile-setup-status">
+            {st.label}
           </span>
         </div>
+        <p className="mb-3 break-words text-[11px] leading-snug text-muted-foreground [overflow-wrap:anywhere]" data-testid="mobile-setup-reason">
+          {st.reason}
+          {st.plan ? ` · sumber ${st.plan.source === "REFERENCE_PLAN" ? "plan eksekusi" : "proyeksi radar"}` : ""}
+        </p>
         <div className="grid grid-cols-3 gap-x-4 gap-y-4">
           {(
             [
-              ["ENTRY", plan?.entry ?? rp?.reference_entry],
-              ["SL", values?.sl],
-              ["TP1", values?.tp1],
-              ["TP2", values?.tp2],
-              ["R:R", values?.final_rr],
+              ["ENTRY", st.plan?.entry],
+              ["SL", st.plan?.sl],
+              ["TP1", st.plan?.tp1],
+              ["TP2", st.plan?.tp2],
+              ["R:R", st.plan?.final_rr],
             ] as const
           ).map(([label, value]) => (
             <div key={label}>
@@ -306,6 +309,7 @@ export function MobileBottomNav({ engineStatus, exe, relay }: { engineStatus: st
   const [detail, setDetail] = useState(false);
   if (!m) return null;
   const s = m.report?.snapshot;
+  const badge = setupStatus(s ?? null, exe);
   const icons = { TRADE: ShieldCheck, RADAR: Radar, ANALYSIS: Activity };
   const result =
     exe?.execution === "BLOCKED" ? "BLOCKED" : s?.signal.state === "READY" ? "READY" : "WAIT";
@@ -328,10 +332,13 @@ export function MobileBottomNav({ engineStatus, exe, relay }: { engineStatus: st
             );
           })()}
         </span>
-        <Button disabled size="sm" variant="outline" className="h-8 shrink-0 text-xs">
-          <LockKeyhole className="size-3" />
-          Konfirmasi
-        </Button>
+        <span
+          role="status"
+          data-testid="mobile-auto-exec-badge"
+          className={`max-w-[42%] shrink-0 rounded-md border border-border px-2 py-1 text-right text-[10px] font-semibold leading-snug ${toneClass[badge.tone]}`}
+        >
+          {badge.badge}
+        </span>
       </div>
       <nav aria-label="Navigasi mobile" className="mobile-bottom-nav">
         {(["TRADE", "RADAR", "ANALYSIS"] as const).map((t) => {
