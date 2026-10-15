@@ -323,12 +323,12 @@ body {
     left: 0;
     right: 0;
     bottom: calc(71px + env(safe-area-inset-bottom));
-    height: 44px;
+    min-height: 44px;
     z-index: 40;
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 0 16px;
+    padding: 6px 16px;
     font-size: 10px;
     background: var(--background);
     border-top: 1px solid var(--border);

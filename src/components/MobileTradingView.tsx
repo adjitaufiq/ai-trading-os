@@ -251,15 +251,15 @@ export function MobileTradingView({ onWhy }: { onWhy: () => void }) {
         <ul className="mt-3 space-y-2">
           {why.length ? (
             why.slice(0, 6).map((f, i) => (
-              <li key={i} className="flex min-w-0 gap-2 text-xs">
+              <li key={i} className="flex min-w-0 items-start gap-2 text-xs">
                 <span
-                  className={
+                  className={`mt-0.5 shrink-0 ${
                     f.ok === true
                       ? "text-bull"
                       : f.ok === false
                         ? "text-bear"
                         : "text-muted-foreground"
-                  }
+                  }`}
                 >
                   {f.ok === true ? (
                     <Check className="size-4" />
@@ -269,7 +269,7 @@ export function MobileTradingView({ onWhy }: { onWhy: () => void }) {
                     <Minus className="size-4" />
                   )}
                 </span>
-                <span className="truncate" title={f.text}>
+                <span className="min-w-0 flex-1 break-words leading-relaxed [overflow-wrap:anywhere]">
                   {text(f.text)}
                 </span>
               </li>
@@ -313,11 +313,22 @@ export function MobileBottomNav({ engineStatus, exe, relay }: { engineStatus: st
   return (
     <>
       <div className="mobile-execution-bar">
-        <span className={exeClass}>● EXE</span>
-        <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground" title={relay?.text ?? exe?.detail} data-testid="mobile-engine-status">
-          {relay ? relay.text : exe ? `ENGINE ${exe.engine} · MODE ${exe.mode} · ${exe.execution}${exe.ageSec !== null ? ` · ${exe.ageSec}s` : ""}` : "NOT CONNECTED"}
+        <span className={`shrink-0 ${exeClass}`}>● EXE</span>
+        <span className="min-w-0 flex-1 break-words text-[10px] leading-snug text-muted-foreground [overflow-wrap:anywhere]" data-testid="mobile-engine-status">
+          {(() => {
+            const full = relay ? relay.text : exe ? `ENGINE ${exe.engine} · MODE ${exe.mode} · ${exe.execution}${exe.ageSec !== null ? ` · ${exe.ageSec}s` : ""}` : "NOT CONNECTED";
+            const parts = full.split(" · ");
+            const head = parts.slice(0, 2).join(" · ");
+            const rest = parts.slice(2).join(" · ");
+            return (
+              <>
+                <span className="block font-semibold text-foreground">{head}</span>
+                {rest ? <span className="block">{rest}</span> : null}
+              </>
+            );
+          })()}
         </span>
-        <Button disabled size="sm" variant="outline" className="h-8 text-xs">
+        <Button disabled size="sm" variant="outline" className="h-8 shrink-0 text-xs">
           <LockKeyhole className="size-3" />
           Konfirmasi
         </Button>
