@@ -89,7 +89,7 @@ describe("sandbox previousHigh fallback (synthetic)", () => {
 });
 
 // ---- 48h replay over broker CLOSED bars (read-only data file fetched separately) ----
-const DATA = process.env.SL_REPLAY_DATA;
+const DATA = process.env["SL_REPLAY_DATA"];
 describe.skipIf(!DATA || !existsSync(DATA))("48h replay baseline vs sandbox (paper path, no orders)", () => {
   it("records every production SL call and evaluates the variant on identical inputs", async () => {
     const { runAlignedReplay } = await import("@/core/paper/alignedReplay");
@@ -103,14 +103,14 @@ describe.skipIf(!DATA || !existsSync(DATA))("48h replay baseline vs sandbox (pap
       for (const tf of ["M5", "M15", "H1", "H4"] as Timeframe[]) {
         const seen = new Map<number, Bar>();
         for (const x of raw.bars[symbol][tf]) {
-          const o = x.raw_time_s * 1000, c = o + TFMS[tf];
+          const o = x.raw_time_s * 1000, c = o + TFMS[tf]!;
           if (c > raw.fetched_at_ms) continue; // forming bar excluded
           if (tf === "M5") spreads.push(x.spread * point);
           seen.set(o, { symbol, timeframe: tf, source: "MT5", open_time: o, close_time: c, status: "CLOSED", closed_at: c, effective_at: c, available_at: c, open: x.open, high: x.high, low: x.low, close: x.close, tick_count: x.tick_volume, revision: 0 } as unknown as Bar);
         }
         const arr = [...seen.values()].sort((a, b) => a.open_time - b.open_time);
         bars[tf] = arr;
-        const gaps = arr.slice(1).map((b, k) => (b.open_time - arr[k]!.open_time) / TFMS[tf] - 1).filter((g) => g > 0);
+        const gaps = arr.slice(1).map((b, k) => (b.open_time - arr[k]!.open_time) / TFMS[tf]! - 1).filter((g) => g > 0);
         quality[tf] = { count: arr.length, first: arr[0]?.open_time, last: arr.at(-1)?.open_time, gap_events: gaps.length, missing_slots: gaps.reduce((a, g) => a + g, 0), largest_gap_slots: Math.max(0, ...gaps) };
       }
       const m5 = bars.M5!, windowStart = raw.fetched_at_ms - 48 * 36e5;
