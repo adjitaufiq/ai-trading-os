@@ -9,7 +9,7 @@ import type { SignalSetup } from "@/engine/signal/types";
 import type { ArenaCandle } from "@/engine/core/normalizer/types";
 
 const BUF = { v: 0 };
-const log: { kind: "CREATE" | "UPDATE"; id: string; from?: string; to: string; reason?: string; saved?: boolean; at: number; key?: number; close?: number; atr?: number }[] = [];
+const log: { kind: "CREATE" | "UPDATE"; id: string; from?: string; to: string; reason?: string | undefined; saved?: boolean | undefined; at: number; key?: number; close?: number; atr?: number }[] = [];
 
 vi.mock("@/engine/signal/signalLifecycle", async (orig) => {
   const real = await orig<typeof import("@/engine/signal/signalLifecycle")>();
