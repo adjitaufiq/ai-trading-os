@@ -21,7 +21,8 @@ export function sandboxUpdateSetup(s: SignalSetup, u: UpdateInput) {
     const pen = buy ? s.keyLevel - c.close : c.close - s.keyLevel;
     return pen > 0 && pen <= buf ? { ...c, close: s.keyLevel } : c;
   };
-  return updateSetup(s, { ...u, m5: soften(u.m5)!, m15: soften(u.m15) });
+  const m15 = soften(u.m15);
+  return updateSetup(s, { ...u, m5: soften(u.m5)!, ...(m15 ? { m15 } : {}) });
 }
 
 function bornBuy(p = {}): SignalSetup {
