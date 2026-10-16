@@ -16,7 +16,7 @@ export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
       <div className="flex items-center gap-2"><Swords className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">Arena Lab · 5 mode · PAPER SIMULASI</h3></div>
       <Button size="sm" variant="ghost" onClick={() => { if (confirm("Reset Arena Lab ke $500?")) lab.reset(); }}>Reset</Button>
     </div>
-    <p className="mt-1 text-xs text-muted-foreground">Harga & candle asli MT5, posisi virtual (bukan order MT5). Modal ${LAB_START_BALANCE}, lot XAU {LAB_SYMBOLS.XAUUSD!.lot} · BTC {LAB_SYMBOLS.BTCUSD!.lot}, tanpa batas posisi. Jalan selama dashboard terbuka.</p>
+    <p className="mt-1 text-xs text-muted-foreground">Harga & candle asli MT5, posisi virtual (bukan order MT5). Modal ${LAB_START_BALANCE}, lot XAU {LAB_SYMBOLS["XAUUSD"]!.lot} · BTC {LAB_SYMBOLS["BTCUSD"]!.lot}, tanpa batas posisi. Jalan selama dashboard terbuka.</p>
     <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
       <div><div className="text-xs text-muted-foreground">Balance</div><div className={`font-mono font-semibold ${tone(board.balance - LAB_START_BALANCE)}`}>${board.balance.toFixed(2)}</div></div>
       <div><div className="text-xs text-muted-foreground">Equity</div><div className={`font-mono font-semibold ${tone(board.equity - LAB_START_BALANCE)}`}>${board.equity.toFixed(2)}</div></div>
