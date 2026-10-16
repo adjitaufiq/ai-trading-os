@@ -27,3 +27,4 @@
 - Separate chat/control/research routes keep chat clear.
 - Mobile context projects existing quote/cockpit outputs, without polling or evaluation. Why: shared source authority.
 - SNR overlay copies dedicated host ranges and confirmed/available swings into capped nearest bands/markers. Annotation visibility is independent of geometry; chartViewport preserves logical candle anchors on refresh. Raw zones and trading decisions stay untouched. Why: visualization is not analysis authority; refresh must not undo navigation.
+- Strategy Lab (src/core/lab + use-strategy-lab) is a browser PAPER experiment: named modes on CLOSED broker M5/M15 bars, virtual account, no position cap, every trade tagged with its mode/why/SL/TP/exit; it never imports execution/gateway ports beyond typed read methods and never feeds LivePaperLoop, Gate, Risk or demo bridge. Why: owner experiment data without widening the DEMO order path.
