@@ -27,6 +27,7 @@ import { MobileTerminalChrome } from "@/components/MobileTerminalChrome";
 import { MobileTradingView, MobileBottomNav } from "@/components/MobileTradingView";
 import { BacktestPanel } from "@/components/JournalPanel";
 import { Link } from "@tanstack/react-router";
+import { useStrategyLab } from "@/hooks/use-strategy-lab";
 
 const RealMarketTerminal = lazy(() =>
   import("@/components/RealMarketTerminal").then((m) => ({ default: m.RealMarketTerminal })),
@@ -113,6 +114,7 @@ function Terminal() {
   const unmountedReason = SYMBOLS.filter((s) => !mounted[s]?.reader)
     .map((s) => `${s}: ${mounted[s]?.status ?? "PENDING"}`)
     .join(" · ");
+  const lab = useStrategyLab(client, SYMBOLS);
   const explain = useServerFn(explainTradingState);
   const [tab, setTab] = useState<"COCKPIT" | "JOURNAL">("COCKPIT");
   const alerts = useMemo(() => sharedSignalAlerts(), []);
@@ -246,6 +248,7 @@ function Terminal() {
             runtimes={runtimes}
             selectedSymbol={selectedSymbol}
             engineTrades={engineTrades}
+            lab={lab}
           />
         ) : mobile.accessory === "Backtest" ? (
           <BacktestPanel runtimes={runtimes} symbol={selectedSymbol} />
@@ -268,6 +271,7 @@ function Terminal() {
           runtimes={runtimes}
           selectedSymbol={selectedSymbol}
           engineTrades={engineTrades}
+            lab={lab}
         />
       ) : null}
     </>
