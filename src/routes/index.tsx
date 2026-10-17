@@ -28,6 +28,7 @@ import { MobileTradingView, MobileBottomNav } from "@/components/MobileTradingVi
 import { BacktestPanel } from "@/components/JournalPanel";
 import { Link } from "@tanstack/react-router";
 import { useStrategyLab } from "@/hooks/use-strategy-lab";
+import { DesktopHeaderStrip } from "@/components/DesktopCockpit";
 
 const RealMarketTerminal = lazy(() =>
   import("@/components/RealMarketTerminal").then((m) => ({ default: m.RealMarketTerminal })),
@@ -175,7 +176,11 @@ function Terminal() {
           </p>
         )}
       </div>
+      <div className="desktop-terminal-only mx-auto max-w-screen-2xl px-4 sm:px-8">
+        <DesktopHeaderStrip symbol={selectedSymbol} engineStatus={engineState.status} exe={exe} />
+      </div>
       <RealMarketTerminal
+        exe={exe}
         client={client}
         liveReaders={liveReaders}
         selectedSymbol={selectedSymbol}

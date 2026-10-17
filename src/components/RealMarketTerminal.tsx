@@ -86,6 +86,8 @@ export function formatMarketPrice(value: number | null, digits: number | null) {
 }
 
 export interface RealMarketTerminalProps {
+  /** Display-only execution lamp for the desktop cockpit side panel (copy of the top lamp). */
+  exe?: ExeLamp | null;
   client: BrokerGatewayClient;
   selectedSymbol: TerminalMarket;
   onSelectedSymbolChange: (symbol: TerminalMarket) => void;
@@ -95,7 +97,7 @@ export interface RealMarketTerminalProps {
   liveReaders?: Partial<Record<TerminalMarket, MarketRuntimeReader | null>>;
 }
 
-export function RealMarketTerminal({ client, selectedSymbol: selected, onSelectedSymbolChange, now = Date.now, pollMs = 1000, liveReaders }: RealMarketTerminalProps) {
+export function RealMarketTerminal({ client, selectedSymbol: selected, onSelectedSymbolChange, now = Date.now, pollMs = 1000, liveReaders, exe = null }: RealMarketTerminalProps) {
   const mobile = useMobileTerminal();
   const [live, setLive] = useState<Record<string, readonly LiveBar[]>>({});
   const liveSeq = useRef<Record<string, number>>({});
