@@ -65,14 +65,14 @@ describe("lab entry modes 6–10", () => {
 });
 
 describe("ledgers for modes 6–10", () => {
-  it("book has 20 ledgers at $50; upgrading an old 10-ledger book adds 10 without touching existing", () => {
+  it("book has 22 ledgers at $50; upgrading an old 10-ledger book adds 10 without touching existing", () => {
     const fresh = createBook(1);
-    expect(bookStats(fresh)).toHaveLength(20);
+    expect(bookStats(fresh)).toHaveLength(22);
     const oldLedgers = Object.fromEntries(Object.entries(fresh.ledgers).filter(([, l]) => !(LAB_NEW_STRATEGIES as readonly string[]).includes(l.strategy)));
     const old = { ...fresh, ledgers: oldLedgers };
     const traded = bookOpen(old, "BTCUSD", [{ strategy: "TOUCH_SNR", side: "BUY", why: "t", sl_distance: 200, bar_time: 1 }], { bid: 1000, ask: 1000 }, 2);
     const up = upgradeBook(traded, 5);
-    expect(bookStats(up)).toHaveLength(20);
+    expect(bookStats(up)).toHaveLength(22);
     expect(up.ledgers["TOUCH_SNR:COPET"]).toBe(traded.ledgers["TOUCH_SNR:COPET"]);
     expect(up.ledgers["ATR_EXPANSION:COPET"]!.start_balance).toBe(50);
   });
