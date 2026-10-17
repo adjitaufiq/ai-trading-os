@@ -2,9 +2,9 @@
 // Authority: EXPERIMENT. Never imports broker/gateway/execution; never feeds LivePaperLoop, Decision Gate, Risk or demo bridge.
 import { atrWilder, causalSwings, ema, engulfing, geometry, type TechBar } from "@/core/technical/indicators";
 
-export const STRATEGY_LAB_VERSION = "strategy-lab-v2-entry-6-10";
+export const STRATEGY_LAB_VERSION = "strategy-lab-v3-entry-11";
 export const LAB_STRATEGIES = ["TOUCH_SNR", "EMA_CROSS", "SNR_PA", "DUAL_WALL", "FAST_BREAKOUT",
-  "TREND_PULLBACK", "SWEEP_RECLAIM", "BREAKOUT_RETEST", "RANGE_REVERSAL", "ATR_EXPANSION"] as const;
+  "TREND_PULLBACK", "SWEEP_RECLAIM", "BREAKOUT_RETEST", "RANGE_REVERSAL", "ATR_EXPANSION", "DUAL_WALL_FAST"] as const;
 /** Modes 6–10 (hypotheses, paper only). */
 export const LAB_NEW_STRATEGIES = ["TREND_PULLBACK", "SWEEP_RECLAIM", "BREAKOUT_RETEST", "RANGE_REVERSAL", "ATR_EXPANSION"] as const;
 export type LabStrategy = (typeof LAB_STRATEGIES)[number];
@@ -21,6 +21,7 @@ export const LAB_LABELS: Record<LabStrategy, string> = {
   BREAKOUT_RETEST: "8 · Breakout M15 – Retest",
   RANGE_REVERSAL: "9 · Range Boundary Reversal",
   ATR_EXPANSION: "10 · ATR Expansion Breakout",
+  DUAL_WALL_FAST: "11 · S/R + EMA 5/21",
 };
 
 /** Every experiment parameter lives here; changing one means bumping STRATEGY_LAB_VERSION. */
@@ -64,6 +65,7 @@ export const LAB_RULES: Partial<Record<LabStrategy, string>> = Object.freeze({
   SWEEP_RECLAIM: "Closed M5 low < M15 support zone low AND close ≥ zone low AND bullish AND lower wick ≥ 0.5×range. Invalid: close still below zone. SL = sweep low − 0.2×ATR(M5).",
   BREAKOUT_RETEST: "Latest available M15 swing HIGH broken by a closed M15 close above it within the last 8 M15 bars (after the swing became available). Trigger: closed M5 low ≤ level + 0.2×ATR(M5), close > level, bullish. Invalid: close ≤ level. SL = level − 0.2×ATR(M5).",
   RANGE_REVERSAL: "H1 range: |EMA21−EMA50| ≤ 0.5×ATR14(H1) and last 24 H1 high−low ≥ 2×ATR(H1). BUY only when close is in the bottom 20% of the range AND hammer or bullish engulfing. Middle 20–80% ⇒ reject. SL = range low − 0.25×ATR(M15).",
+  DUAL_WALL_FAST: "Same as DUAL_WALL with EMA5/EMA21 (M5): closed M5 touches M15 support + close within 0.3×ATR(M5) of EMA5 or EMA21 (or bar spans it) + bullish ⇒ BUY; SELL mirror at resistance. SL = zone edge ± 0.2×ATR(M5).",
   ATR_EXPANSION: "Closed M5 range ≥ 1.5×ATR14(M5), body ≥ 0.6×range, upper wick ≤ 0.2×range, bullish, close > highest high of previous 10 M5 bars. SL = 1×ATR(M5).",
 });
 
@@ -134,6 +136,15 @@ export function evaluateLabDetailed(m5: readonly TechBar[], m15: readonly TechBa
     const wall = near(e21.value) ? "EMA21" : near(e50.value) ? "EMA50" : null;
     if (wall && sup[0] && g.direction === "BULLISH") push("DUAL_WALL", "BUY", `Support ${fmt(sup[0].price)} + ${wall}`, zoneSl("BUY", sup[0]));
     if (wall && res[0] && g.direction === "BEARISH") push("DUAL_WALL", "SELL", `Resisten ${fmt(res[0].price)} + ${wall}`, zoneSl("SELL", res[0]));
+  }
+
+  // 11. DUAL_WALL_FAST — identical to DUAL_WALL with EMA5/EMA21.
+  const e5 = ema(m5, 5);
+  if (e5.status === "OK" && e21.status === "OK") {
+    const near = (lvl: number) => Math.abs(bar.close - lvl) <= atr * LAB_PARAMS.EMA_WALL_ATR_M5 || (bar.low <= lvl && bar.high >= lvl);
+    const wall = near(e5.value) ? "EMA5" : near(e21.value) ? "EMA21" : null;
+    if (wall && sup[0] && g.direction === "BULLISH") push("DUAL_WALL_FAST", "BUY", `Support ${fmt(sup[0].price)} + ${wall}`, zoneSl("BUY", sup[0]));
+    if (wall && res[0] && g.direction === "BEARISH") push("DUAL_WALL_FAST", "SELL", `Resisten ${fmt(res[0].price)} + ${wall}`, zoneSl("SELL", res[0]));
   }
 
   // 5. FAST_BREAKOUT — strong close beyond the previous N bars' extreme.
