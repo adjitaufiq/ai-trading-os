@@ -185,39 +185,46 @@ export function MobileTradingView({ onWhy, exe }: { onWhy: () => void; exe?: Exe
       </div>
     );
   return (
-    <div className="space-y-4 pb-5">
-      <div className="flex gap-5 overflow-x-auto border-y border-border py-3">
-        {["MARKET", ...frames].map((tf) => (
-          <div key={tf} className="shrink-0">
-            <div className="mobile-label">{tf}</div>
-            <div className="mt-1 text-xs">
-              {tf === "MARKET" ? (
-                text(op?.regime)
-              ) : (
-                <Direction value={op?.per_tf[tf as (typeof frames)[number]].trend} />
-              )}
+    <div className="space-y-3 pb-5">
+      <section className="rounded-md border border-border bg-card/40 p-3" data-testid="mobile-market-map">
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="mobile-label">Market map · struktur</h2>
+          <span className="break-words text-[10px] text-muted-foreground [overflow-wrap:anywhere]">
+            REGIME {text(op?.regime)}
+          </span>
+        </div>
+        <div className="grid grid-cols-4 gap-2">
+          {frames.map((tf) => (
+            <div key={tf} className="min-w-0 rounded border border-border px-1.5 py-2 text-center">
+              <div className="mobile-label">{tf}</div>
+              <div className="mt-1 text-xs font-semibold">
+                <Direction value={op?.per_tf[tf].trend} />
+              </div>
+              <div className="mt-1 break-words text-[10px] leading-tight text-muted-foreground [overflow-wrap:anywhere]">
+                {text(ev?.[tf].structure.summary)}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
-      <section className="rounded-md border border-border p-4">
-        <div className="mb-3 flex items-baseline justify-between">
-          <h2 className="mobile-label">Primary bias</h2>
+          ))}
+        </div>
+      </section>
+      <section className="rounded-md border border-border bg-card/40 p-3">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="mobile-label">Primary bias · H4</h2>
           <span
-            className={`font-mono text-sm font-semibold ${s?.primary_bias === "BUY" ? "text-bull" : s?.primary_bias === "SELL" ? "text-bear" : "text-muted-foreground"}`}
+            className={`font-mono text-base font-semibold ${s?.primary_bias === "BUY" ? "text-bull" : s?.primary_bias === "SELL" ? "text-bear" : "text-muted-foreground"}`}
             data-testid="mobile-primary-bias"
           >
             {s?.primary_bias === "BUY" ? "↗ BUY" : s?.primary_bias === "SELL" ? "↘ SELL" : "— NONE"}
           </span>
         </div>
         {s && s.counter_trend_condition !== "NONE" ? (
-          <p className="mb-3 text-[11px] font-semibold text-warn" data-testid="mobile-counter-trend-warning">
+          <p className="mb-3 break-words text-[11px] font-semibold leading-snug text-warn [overflow-wrap:anywhere]" data-testid="mobile-counter-trend-warning">
             COUNTER TREND WARNING: {s.counter_trend_condition} — pullback melawan arah utama, bukan sinyal
           </p>
         ) : null}
-        <div className="mb-2 flex items-baseline justify-between gap-3">
-          <h2 className="mobile-label">Setup</h2>
-          <span className={`text-right text-[10px] font-semibold ${toneClass[st.tone]}`} data-testid="mobile-setup-status">
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="mobile-label">Trade plan</h2>
+          <span className={`break-words text-right text-[10px] font-semibold [overflow-wrap:anywhere] ${toneClass[st.tone]}`} data-testid="mobile-setup-status">
             {st.label}
           </span>
         </div>
@@ -225,28 +232,28 @@ export function MobileTradingView({ onWhy, exe }: { onWhy: () => void; exe?: Exe
           {st.reason}
           {st.plan ? ` · sumber ${st.plan.source === "REFERENCE_PLAN" ? "plan eksekusi" : "proyeksi radar"}` : ""}
         </p>
-        <div className="grid grid-cols-3 gap-x-4 gap-y-4">
+        <div className="grid grid-cols-3 gap-2">
           {(
             [
-              ["ENTRY", st.plan?.entry],
-              ["SL", st.plan?.sl],
-              ["TP1", st.plan?.tp1],
-              ["TP2", st.plan?.tp2],
-              ["R:R", st.plan?.final_rr],
+              ["ENTRY", st.plan?.entry, ""],
+              ["SL", st.plan?.sl, "text-bear"],
+              ["TP1", st.plan?.tp1, "text-bull"],
+              ["TP2", st.plan?.tp2, "text-bull"],
+              ["R:R", st.plan?.final_rr, ""],
             ] as const
-          ).map(([label, value]) => (
-            <div key={label}>
+          ).map(([label, value, tone]) => (
+            <div key={label} className="min-w-0 rounded border border-border px-2 py-2">
               <div className="mobile-label">{label}</div>
-              <div className="mt-1 font-mono text-base">
+              <div className={`mt-1 break-all font-mono text-sm ${tone}`}>
                 {label === "R:R" && value != null ? `1:${fmt(value)}` : fmt(value)}
               </div>
             </div>
           ))}
         </div>
       </section>
-      <section>
-        <div className="flex items-center justify-between">
-          <h2 className="mobile-label">WHY · {ready ? "READY" : "WAIT"}</h2>
+      <section className="rounded-md border border-border bg-card/40 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="mobile-label">Checklist WHY · {ready ? "READY" : "WAIT"}</h2>
           <Button size="sm" variant="outline" onClick={onWhy}>
             Why?
           </Button>
