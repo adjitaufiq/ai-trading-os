@@ -41,10 +41,10 @@ export function useLabCloudSync(state: LabState, hydrated: boolean) {
       try {
         const { data, error } = await supabase.auth.getUser();
         if (!active) return;
+        if (error && error.name !== 'AuthSessionMissingError') throw error;
         if (!data.user) {
           setSync(s => ({ ...s, status: 'LOGIN_REQUIRED', error: null })); return;
         }
-        if (error) throw error;
         const owner = data.user.id;
         if (queue.current.sessions.some(s => s.owner !== null && s.owner !== owner)) {
           setSync(s => ({ ...s, status: 'ACCOUNT_MISMATCH', error: 'Jurnal terikat akun lain; masuk dengan akun pemilik.' })); return;
