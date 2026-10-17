@@ -56,7 +56,7 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
           const q = await quote(s);
           if (!q || !active) continue;
           const signals = evaluateLab(m5, m15);
-          setState((st) => openSignals(st, s, signals, q, Date.now()));
+          setState((st) => openSignals(st, s, signals, q, Date.now(), "COPET"));
           setLastBarAt((o) => ({ ...o, [s]: last }));
           setError(null);
         } catch { if (active) setError(`${s}: gateway tidak terjangkau`); }

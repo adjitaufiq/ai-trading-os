@@ -36,8 +36,8 @@ export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
     <ul className="mt-2 divide-y divide-border pr-14 text-sm">
       {lab.state.trades.length === 0 ? <li className="py-2 text-muted-foreground">Belum ada tembakan. Mode dievaluasi tiap candle M5 tertutup.</li> : lab.state.trades.slice(0, 60).map((t) => <li key={t.id} className="py-2">
         <div className={`font-semibold break-words ${t.side === "BUY" ? "text-bull" : "text-bear"}`}>{t.symbol} {t.side} · {LAB_LABELS[t.strategy]}</div>
-        <div className="mt-1"><span className={`inline-block rounded px-2 py-0.5 font-mono text-xs font-semibold ${t.pnl_usd >= 0 ? "bg-bull/15 text-bull" : "bg-bear/15 text-bear"}`}>{t.status === "CLOSED" ? `CLOSED · ${t.exit_reason} ${usd(t.pnl_usd)}` : `OPEN · floating ${usd(t.pnl_usd)}`}</span></div>
-        <div className="mt-1 text-xs text-muted-foreground break-words">{t.why} · entry {px(t.entry)} · SL {px(t.sl)} · TP {px(t.tp)}</div>
+        <div className="mt-1"><span className={`inline-block rounded px-2 py-0.5 font-mono text-xs font-semibold ${t.pnl_usd >= 0 ? "bg-bull/15 text-bull" : "bg-bear/15 text-bear"}`}>{t.status === "CLOSED" ? `CLOSED · ${t.exit_reason === "TRAIL" ? "TRAILING LOCK" : t.exit_reason} ${usd(t.pnl_usd)}` : `OPEN · floating ${usd(t.pnl_usd)}${t.trail_floor_usd != null ? ` · kunci ${usd(t.trail_floor_usd)}` : ""}`}</span></div>
+        <div className="mt-1 text-xs text-muted-foreground break-words">{t.rr_mode === "COPET" ? "COPET 1:1 · " : ""}{t.why} · entry {px(t.entry)} · SL {px(t.sl)} · TP {px(t.tp)}</div>
         <div className="text-xs text-muted-foreground">{time(t.opened_at)}{t.status === "CLOSED" ? ` → @ ${px(t.exit_price!)} ${time(t.closed_at!)}` : ""}</div>
       </li>)}
     </ul>

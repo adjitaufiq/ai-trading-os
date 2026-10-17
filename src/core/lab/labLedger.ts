@@ -26,9 +26,19 @@ export interface LabTrade {
   readonly pnl_usd: number;
   readonly closed_at: number | null;
   readonly exit_price: number | null;
-  readonly exit_reason: "SL" | "TP" | null;
+  readonly exit_reason: "SL" | "TP" | "TRAIL" | null;
   readonly version: string;
+  /** Exit profile. COPET = 1:1 fixed-dollar TP/SL with $1 step trailing lock. Absent on old trades ⇒ NORMAL. */
+  readonly rr_mode?: LabRrMode;
+  /** Highest floating P&L seen (USD), COPET only. */
+  readonly peak_pnl_usd?: number;
+  /** Locked profit floor (USD) once trailing is active, else null. */
+  readonly trail_floor_usd?: number | null;
 }
+
+export type LabRrMode = "NORMAL" | "COPET";
+/** Mode Copet (owner rule): TP +$5, SL -$5, trailing arms at +$2 peak and locks peak − $1. */
+export const COPET_PARAMS = Object.freeze({ TP_USD: 5, SL_USD: 5, TRAIL_ARM_USD: 2, TRAIL_GAP_USD: 1 });
 
 export interface LabState { readonly trades: readonly LabTrade[]; readonly seen: Readonly<Record<string, true>>; readonly started_at: number | null }
 export interface LabQuote { readonly bid: number; readonly ask: number }
@@ -37,7 +47,7 @@ export const usdPnl = (t: Pick<LabTrade, "side" | "entry" | "lot" | "symbol">, p
   (t.side === "BUY" ? px - t.entry : t.entry - px) * t.lot * (LAB_SYMBOLS[t.symbol]?.contract ?? 1);
 
 /** Opens one trade per (strategy, symbol, side, signal bar). No cap on simultaneous positions. Pure. */
-export function openSignals(s: LabState, symbol: string, signals: readonly LabSignal[], q: LabQuote, now: number): LabState {
+export function openSignals(s: LabState, symbol: string, signals: readonly LabSignal[], q: LabQuote, now: number, rrMode: LabRrMode = "NORMAL"): LabState {
   const cfg = LAB_SYMBOLS[symbol];
   if (!cfg) return s;
   let trades = s.trades, seen = s.seen;
@@ -46,11 +56,15 @@ export function openSignals(s: LabState, symbol: string, signals: readonly LabSi
     if (seen[key]) continue;
     seen = { ...seen, [key]: true };
     const entry = sig.side === "BUY" ? q.ask : q.bid;
-    const d = sig.sl_distance;
+    const copet = rrMode === "COPET";
+    const usdPerPoint = cfg.lot * cfg.contract;
+    const d = copet ? COPET_PARAMS.SL_USD / usdPerPoint : sig.sl_distance;
+    const tpD = copet ? COPET_PARAMS.TP_USD / usdPerPoint : d * LAB_PARAMS.TP_R;
     const t: LabTrade = {
       id: `lab-${now}-${trades.length}`, strategy: sig.strategy, symbol, side: sig.side, why: sig.why, opened_at: now, signal_bar_time: sig.bar_time,
-      entry, sl: sig.side === "BUY" ? entry - d : entry + d, tp: sig.side === "BUY" ? entry + d * LAB_PARAMS.TP_R : entry - d * LAB_PARAMS.TP_R,
+      entry, sl: sig.side === "BUY" ? entry - d : entry + d, tp: sig.side === "BUY" ? entry + tpD : entry - tpD,
       lot: cfg.lot, status: "OPEN", mark: entry, pnl_usd: 0, closed_at: null, exit_price: null, exit_reason: null, version: STRATEGY_LAB_VERSION,
+      rr_mode: rrMode, peak_pnl_usd: 0, trail_floor_usd: null,
     };
     trades = [t, ...trades];
   }
@@ -66,6 +80,15 @@ export function markSymbol(s: LabState, symbol: string, q: LabQuote, now: number
     const hitSl = t.side === "BUY" ? px <= t.sl : px >= t.sl;
     const hitTp = t.side === "BUY" ? px >= t.tp : px <= t.tp;
     changed = true;
+    if (t.rr_mode === "COPET" && !hitSl && !hitTp) {
+      const pnl = usdPnl(t, px);
+      const peak = Math.max(t.peak_pnl_usd ?? 0, pnl);
+      const floor = peak >= COPET_PARAMS.TRAIL_ARM_USD ? peak - COPET_PARAMS.TRAIL_GAP_USD : null;
+      if (floor !== null && pnl <= floor) {
+        return { ...t, status: "CLOSED" as const, mark: px, pnl_usd: pnl, closed_at: now, exit_price: px, exit_reason: "TRAIL" as const, peak_pnl_usd: peak, trail_floor_usd: floor };
+      }
+      return { ...t, mark: px, pnl_usd: pnl, peak_pnl_usd: peak, trail_floor_usd: floor };
+    }
     if (hitSl || hitTp) {
       const exit = hitSl ? t.sl : t.tp;
       return { ...t, status: "CLOSED" as const, mark: exit, pnl_usd: usdPnl(t, exit), closed_at: now, exit_price: exit, exit_reason: hitSl ? ("SL" as const) : ("TP" as const) };
