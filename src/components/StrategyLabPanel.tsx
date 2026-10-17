@@ -1,4 +1,5 @@
 import { Swords } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { LAB_LABELS } from "@/core/lab/strategies";
 import { LAB_START_BALANCE, LAB_SYMBOLS, leaderboard } from "@/core/lab/labLedger";
@@ -15,6 +16,12 @@ export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-2"><Swords className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">Arena Lab · 5 mode · PAPER SIMULASI</h3></div>
       <Button size="sm" variant="ghost" onClick={() => { if (confirm("Reset Arena Lab ke $500?")) lab.reset(); }}>Reset</Button>
+    </div>
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs" role="status" data-testid="lab-sync-status">
+      <span className={lab.sync.status === "SYNCED" ? "text-bull" : "text-warn"}>Jurnal cloud · {{ LOCAL: "Lokal", LOGIN_REQUIRED: "Belum masuk", SYNCING: "Mengirim", SYNCED: "Tersinkron", RETRY: "Menunggu kirim ulang", ACCOUNT_MISMATCH: "Akun berbeda" }[lab.sync.status]}</span>
+      <span className="text-muted-foreground">Antrean {lab.sync.pending}{lab.sync.lastSyncedAt ? ` · terkirim ${time(lab.sync.lastSyncedAt)}` : ""} · pembaruan ±15 dtk</span>
+      {lab.sync.status === "LOGIN_REQUIRED" ? <Button asChild variant="outline" size="sm"><Link to="/auth">Masuk untuk sinkron</Link></Button> : null}
+      {lab.sync.error ? <span className="w-full break-words text-warn">{lab.sync.error}</span> : null}
     </div>
     <p className="mt-1 text-xs text-muted-foreground">Harga & candle asli MT5, posisi virtual (bukan order MT5). Modal ${LAB_START_BALANCE}, lot XAU {LAB_SYMBOLS["XAUUSD"]!.lot} · BTC {LAB_SYMBOLS["BTCUSD"]!.lot}, tanpa batas posisi. Jalan selama dashboard terbuka.</p>
     <div className="mt-3 grid grid-cols-2 gap-2">

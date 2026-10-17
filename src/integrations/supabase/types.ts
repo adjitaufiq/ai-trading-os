@@ -561,6 +561,98 @@ export type Database = {
         }
         Relationships: []
       }
+      lab_journal_sessions: {
+        Row: {
+          client_as_of_ms: number
+          device_id: string
+          id: string
+          initial_balance: number
+          source: string
+          started_at_ms: number | null
+          summary: Json
+          synced_at: string
+          user_id: string
+        }
+        Insert: {
+          client_as_of_ms: number
+          device_id: string
+          id: string
+          initial_balance?: number
+          source?: string
+          started_at_ms?: number | null
+          summary?: Json
+          synced_at?: string
+          user_id: string
+        }
+        Update: {
+          client_as_of_ms?: number
+          device_id?: string
+          id?: string
+          initial_balance?: number
+          source?: string
+          started_at_ms?: number | null
+          summary?: Json
+          synced_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      lab_journal_trades: {
+        Row: {
+          closed_at_ms: number | null
+          opened_at_ms: number
+          payload: Json
+          pnl_usd: number
+          revision: number
+          session_id: string
+          side: string
+          status: string
+          strategy: string
+          symbol: string
+          synced_at: string
+          trade_id: string
+          user_id: string
+        }
+        Insert: {
+          closed_at_ms?: number | null
+          opened_at_ms: number
+          payload: Json
+          pnl_usd: number
+          revision: number
+          session_id: string
+          side: string
+          status: string
+          strategy: string
+          symbol: string
+          synced_at?: string
+          trade_id: string
+          user_id: string
+        }
+        Update: {
+          closed_at_ms?: number | null
+          opened_at_ms?: number
+          payload?: Json
+          pnl_usd?: number
+          revision?: number
+          session_id?: string
+          side?: string
+          status?: string
+          strategy?: string
+          symbol?: string
+          synced_at?: string
+          trade_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lab_journal_trades_session_id_user_id_fkey"
+            columns: ["session_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "lab_journal_sessions"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
       trade_reviews: {
         Row: {
           compliance: Json
