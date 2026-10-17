@@ -17,19 +17,28 @@ export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
       <Button size="sm" variant="ghost" onClick={() => { if (confirm("Reset Arena Lab ke $500?")) lab.reset(); }}>Reset</Button>
     </div>
     <p className="mt-1 text-xs text-muted-foreground">Harga & candle asli MT5, posisi virtual (bukan order MT5). Modal ${LAB_START_BALANCE}, lot XAU {LAB_SYMBOLS["XAUUSD"]!.lot} · BTC {LAB_SYMBOLS["BTCUSD"]!.lot}, tanpa batas posisi. Jalan selama dashboard terbuka.</p>
-    <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-      <div><div className="text-xs text-muted-foreground">Balance</div><div className={`font-mono font-semibold ${tone(board.balance - LAB_START_BALANCE)}`}>${board.balance.toFixed(2)}</div></div>
-      <div><div className="text-xs text-muted-foreground">Equity</div><div className={`font-mono font-semibold ${tone(board.equity - LAB_START_BALANCE)}`}>${board.equity.toFixed(2)}</div></div>
+    <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="rounded border border-border p-3"><div className="text-xs text-muted-foreground">Balance</div><div className={`font-mono text-lg font-semibold ${tone(board.balance - LAB_START_BALANCE)}`}>${board.balance.toFixed(2)}</div><div className={`text-xs font-mono ${tone(board.balance - LAB_START_BALANCE)}`}>Realized {usd(board.balance - LAB_START_BALANCE)}</div></div>
+      <div className="rounded border border-border p-3"><div className="text-xs text-muted-foreground">Equity</div><div className={`font-mono text-lg font-semibold ${tone(board.equity - LAB_START_BALANCE)}`}>${board.equity.toFixed(2)}</div><div className={`text-xs font-mono ${tone(board.equity - board.balance)}`}>Floating {usd(board.equity - board.balance)}</div></div>
     </div>
+    {(() => { const t = board.rows.reduce((a, r) => ({ n: a.n + r.trades, w: a.w + r.wins, l: a.l + r.losses, o: a.o + r.open }), { n: 0, w: 0, l: 0, o: 0 }); return <div className="mt-2 flex flex-wrap gap-2 text-xs"><span className="rounded bg-muted px-2 py-1">Tembakan selesai: <b>{t.n}</b></span><span className="rounded bg-bull/15 px-2 py-1 text-bull">Win <b>{t.w}</b></span><span className="rounded bg-bear/15 px-2 py-1 text-bear">Lose <b>{t.l}</b></span><span className="rounded bg-muted px-2 py-1">Masih open: <b>{t.o}</b></span></div>; })()}
     {lab.error ? <p className="mt-2 text-xs text-warn">{lab.error}</p> : null}
-    <div className="mt-3 overflow-x-auto"><table className="w-full text-xs"><thead className="text-muted-foreground"><tr className="text-left"><th>#</th><th>Mode</th><th>Trade</th><th>W/L</th><th>WR</th><th>Net</th><th>Open</th></tr></thead>
-      <tbody>{board.rows.map((r, i) => <tr key={r.strategy} className="border-t border-border/50"><td className="py-1">{i + 1}</td><td className="pr-2">{LAB_LABELS[r.strategy]}</td><td>{r.trades}</td><td>{r.wins}/{r.losses}</td><td>{r.winRate == null ? "—" : `${Math.round(r.winRate * 100)}%`}</td><td className={`font-mono ${tone(r.realized)}`}>{usd(r.realized)}</td><td className={`font-mono ${tone(r.floating)}`}>{r.open ? `${r.open} · ${usd(r.floating)}` : "—"}</td></tr>)}</tbody></table></div>
+    <div className="mt-3 space-y-2">{board.rows.map((r, i) => <div key={r.strategy} className="rounded border border-border p-3">
+      <div className="text-sm font-semibold break-words">#{i + 1} {LAB_LABELS[r.strategy]}</div>
+      <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+        <div><div className="text-[11px] text-muted-foreground">Tembakan</div><div className="font-mono text-base font-semibold">{r.trades}</div></div>
+        <div><div className="text-[11px] text-muted-foreground">Win / Lose</div><div className="font-mono text-base font-semibold"><span className="text-bull">{r.wins}</span> / <span className="text-bear">{r.losses}</span></div><div className="text-[11px] text-muted-foreground">WR {r.winRate == null ? "—" : `${Math.round(r.winRate * 100)}%`}</div></div>
+        <div><div className="text-[11px] text-muted-foreground">Net P/L</div><div className={`inline-block rounded px-2 py-0.5 font-mono text-sm font-semibold ${r.realized >= 0 ? "bg-bull/15 text-bull" : "bg-bear/15 text-bear"}`}>{usd(r.realized)}</div></div>
+      </div>
+      <div className="mt-2 text-xs text-muted-foreground">Posisi aktif: {r.open ? <span className={`font-mono ${tone(r.floating)}`}>{r.open} trade · floating {usd(r.floating)}</span> : "—"}</div>
+    </div>)}</div>
     <h4 className="mt-4 text-xs font-semibold uppercase text-muted-foreground">Log tembakan</h4>
-    <ul className="mt-2 divide-y divide-border text-sm">
+    <ul className="mt-2 divide-y divide-border pr-14 text-sm">
       {lab.state.trades.length === 0 ? <li className="py-2 text-muted-foreground">Belum ada tembakan. Mode dievaluasi tiap candle M5 tertutup.</li> : lab.state.trades.slice(0, 60).map((t) => <li key={t.id} className="py-2">
-        <div className="flex justify-between gap-2"><span className={`font-semibold ${t.side === "BUY" ? "text-bull" : "text-bear"}`}>{t.symbol} {t.side} · {LAB_LABELS[t.strategy]}</span><span className={`font-mono ${tone(t.pnl_usd)}`}>{usd(t.pnl_usd)}</span></div>
-        <div className="text-xs text-muted-foreground">{t.why} · entry {px(t.entry)} · SL {px(t.sl)} · TP {px(t.tp)}</div>
-        <div className="text-xs text-muted-foreground">{time(t.opened_at)}{t.status === "CLOSED" ? ` → ${t.exit_reason} @ ${px(t.exit_price!)} ${time(t.closed_at!)}` : " · OPEN"}</div>
+        <div className={`font-semibold break-words ${t.side === "BUY" ? "text-bull" : "text-bear"}`}>{t.symbol} {t.side} · {LAB_LABELS[t.strategy]}</div>
+        <div className="mt-1"><span className={`inline-block rounded px-2 py-0.5 font-mono text-xs font-semibold ${t.pnl_usd >= 0 ? "bg-bull/15 text-bull" : "bg-bear/15 text-bear"}`}>{t.status === "CLOSED" ? `CLOSED · ${t.exit_reason} ${usd(t.pnl_usd)}` : `OPEN · floating ${usd(t.pnl_usd)}`}</span></div>
+        <div className="mt-1 text-xs text-muted-foreground break-words">{t.why} · entry {px(t.entry)} · SL {px(t.sl)} · TP {px(t.tp)}</div>
+        <div className="text-xs text-muted-foreground">{time(t.opened_at)}{t.status === "CLOSED" ? ` → @ ${px(t.exit_price!)} ${time(t.closed_at!)}` : ""}</div>
       </li>)}
     </ul>
   </section>;
