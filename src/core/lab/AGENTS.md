@@ -1,0 +1,1 @@
+- Isolated ledgers (isolatedLedgers.ts) give each strategy × exit profile (NORMAL/COPET) its own virtual start balance and reuse openSignals/markSymbol unchanged; the same signals and quotes feed both profiles and the legacy shared $500 journal stays untouched. Why: fair per-mode comparison without capital of one mode eroding another.
