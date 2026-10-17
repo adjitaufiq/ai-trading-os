@@ -2,8 +2,11 @@
 // Authority: EXPERIMENT. Never imports broker/gateway/execution; never feeds LivePaperLoop, Decision Gate, Risk or demo bridge.
 import { atrWilder, causalSwings, ema, engulfing, geometry, type TechBar } from "@/core/technical/indicators";
 
-export const STRATEGY_LAB_VERSION = "strategy-lab-v1";
-export const LAB_STRATEGIES = ["TOUCH_SNR", "EMA_CROSS", "SNR_PA", "DUAL_WALL", "FAST_BREAKOUT"] as const;
+export const STRATEGY_LAB_VERSION = "strategy-lab-v2-entry-6-10";
+export const LAB_STRATEGIES = ["TOUCH_SNR", "EMA_CROSS", "SNR_PA", "DUAL_WALL", "FAST_BREAKOUT",
+  "TREND_PULLBACK", "SWEEP_RECLAIM", "BREAKOUT_RETEST", "RANGE_REVERSAL", "ATR_EXPANSION"] as const;
+/** Modes 6–10 (hypotheses, paper only). */
+export const LAB_NEW_STRATEGIES = ["TREND_PULLBACK", "SWEEP_RECLAIM", "BREAKOUT_RETEST", "RANGE_REVERSAL", "ATR_EXPANSION"] as const;
 export type LabStrategy = (typeof LAB_STRATEGIES)[number];
 export type LabSide = "BUY" | "SELL";
 
@@ -13,6 +16,11 @@ export const LAB_LABELS: Record<LabStrategy, string> = {
   SNR_PA: "S/R + Candle (Hammer/Star/Engulf)",
   DUAL_WALL: "S/R + EMA 21/50",
   FAST_BREAKOUT: "Breakout 5 bar",
+  TREND_PULLBACK: "6 · Trend Pullback + Struktur",
+  SWEEP_RECLAIM: "7 · SNR Sweep & Reclaim",
+  BREAKOUT_RETEST: "8 · Breakout M15 – Retest",
+  RANGE_REVERSAL: "9 · Range Boundary Reversal",
+  ATR_EXPANSION: "10 · ATR Expansion Breakout",
 };
 
 /** Every experiment parameter lives here; changing one means bumping STRATEGY_LAB_VERSION. */
@@ -27,7 +35,39 @@ export const LAB_PARAMS = Object.freeze({
   BREAKOUT_BODY_MIN: 0.6,
   HAMMER_WICK_BODY: 2,
   HAMMER_WICK_RANGE: 0.5,
+  // Mode 6 TREND_PULLBACK
+  TP_H1_MIN_BARS: 55,
+  TP_PULLBACK_ATR_M15: 0.5,
+  TP_MICRO_BREAK_BARS: 3,
+  TP_SWING_BARS: 4,
+  // Mode 7 SWEEP_RECLAIM
+  SWEEP_WICK_RANGE: 0.5,
+  // Mode 8 BREAKOUT_RETEST
+  BRT_BREAK_WITHIN_M15: 8,
+  BRT_RETEST_ATR_M5: 0.2,
+  // Mode 9 RANGE_REVERSAL
+  RANGE_H1_BARS: 24,
+  RANGE_EMA_GAP_ATR_H1: 0.5,
+  RANGE_MIN_WIDTH_ATR_H1: 2,
+  RANGE_EDGE_FRACTION: 0.2,
+  RANGE_SL_ATR_M15: 0.25,
+  // Mode 10 ATR_EXPANSION
+  EXP_RANGE_ATR_M5: 1.5,
+  EXP_BODY_MIN: 0.6,
+  EXP_OPP_WICK_MAX: 0.2,
+  EXP_LOOKBACK: 10,
 });
+
+/** Explicit rule text for modes 6–10 (BUY shown; SELL is the mirror). */
+export const LAB_RULES: Partial<Record<LabStrategy, string>> = Object.freeze({
+  TREND_PULLBACK: "H1 EMA21>EMA50 (≥55 closed H1) ⇒ BUY side. Location: closed M5 low within 0.5×ATR14(M15) of M15 EMA21/EMA50 or an M15 support zone. Trigger: closed M5 bullish AND close > highest high of previous 3 M5 bars. Invalid: close < M15 EMA50 − 0.5×ATR(M15). SL below lowest low of last 4 M5 bars − 0.2×ATR(M5).",
+  SWEEP_RECLAIM: "Closed M5 low < M15 support zone low AND close ≥ zone low AND bullish AND lower wick ≥ 0.5×range. Invalid: close still below zone. SL = sweep low − 0.2×ATR(M5).",
+  BREAKOUT_RETEST: "Latest available M15 swing HIGH broken by a closed M15 close above it within the last 8 M15 bars (after the swing became available). Trigger: closed M5 low ≤ level + 0.2×ATR(M5), close > level, bullish. Invalid: close ≤ level. SL = level − 0.2×ATR(M5).",
+  RANGE_REVERSAL: "H1 range: |EMA21−EMA50| ≤ 0.5×ATR14(H1) and last 24 H1 high−low ≥ 2×ATR(H1). BUY only when close is in the bottom 20% of the range AND hammer or bullish engulfing. Middle 20–80% ⇒ reject. SL = range low − 0.25×ATR(M15).",
+  ATR_EXPANSION: "Closed M5 range ≥ 1.5×ATR14(M5), body ≥ 0.6×range, upper wick ≤ 0.2×range, bullish, close > highest high of previous 10 M5 bars. SL = 1×ATR(M5).",
+});
+
+export interface LabReject { readonly strategy: LabStrategy; readonly reason: string }
 
 export interface LabSignal {
   readonly strategy: LabStrategy;
@@ -49,11 +89,17 @@ function zonesOf(m15: readonly TechBar[], asOf: number, atr15: number): Zone[] {
 }
 
 /** Pure: evaluate all five modes on the latest CLOSED M5 bar. Returns zero or more independent signals. */
-export function evaluateLab(m5: readonly TechBar[], m15: readonly TechBar[]): LabSignal[] {
-  if (m5.length < 60 || m15.length < 20) return [];
+export function evaluateLab(m5: readonly TechBar[], m15: readonly TechBar[], h1: readonly TechBar[] = []): LabSignal[] {
+  return evaluateLabDetailed(m5, m15, h1).signals;
+}
+
+/** Same evaluation plus an explicit reject reason for every mode 6–10 that did not fire on this bar. */
+export function evaluateLabDetailed(m5: readonly TechBar[], m15: readonly TechBar[], h1: readonly TechBar[] = []): { signals: LabSignal[]; rejects: LabReject[] } {
+  const rejects: LabReject[] = [];
+  if (m5.length < 60 || m15.length < 20) return { signals: [], rejects: LAB_NEW_STRATEGIES.map((strategy) => ({ strategy, reason: "INSUFFICIENT_M5_M15_HISTORY" })) };
   const bar = m5[m5.length - 1]!, prev = m5[m5.length - 2]!;
   const a5 = atrWilder(m5), a15 = atrWilder(m15);
-  if (a5.status !== "OK" || a15.status !== "OK") return [];
+  if (a5.status !== "OK" || a15.status !== "OK") return { signals: [], rejects: LAB_NEW_STRATEGIES.map((strategy) => ({ strategy, reason: "ATR_UNAVAILABLE" })) };
   const atr = a5.value;
   const zones = zonesOf(m15, bar.close_time, a15.value);
   const out: LabSignal[] = [];
@@ -97,5 +143,92 @@ export function evaluateLab(m5: readonly TechBar[], m15: readonly TechBar[]): La
   if (strong && bar.close > hi && g.direction === "BULLISH") push("FAST_BREAKOUT", "BUY", `Tembus high ${LAB_PARAMS.BREAKOUT_LOOKBACK} bar ${fmt(hi)}`, baseSl);
   if (strong && bar.close < lo && g.direction === "BEARISH") push("FAST_BREAKOUT", "SELL", `Tembus low ${LAB_PARAMS.BREAKOUT_LOOKBACK} bar ${fmt(lo)}`, baseSl);
 
-  return out.filter((s) => s.sl_distance > 0 && Number.isFinite(s.sl_distance));
+  const before = out.length;
+  const rej = (strategy: LabStrategy, reason: string) => rejects.push({ strategy, reason });
+  const prevBars = (n: number) => m5.slice(-1 - n, -1);
+  const bull = g.direction === "BULLISH", bear = g.direction === "BEARISH";
+  const atr15 = a15.value;
+
+  // 6. TREND_PULLBACK — H1 EMA side, M15 pullback location, M5 micro-structure break.
+  {
+    const S: LabStrategy = "TREND_PULLBACK";
+    const h21 = ema(h1, 21), h50 = ema(h1, 50), m21 = ema(m15, 21), m50 = ema(m15, 50);
+    if (h1.length < LAB_PARAMS.TP_H1_MIN_BARS || h21.status !== "OK" || h50.status !== "OK") rej(S, "H1_HISTORY_INSUFFICIENT");
+    else if (m21.status !== "OK" || m50.status !== "OK") rej(S, "M15_EMA_UNAVAILABLE");
+    else if (h21.value === h50.value) rej(S, "H1_NO_TREND");
+    else {
+      const up = h21.value > h50.value, tol = atr15 * LAB_PARAMS.TP_PULLBACK_ATR_M15;
+      const edge = up ? bar.low : bar.high;
+      const atEma = Math.abs(edge - m21.value) <= tol || Math.abs(edge - m50.value) <= tol;
+      const atZone = (up ? zones.filter((z) => z.kind === "SUPPORT") : zones.filter((z) => z.kind === "RESISTANCE")).some((z) => edge >= z.low - tol && edge <= z.high + tol);
+      const pb = prevBars(LAB_PARAMS.TP_MICRO_BREAK_BARS), win = m5.slice(-LAB_PARAMS.TP_SWING_BARS);
+      if (up ? bar.close < m50.value - tol : bar.close > m50.value + tol) rej(S, "INVALID_PULLBACK_TOO_DEEP");
+      else if (!atEma && !atZone) rej(S, "NOT_AT_PULLBACK_LOCATION");
+      else if (up && !(bull && bar.close > Math.max(...pb.map((b) => b.high)))) rej(S, "NO_M5_STRUCTURE_BREAK");
+      else if (!up && !(bear && bar.close < Math.min(...pb.map((b) => b.low)))) rej(S, "NO_M5_STRUCTURE_BREAK");
+      else if (up) push(S, "BUY", `H1 naik, pullback ${atZone ? "support M15" : "EMA M15"}, M5 tembus high 3 bar`, bar.close - (Math.min(...win.map((b) => b.low)) - atr * LAB_PARAMS.ZONE_SL_BUFFER_ATR_M5));
+      else push(S, "SELL", `H1 turun, pullback ${atZone ? "resisten M15" : "EMA M15"}, M5 tembus low 3 bar`, (Math.max(...win.map((b) => b.high)) + atr * LAB_PARAMS.ZONE_SL_BUFFER_ATR_M5) - bar.close);
+    }
+  }
+
+  // 7. SWEEP_RECLAIM — wick sweeps beyond a zone, close reclaims inside it.
+  {
+    const S: LabStrategy = "SWEEP_RECLAIM", buf = atr * LAB_PARAMS.ZONE_SL_BUFFER_ATR_M5, wickMin = LAB_PARAMS.SWEEP_WICK_RANGE * g.range;
+    const sw = zones.find((z) => z.kind === "SUPPORT" && bar.low < z.low && bar.close >= z.low);
+    const sr = zones.find((z) => z.kind === "RESISTANCE" && bar.high > z.high && bar.close <= z.high);
+    if (sw && bull && g.lower_wick >= wickMin) push(S, "BUY", `Sweep di bawah support ${fmt(sw.price)}, close reclaim`, bar.close - (bar.low - buf));
+    else if (sr && bear && g.upper_wick >= wickMin) push(S, "SELL", `Sweep di atas resisten ${fmt(sr.price)}, close reclaim`, (bar.high + buf) - bar.close);
+    else rej(S, sw || sr ? "RECLAIM_NOT_CONFIRMED" : "NO_ZONE_SWEEP");
+  }
+
+  // 8. BREAKOUT_RETEST — M15 swing broken by a closed M15 bar, closed M5 retest bounces off the level.
+  {
+    const S: LabStrategy = "BREAKOUT_RETEST", tol = atr * LAB_PARAMS.BRT_RETEST_ATR_M5;
+    const sws = causalSwings(m15).filter((x) => x.available_at <= bar.close_time);
+    const recent = m15.filter((b) => b.close_time <= bar.close_time).slice(-LAB_PARAMS.BRT_BREAK_WITHIN_M15);
+    const broken = (k: "HIGH" | "LOW") => {
+      const s = [...sws].reverse().find((x) => x.kind === k);
+      if (!s) return null;
+      const hit = recent.some((b) => b.open_time >= s.available_at && (k === "HIGH" ? b.close > s.price : b.close < s.price));
+      return hit ? s.price : null;
+    };
+    const up = broken("HIGH"), dn = broken("LOW");
+    if (up !== null && bar.low <= up + tol && bar.close > up && bull) push(S, "BUY", `Retest breakout M15 ${fmt(up)}`, bar.close - (up - tol));
+    else if (dn !== null && bar.high >= dn - tol && bar.close < dn && bear) push(S, "SELL", `Retest breakdown M15 ${fmt(dn)}`, (dn + tol) - bar.close);
+    else rej(S, up === null && dn === null ? "NO_RECENT_M15_BREAKOUT" : "NO_RETEST_TRIGGER");
+  }
+
+  // 9. RANGE_REVERSAL — only in a defined H1 range, only at its edges.
+  {
+    const S: LabStrategy = "RANGE_REVERSAL";
+    const h21 = ema(h1, 21), h50 = ema(h1, 50), ah = atrWilder(h1);
+    const win = h1.filter((b) => b.close_time <= bar.close_time).slice(-LAB_PARAMS.RANGE_H1_BARS);
+    if (h21.status !== "OK" || h50.status !== "OK" || ah.status !== "OK" || win.length < LAB_PARAMS.RANGE_H1_BARS) rej(S, "H1_HISTORY_INSUFFICIENT");
+    else {
+      const hi = Math.max(...win.map((b) => b.high)), lo = Math.min(...win.map((b) => b.low)), width = hi - lo;
+      if (Math.abs(h21.value - h50.value) > ah.value * LAB_PARAMS.RANGE_EMA_GAP_ATR_H1) rej(S, "NOT_RANGE_TRENDING");
+      else if (width < ah.value * LAB_PARAMS.RANGE_MIN_WIDTH_ATR_H1) rej(S, "RANGE_TOO_NARROW");
+      else {
+        const pos = (bar.close - lo) / width, e = LAB_PARAMS.RANGE_EDGE_FRACTION, slb = atr15 * LAB_PARAMS.RANGE_SL_ATR_M15;
+        if (pos > e && pos < 1 - e) rej(S, "MID_RANGE");
+        else if (pos <= e && (hammer || eg.bullish)) push(S, "BUY", `Tepi bawah range H1 ${fmt(lo)}–${fmt(hi)} + ${eg.bullish ? "engulfing" : "hammer"}`, bar.close - (lo - slb));
+        else if (pos >= 1 - e && (star || eg.bearish)) push(S, "SELL", `Tepi atas range H1 ${fmt(lo)}–${fmt(hi)} + ${eg.bearish ? "engulfing" : "shooting star"}`, (hi + slb) - bar.close);
+        else rej(S, "NO_REVERSAL_CANDLE");
+      }
+    }
+  }
+
+  // 10. ATR_EXPANSION — expansion bar relative to ATR closing beyond the 10-bar extreme.
+  {
+    const S: LabStrategy = "ATR_EXPANSION", pb = prevBars(LAB_PARAMS.EXP_LOOKBACK);
+    const hi10 = Math.max(...pb.map((b) => b.high)), lo10 = Math.min(...pb.map((b) => b.low));
+    const big = g.range >= atr * LAB_PARAMS.EXP_RANGE_ATR_M5 && (g.body_to_range ?? 0) >= LAB_PARAMS.EXP_BODY_MIN;
+    if (!big) rej(S, "NO_ATR_EXPANSION");
+    else if (bull && g.upper_wick <= LAB_PARAMS.EXP_OPP_WICK_MAX * g.range && bar.close > hi10) push(S, "BUY", `Ekspansi ${(g.range / atr).toFixed(1)}×ATR tembus high 10 bar`, baseSl);
+    else if (bear && g.lower_wick <= LAB_PARAMS.EXP_OPP_WICK_MAX * g.range && bar.close < lo10) push(S, "SELL", `Ekspansi ${(g.range / atr).toFixed(1)}×ATR tembus low 10 bar`, baseSl);
+    else rej(S, "EXPANSION_NOT_BEYOND_RANGE");
+  }
+  void before;
+
+  return { signals: out.filter((s) => s.sl_distance > 0 && Number.isFinite(s.sl_distance)), rejects };
 }
