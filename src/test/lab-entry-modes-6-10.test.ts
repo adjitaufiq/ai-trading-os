@@ -89,7 +89,7 @@ describe("ledgers for modes 6–10", () => {
   it("strategy and ledger code never reach a broker order path", () => {
     for (const f of ["src/core/lab/strategies.ts", "src/core/lab/isolatedLedgers.ts"]) {
       const src = readFileSync(f, "utf8");
-      expect(src).not.toMatch(/sendOrder|order_send|gateway\/|execution\/|fetch\(/);
+      expect(src).not.toMatch(/sendOrder|order_send|fetch\(|from "[^"]*(gateway|execution|bridge)/);
     }
   });
 });
