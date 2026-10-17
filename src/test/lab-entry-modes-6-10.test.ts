@@ -9,6 +9,9 @@ const mk = (i: number, tf: number, o: number, h: number, l: number, c: number): 
 /** Flat-ish oscillating series around `base` with amplitude `amp`. */
 const series = (n: number, tf: number, base: number, amp: number, drift = 0) =>
   Array.from({ length: n }, (_, i) => { const m = base + drift * i + amp * Math.sin(i / 2); return mk(i, tf, m, m + amp * 0.6, m - amp * 0.6, m + amp * 0.1); });
+/** Move a series so its bars sit after `offset` ms (H1 context must be closed before the M5 bar). */
+const shift = (bars: TechBar[], offset: number) => bars.map((b) => ({ ...b, open_time: b.open_time + offset, close_time: b.close_time + offset, available_at: b.available_at + offset }));
+const AFTER_H1 = 80 * H1;
 const fired = (r: ReturnType<typeof evaluateLabDetailed>, s: LabStrategy) => r.signals.filter((x) => x.strategy === s);
 const reason = (r: ReturnType<typeof evaluateLabDetailed>, s: LabStrategy) => r.rejects.find((x) => x.strategy === s)?.reason;
 
@@ -41,17 +44,18 @@ describe("lab entry modes 6–10", () => {
 
   it("RANGE_REVERSAL rejects mid-range and never fires there", () => {
     const h1 = series(80, H1, 100, 3);
-    const r = evaluateLabDetailed(series(80, M5, 100, 0.5), series(60, M15, 100, 1), h1);
+    const r = evaluateLabDetailed(shift(series(80, M5, 100, 0.5), AFTER_H1), shift(series(60, M15, 100, 1), AFTER_H1), h1);
     expect(fired(r, "RANGE_REVERSAL")).toHaveLength(0);
-    expect(["MID_RANGE", "NOT_RANGE_TRENDING", "RANGE_TOO_NARROW", "NO_REVERSAL_CANDLE"]).toContain(reason(r, "RANGE_REVERSAL"));
+    expect(reason(r, "RANGE_REVERSAL")).toBe("MID_RANGE");
   });
 
   it("only uses CLOSED inputs: H1 bars closing after the M5 bar are ignored by range", () => {
-    const m5 = series(80, M5, 100, 0.5);
+    const m5 = shift(series(80, M5, 100, 0.5), AFTER_H1), m15 = shift(series(60, M15, 100, 1), AFTER_H1);
     const future = Array.from({ length: 30 }, (_, i) => mk(1000 + i, H1, 500, 600, 400, 500));
-    const a = evaluateLabDetailed(m5, series(60, M15, 100, 1), series(80, H1, 100, 3));
-    const b = evaluateLabDetailed(m5, series(60, M15, 100, 1), [...series(80, H1, 100, 3), ...future]);
-    expect(fired(a, "RANGE_REVERSAL")).toEqual(fired(b, "RANGE_REVERSAL"));
+    const a = evaluateLabDetailed(m5, m15, series(80, H1, 100, 3));
+    const b = evaluateLabDetailed(m5, m15, [...series(80, H1, 100, 3), ...future]);
+    expect(reason(a, "RANGE_REVERSAL")).toBe("MID_RANGE");
+    expect(reason(b, "RANGE_REVERSAL")).toBe("MID_RANGE");
   });
 
   it("every signal has a positive finite SL distance", () => {
