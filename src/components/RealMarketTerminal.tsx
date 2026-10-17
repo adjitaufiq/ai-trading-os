@@ -7,6 +7,8 @@ import { SnrOverlayLegend } from "@/components/SnrOverlayLegend";
 import { selectSnrZones } from "@/lib/snrOverlay";
 import { useSnrOverlay } from "@/hooks/use-snr-overlay";
 import { useMobileTerminal } from "./MobileTerminalContext";
+import { DesktopChecklist, DesktopSidePanel } from "./DesktopCockpit";
+import type { ExeLamp } from "@/lib/exeLamp";
 import { TIMEFRAME_MS, type Timeframe } from "@/core/contracts";
 import type { MarketRuntimeReader } from "@/core/runtime/MarketRuntime";
 import type { BrokerGatewayClient } from "@/core/broker/gateway/BrokerGatewayClient";
@@ -267,7 +269,8 @@ export function RealMarketTerminal({ client, selectedSymbol: selected, onSelecte
           <Button asChild size="icon" variant="ghost" aria-label="Diagnostik pengembang" title="Diagnostik pengembang" className="shrink-0 text-muted-foreground"><Link to="/audit"><Settings2 /></Link></Button>
         </div>
       </header>
-      <main className="mx-auto max-w-screen-2xl space-y-5 px-4 py-5 sm:px-8 sm:py-7">
+      <main className="mx-auto max-w-screen-2xl px-4 py-5 sm:px-8 sm:py-7 lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-5">
+       <div className="min-w-0 space-y-5">
         <div className="flex gap-2" role="group" aria-label="Pasar">
           {TERMINAL_MARKETS.map((symbol) => <Button key={symbol} type="button" variant={selected === symbol ? "default" : "outline"} onClick={() => onSelectedSymbolChange(symbol)} aria-pressed={selected === symbol} className="h-10 flex-1 font-mono text-sm sm:max-w-36" data-testid={`select-${symbol}`}>{symbol}</Button>)}
         </div>
@@ -300,6 +303,9 @@ export function RealMarketTerminal({ client, selectedSymbol: selected, onSelecte
           {candle && <div className="mt-1 text-xs text-muted-foreground" data-testid="candle-time">{new Date(candle.raw_time_s * 1000).toISOString().replace("T", " ").replace(".000Z", " UTC")}{inspected ? " · candle terpilih" : " · candle terbaru"}</div>}
         </section>
         <section aria-label="Ringkasan candle" className="grid grid-cols-4 gap-2 border-t border-border pt-4" data-testid="ohlc-snapshot">{ohlc.map(({ label, key, value }) => <div key={label} className="min-w-0"><div className="text-[10px] text-muted-foreground sm:text-xs">{label}</div><div className="mt-1 truncate font-mono text-xs tabular-nums sm:text-lg" title={value} data-testid={`ohlc-${key}`}>{value}</div></div>)}</section>
+        <div className="desktop-terminal-only hidden lg:block"><DesktopChecklist /></div>
+       </div>
+       <aside className="desktop-terminal-only hidden lg:block" aria-label="Kokpit desktop"><DesktopSidePanel exe={exe} /></aside>
       </main>
       {focus && <div role="dialog" aria-label="Mode fokus grafik" aria-modal="true" className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background">
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-3"><div className="min-w-0 truncate font-mono text-sm">{selected} <span className="text-muted-foreground">/ {timeframe}</span></div><div className="flex gap-1">{annotationToggle}<Button type="button" size="icon" variant="ghost" onClick={() => setFocus(false)} aria-label="Tutup fokus grafik" title="Tutup fokus grafik"><X /></Button></div></div>
