@@ -1,4 +1,7 @@
 # Stage 3 PRE-2D gap closure
+## Approved Lab cloud journal sync
+- [ ] Owner-only PAPER journal storage, durable retry/deduplication, existing local history backfill, truthful sync status, and authenticated write/read verification; no strategy/VPS/order changes.
+
 ## Approved SNR eye and zoom controls
 - [x] Default CLEAN annotation-only eye toggle; retain all selected bands, lines and confirmed markers.
 - [x] Native chart zoom +/−/reset; preserve viewport across candle refreshes and rolling history.
