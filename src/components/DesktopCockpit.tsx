@@ -93,7 +93,7 @@ export function DesktopSidePanel({ exe }: { exe?: ExeLamp | null }) {
         <table className="mt-2 w-full text-xs">
           <tbody className="divide-y divide-border">
             {([
-              ["DIRECTION", st.plan ? <Direction value={st.plan.side} /> : "—", ""],
+              ["DIRECTION", st.plan?.source === "REFERENCE_PLAN" && s?.reference_plan.status === "AVAILABLE" ? <Direction value={s.reference_plan.side} /> : "—", ""],
               ["ENTRY", fmt(st.plan?.entry), ""],
               ["STOP LOSS", fmt(st.plan?.sl), "text-bear"],
               ["TP1", fmt(st.plan?.tp1), "text-bull"],
