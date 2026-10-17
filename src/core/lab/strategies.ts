@@ -143,17 +143,18 @@ export function evaluateLabDetailed(m5: readonly TechBar[], m15: readonly TechBa
   if (strong && bar.close > hi && g.direction === "BULLISH") push("FAST_BREAKOUT", "BUY", `Tembus high ${LAB_PARAMS.BREAKOUT_LOOKBACK} bar ${fmt(hi)}`, baseSl);
   if (strong && bar.close < lo && g.direction === "BEARISH") push("FAST_BREAKOUT", "SELL", `Tembus low ${LAB_PARAMS.BREAKOUT_LOOKBACK} bar ${fmt(lo)}`, baseSl);
 
-  const before = out.length;
   const rej = (strategy: LabStrategy, reason: string) => rejects.push({ strategy, reason });
   const prevBars = (n: number) => m5.slice(-1 - n, -1);
   const bull = g.direction === "BULLISH", bear = g.direction === "BEARISH";
   const atr15 = a15.value;
+  // H1 context: only bars CLOSED by the evaluated M5 bar's close (no look-ahead).
+  const h1c = h1.filter((b) => b.close_time <= bar.close_time);
 
   // 6. TREND_PULLBACK — H1 EMA side, M15 pullback location, M5 micro-structure break.
   {
     const S: LabStrategy = "TREND_PULLBACK";
-    const h21 = ema(h1, 21), h50 = ema(h1, 50), m21 = ema(m15, 21), m50 = ema(m15, 50);
-    if (h1.length < LAB_PARAMS.TP_H1_MIN_BARS || h21.status !== "OK" || h50.status !== "OK") rej(S, "H1_HISTORY_INSUFFICIENT");
+    const h21 = ema(h1c, 21), h50 = ema(h1c, 50), m21 = ema(m15, 21), m50 = ema(m15, 50);
+    if (h1c.length < LAB_PARAMS.TP_H1_MIN_BARS || h21.status !== "OK" || h50.status !== "OK") rej(S, "H1_HISTORY_INSUFFICIENT");
     else if (m21.status !== "OK" || m50.status !== "OK") rej(S, "M15_EMA_UNAVAILABLE");
     else if (h21.value === h50.value) rej(S, "H1_NO_TREND");
     else {
@@ -201,8 +202,8 @@ export function evaluateLabDetailed(m5: readonly TechBar[], m15: readonly TechBa
   // 9. RANGE_REVERSAL — only in a defined H1 range, only at its edges.
   {
     const S: LabStrategy = "RANGE_REVERSAL";
-    const h21 = ema(h1, 21), h50 = ema(h1, 50), ah = atrWilder(h1);
-    const win = h1.filter((b) => b.close_time <= bar.close_time).slice(-LAB_PARAMS.RANGE_H1_BARS);
+    const h21 = ema(h1c, 21), h50 = ema(h1c, 50), ah = atrWilder(h1c);
+    const win = h1c.slice(-LAB_PARAMS.RANGE_H1_BARS);
     if (h21.status !== "OK" || h50.status !== "OK" || ah.status !== "OK" || win.length < LAB_PARAMS.RANGE_H1_BARS) rej(S, "H1_HISTORY_INSUFFICIENT");
     else {
       const hi = Math.max(...win.map((b) => b.high)), lo = Math.min(...win.map((b) => b.low)), width = hi - lo;
@@ -228,7 +229,6 @@ export function evaluateLabDetailed(m5: readonly TechBar[], m15: readonly TechBa
     else if (bear && g.lower_wick <= LAB_PARAMS.EXP_OPP_WICK_MAX * g.range && bar.close < lo10) push(S, "SELL", `Ekspansi ${(g.range / atr).toFixed(1)}×ATR tembus low 10 bar`, baseSl);
     else rej(S, "EXPANSION_NOT_BEYOND_RANGE");
   }
-  void before;
 
   return { signals: out.filter((s) => s.sl_distance > 0 && Number.isFinite(s.sl_distance)), rejects };
 }
