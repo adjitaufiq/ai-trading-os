@@ -6,9 +6,11 @@ import type { BridgeBar } from "@/core/broker/bridge/types";
 import type { TechBar } from "@/core/technical/indicators";
 import { evaluateLab } from "@/core/lab/strategies";
 import { emptyLab, markSymbol, openSignals, type LabState } from "@/core/lab/labLedger";
+import { bookMark, bookOpen, createBook, type LedgerBook } from "@/core/lab/isolatedLedgers";
 import { useLabCloudSync, type LabSyncStatus } from "./use-lab-cloud-sync";
 
 const KEY = "strategy-lab-v1";
+const BOOK_KEY = "strategy-lab-ledgers-v1";
 const TF_MS = { M5: 300_000, M15: 900_000 } as const;
 
 function toBars(items: readonly BridgeBar[], tf: keyof typeof TF_MS): TechBar[] {
@@ -16,20 +18,23 @@ function toBars(items: readonly BridgeBar[], tf: keyof typeof TF_MS): TechBar[] 
   return items.slice(0, -1).map((b) => ({ open_time: b.raw_time_s * 1000, close_time: b.raw_time_s * 1000 + TF_MS[tf], available_at: b.raw_time_s * 1000 + TF_MS[tf], open: b.open, high: b.high, low: b.low, close: b.close }));
 }
 
-export interface LabRuntime { state: LabState; lastBarAt: Record<string, number>; error: string | null; sync: LabSyncStatus; reset: () => void }
+export interface LabRuntime { state: LabState; lastBarAt: Record<string, number>; error: string | null; sync: LabSyncStatus; book: LedgerBook | null; reset: () => void }
 
 export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly string[]): LabRuntime {
   const [state, setState] = useState<LabState>(emptyLab);
   const [lastBarAt, setLastBarAt] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [book, setBook] = useState<LedgerBook | null>(null);
   const { sync, rotate } = useLabCloudSync(state, hydrated);
 
   useEffect(() => {
     try { const raw = localStorage.getItem(KEY); if (raw) setState({ ...emptyLab(), ...JSON.parse(raw) }); } catch { /* corrupt ⇒ empty */ }
+    try { const raw = localStorage.getItem(BOOK_KEY); setBook(raw ? JSON.parse(raw) : createBook(Date.now())); } catch { setBook(createBook(Date.now())); }
     setHydrated(true);
   }, []);
   useEffect(() => { if (hydrated) { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* quota */ } } }, [state, hydrated]);
+  useEffect(() => { if (hydrated && book) { try { localStorage.setItem(BOOK_KEY, JSON.stringify(book)); } catch { /* quota */ } } }, [book, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -42,7 +47,7 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
     };
     const tickLoop = async () => {
       for (const s of symbols) {
-        try { const q = await quote(s); if (q && active) setState((st) => markSymbol(st, s, q, Date.now())); } catch { /* skip */ }
+        try { const q = await quote(s); if (q && active) { const now = Date.now(); setState((st) => markSymbol(st, s, q, now)); setBook((b) => (b ? bookMark(b, s, q, now) : b)); } } catch { /* skip */ }
       }
     };
     const barLoop = async () => {
@@ -61,7 +66,9 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
           const q = await quote(s);
           if (!q || !active) continue;
           const signals = evaluateLab(m5, m15);
-          setState((st) => openSignals(st, s, signals, q, Date.now(), "COPET"));
+          const now = Date.now();
+          setState((st) => openSignals(st, s, signals, q, now, "COPET"));
+          setBook((b) => (b ? bookOpen(b, s, signals, q, now) : b));
           setLastBarAt((o) => ({ ...o, [s]: last }));
           setError(null);
         } catch { if (active) setError(`${s}: gateway tidak terjangkau`); }
@@ -72,5 +79,5 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
     return () => { active = false; clearInterval(t1); clearInterval(t2); };
   }, [client, symbols, hydrated]);
 
-  return { state, lastBarAt, error, sync, reset: () => { rotate(); setState(emptyLab()); } };
+  return { state, lastBarAt, error, sync, book, reset: () => { rotate(); setState(emptyLab()); } };
 }
