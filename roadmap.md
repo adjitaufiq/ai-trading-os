@@ -1,6 +1,6 @@
 # Stage 3 PRE-2D gap closure
 ## Approved Lab cloud journal sync
-- [ ] Owner-only PAPER journal storage, durable retry/deduplication, existing local history backfill, truthful sync status, and authenticated write/read verification; no strategy/VPS/order changes.
+- [x] Owner-only PAPER journal storage, durable retry/deduplication, local history backfill, device/session separation, reset-preserved cloud history and truthful sync status. 14 tests passed; authenticated isolated entry→TP exit read back from cloud; spoofed owner rejected; offline→retry→recovery verified; automatic build OK. No strategy/VPS/order changes. Preview only: actual device history upload requires signed-in updated app; no publish requested.
 
 ## Approved SNR eye and zoom controls
 - [x] Default CLEAN annotation-only eye toggle; retain all selected bands, lines and confirmed markers.
