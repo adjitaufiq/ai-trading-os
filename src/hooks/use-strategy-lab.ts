@@ -6,12 +6,12 @@ import type { BridgeBar } from "@/core/broker/bridge/types";
 import type { TechBar } from "@/core/technical/indicators";
 import { evaluateLab } from "@/core/lab/strategies";
 import { emptyLab, markSymbol, openSignals, type LabState } from "@/core/lab/labLedger";
-import { bookMark, bookOpen, createBook, type LedgerBook } from "@/core/lab/isolatedLedgers";
+import { bookMark, bookOpen, createBook, upgradeBook, type LedgerBook } from "@/core/lab/isolatedLedgers";
 import { useLabCloudSync, type LabSyncStatus } from "./use-lab-cloud-sync";
 
 const KEY = "strategy-lab-v1";
 const BOOK_KEY = "strategy-lab-ledgers-v1";
-const TF_MS = { M5: 300_000, M15: 900_000 } as const;
+const TF_MS = { M5: 300_000, M15: 900_000, H1: 3_600_000 } as const;
 
 function toBars(items: readonly BridgeBar[], tf: keyof typeof TF_MS): TechBar[] {
   // pos-mode start=0 includes the forming bar as the newest item: drop it, keep only CLOSED bars.
@@ -30,7 +30,7 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
 
   useEffect(() => {
     try { const raw = localStorage.getItem(KEY); if (raw) setState({ ...emptyLab(), ...JSON.parse(raw) }); } catch { /* corrupt ⇒ empty */ }
-    try { const raw = localStorage.getItem(BOOK_KEY); setBook(raw ? JSON.parse(raw) : createBook(Date.now())); } catch { setBook(createBook(Date.now())); }
+    try { const raw = localStorage.getItem(BOOK_KEY); setBook(raw ? upgradeBook(JSON.parse(raw), Date.now()) : createBook(Date.now())); } catch { setBook(createBook(Date.now())); }
     setHydrated(true);
   }, []);
   useEffect(() => { if (hydrated) { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* quota */ } } }, [state, hydrated]);
@@ -39,7 +39,7 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
   useEffect(() => {
     if (!hydrated) return;
     let active = true;
-    const bars: Record<string, { m5: TechBar[]; m15: TechBar[] }> = {};
+    const bars: Record<string, { m5: TechBar[]; m15: TechBar[]; h1: TechBar[] }> = {};
     const quote = async (symbol: string) => {
       const r = await client.getLatestTick(symbol);
       if (!r.ok || r.data.broker_symbol !== symbol || !(r.data.bid > 0 && r.data.ask >= r.data.bid)) return null;
@@ -53,19 +53,22 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
     const barLoop = async () => {
       for (const s of symbols) {
         try {
-          const [a, b] = await Promise.all([
+          const [a, b, c] = await Promise.all([
             client.getBars({ symbol: s, timeframe: "M5", mode: "pos", start: 0, count: 200 }),
             client.getBars({ symbol: s, timeframe: "M15", mode: "pos", start: 0, count: 200 }),
+            client.getBars({ symbol: s, timeframe: "H1", mode: "pos", start: 0, count: 100 }),
           ]);
           if (!a.ok || !b.ok) { if (active) setError(`${s}: candle broker tidak tersedia`); continue; }
           const m5 = toBars(a.data.items, "M5"), m15 = toBars(b.data.items, "M15");
+          // H1 is optional context for modes 6 and 9: unavailable H1 ⇒ those modes reject (H1_HISTORY_INSUFFICIENT).
+          const h1 = c.ok ? toBars(c.data.items, "H1") : [];
           const prev = bars[s]?.m5.at(-1)?.open_time;
-          bars[s] = { m5, m15 };
+          bars[s] = { m5, m15, h1 };
           const last = m5.at(-1)?.open_time;
           if (!last || last === prev) continue;
           const q = await quote(s);
           if (!q || !active) continue;
-          const signals = evaluateLab(m5, m15);
+          const signals = evaluateLab(m5, m15, h1);
           const now = Date.now();
           setState((st) => openSignals(st, s, signals, q, now, "COPET"));
           setBook((b) => (b ? bookOpen(b, s, signals, q, now) : b));

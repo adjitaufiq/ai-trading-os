@@ -24,6 +24,17 @@ export function createBook(now: number): LedgerBook {
   return { version: "lab-ledgers-v1", started_at: now, ledgers };
 }
 
+/** Adds any ledger missing from a stored book (e.g. new modes) at $50, started now; existing ledgers untouched. */
+export function upgradeBook(b: LedgerBook, now: number): LedgerBook {
+  const ledgers = { ...b.ledgers };
+  let added = false;
+  for (const strategy of LAB_STRATEGIES) for (const profile of LEDGER_PROFILES) {
+    const key = ledgerKey(strategy, profile);
+    if (!ledgers[key]) { ledgers[key] = { key, strategy, profile, start_balance: LEDGER_START_BALANCE, started_at: now, state: emptyLab() }; added = true; }
+  }
+  return added ? { ...b, ledgers } : b;
+}
+
 /** Each signal goes only to its own strategy's ledgers, once per profile. Dedup stays per ledger (existing key). */
 export function bookOpen(b: LedgerBook, symbol: string, signals: readonly LabSignal[], q: LabQuote, now: number): LedgerBook {
   const ledgers = { ...b.ledgers };
