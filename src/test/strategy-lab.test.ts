@@ -35,3 +35,30 @@ describe("strategy lab ledger", () => {
     expect(s.trades[0]!.pnl_usd).toBeCloseTo(-4);
   });
 });
+
+describe("mode copet", () => {
+  // BTC 0.05 lot ⇒ $0.05 per point; $5 = 100 pts.
+  const open = () => openSignals(emptyLab(), "BTCUSD", [sig("TOUCH_SNR", "BUY")], { bid: 1000, ask: 1000 }, 1, "COPET");
+  it("TP +$5 and SL -$5 (1:1)", () => {
+    const t = open().trades[0]!;
+    expect(t.tp).toBeCloseTo(1100); expect(t.sl).toBeCloseTo(900);
+    expect(markSymbol(open(), "BTCUSD", { bid: 1100, ask: 1100 }, 2).trades[0]!.pnl_usd).toBeCloseTo(5);
+    expect(markSymbol(open(), "BTCUSD", { bid: 900, ask: 900 }, 2).trades[0]!.pnl_usd).toBeCloseTo(-5);
+  });
+  it("peak +$2 then back to +$1 closes TRAIL +$1", () => {
+    let s = markSymbol(open(), "BTCUSD", { bid: 1040, ask: 1040 }, 2);
+    expect(s.trades[0]!.status).toBe("OPEN");
+    s = markSymbol(s, "BTCUSD", { bid: 1020, ask: 1020 }, 3);
+    expect(s.trades[0]!.exit_reason).toBe("TRAIL"); expect(s.trades[0]!.pnl_usd).toBeCloseTo(1);
+  });
+  it("peak +$4 then +$3 closes TRAIL +$3", () => {
+    let s = markSymbol(open(), "BTCUSD", { bid: 1080, ask: 1080 }, 2);
+    s = markSymbol(s, "BTCUSD", { bid: 1060, ask: 1060 }, 3);
+    expect(s.trades[0]!.exit_reason).toBe("TRAIL"); expect(s.trades[0]!.pnl_usd).toBeCloseTo(3);
+  });
+  it("below +$2 peak no trailing", () => {
+    let s = markSymbol(open(), "BTCUSD", { bid: 1030, ask: 1030 }, 2);
+    s = markSymbol(s, "BTCUSD", { bid: 1000, ask: 1000 }, 3);
+    expect(s.trades[0]!.status).toBe("OPEN");
+  });
+});
