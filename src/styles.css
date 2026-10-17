@@ -230,7 +230,8 @@ body {
     box-shadow: none;
   }
   .real-market-terminal > header,
-  .real-market-terminal main > :not(section[aria-label="Grafik pasar"]) {
+  .real-market-terminal main > :not(div):not(section[aria-label="Grafik pasar"]),
+  .real-market-terminal main > div > :not(section[aria-label="Grafik pasar"]) {
     display: none;
   }
   .real-market-terminal.mobile-market-hidden {
