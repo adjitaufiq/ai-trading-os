@@ -6,6 +6,7 @@ import type { BridgeBar } from "@/core/broker/bridge/types";
 import type { TechBar } from "@/core/technical/indicators";
 import { evaluateLab } from "@/core/lab/strategies";
 import { emptyLab, markSymbol, openSignals, type LabState } from "@/core/lab/labLedger";
+import { useLabCloudSync, type LabSyncStatus } from "./use-lab-cloud-sync";
 
 const KEY = "strategy-lab-v1";
 const TF_MS = { M5: 300_000, M15: 900_000 } as const;
@@ -15,19 +16,23 @@ function toBars(items: readonly BridgeBar[], tf: keyof typeof TF_MS): TechBar[] 
   return items.slice(0, -1).map((b) => ({ open_time: b.raw_time_s * 1000, close_time: b.raw_time_s * 1000 + TF_MS[tf], available_at: b.raw_time_s * 1000 + TF_MS[tf], open: b.open, high: b.high, low: b.low, close: b.close }));
 }
 
-export interface LabRuntime { state: LabState; lastBarAt: Record<string, number>; error: string | null; reset: () => void }
+export interface LabRuntime { state: LabState; lastBarAt: Record<string, number>; error: string | null; sync: LabSyncStatus; reset: () => void }
 
 export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly string[]): LabRuntime {
   const [state, setState] = useState<LabState>(emptyLab);
   const [lastBarAt, setLastBarAt] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+  const { sync, rotate } = useLabCloudSync(state, hydrated);
 
   useEffect(() => {
     try { const raw = localStorage.getItem(KEY); if (raw) setState({ ...emptyLab(), ...JSON.parse(raw) }); } catch { /* corrupt ⇒ empty */ }
+    setHydrated(true);
   }, []);
-  useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* quota */ } }, [state]);
+  useEffect(() => { if (hydrated) { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* quota */ } } }, [state, hydrated]);
 
   useEffect(() => {
+    if (!hydrated) return;
     let active = true;
     const bars: Record<string, { m5: TechBar[]; m15: TechBar[] }> = {};
     const quote = async (symbol: string) => {
@@ -65,7 +70,7 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
     void barLoop(); void tickLoop();
     const t1 = setInterval(tickLoop, 15_000), t2 = setInterval(barLoop, 60_000);
     return () => { active = false; clearInterval(t1); clearInterval(t2); };
-  }, [client, symbols]);
+  }, [client, symbols, hydrated]);
 
-  return { state, lastBarAt, error, reset: () => setState(emptyLab()) };
+  return { state, lastBarAt, error, sync, reset: () => { rotate(); setState(emptyLab()); } };
 }
