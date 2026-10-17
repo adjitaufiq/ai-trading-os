@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { LAB_LABELS } from "@/core/lab/strategies";
 import { LAB_START_BALANCE, LAB_SYMBOLS, leaderboard } from "@/core/lab/labLedger";
+import { LabLedgersPanel } from "./LabLedgersPanel";
 import type { LabRuntime } from "@/hooks/use-strategy-lab";
 
 const usd = (v: number) => `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
@@ -39,7 +40,8 @@ export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
       </div>
       <div className="mt-2 text-xs text-muted-foreground">Posisi aktif: {r.open ? <span className={`font-mono ${tone(r.floating)}`}>{r.open} trade · floating {usd(r.floating)}</span> : "—"}</div>
     </div>)}</div>
-    <h4 className="mt-4 text-xs font-semibold uppercase text-muted-foreground">Log tembakan</h4>
+    <LabLedgersPanel book={lab.book} />
+    <h4 className="mt-4 text-xs font-semibold uppercase text-muted-foreground">Log tembakan (jurnal lama gabungan $500)</h4>
     <ul className="mt-2 divide-y divide-border pr-14 text-sm">
       {lab.state.trades.length === 0 ? <li className="py-2 text-muted-foreground">Belum ada tembakan. Mode dievaluasi tiap candle M5 tertutup.</li> : lab.state.trades.slice(0, 60).map((t) => <li key={t.id} className="py-2">
         <div className={`font-semibold break-words ${t.side === "BUY" ? "text-bull" : "text-bear"}`}>{t.symbol} {t.side} · {LAB_LABELS[t.strategy]}</div>
