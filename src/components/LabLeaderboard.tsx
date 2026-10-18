@@ -33,7 +33,6 @@ export function LabLeaderboard({ lab }: { lab: LabRuntime }) {
       if (Number(localStorage.getItem(TG_LAST_KEY) ?? 0) >= hour) return;
       localStorage.setItem(TG_LAST_KEY, String(hour));
       const at = Date.now();
-      const when = new Date(at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta", hour12: false, dateStyle: "medium", timeStyle: "short" });
       const text = formatLabReport(buildLabReport(labRef.current.state, labRef.current.switches, at), "Laporan Otomatis 1 Jam");
       try { const res = await send({ data: { text } }); setTgNote(`${res.status === "SENT" ? "Terkirim" : res.status} ${new Date(at).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta", hour12: false })} WIB`); }
       catch (e) { setTgNote(`Gagal: ${(e as Error).message}`); }
@@ -45,7 +44,6 @@ export function LabLeaderboard({ lab }: { lab: LabRuntime }) {
   const sendNow = async () => {
     setSending(true);
     const at = Date.now();
-    const when = new Date(at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta", hour12: false, dateStyle: "medium", timeStyle: "short" });
     const text = formatLabReport(buildLabReport(lab.state, lab.switches, at), "Laporan Manual");
     try { const res = await send({ data: { text } }); setTgNote(`${res.status === "SENT" ? "Terkirim" : res.status}${res.note ? ` (${res.note})` : ""} ${new Date(at).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta", hour12: false })} WIB`); }
     catch (e) { setTgNote(`Gagal: ${(e as Error).message}`); }
