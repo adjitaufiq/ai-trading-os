@@ -41,6 +41,16 @@ export function LabLeaderboard({ lab }: { lab: LabRuntime }) {
     const id = setInterval(tick, 30_000); void tick();
     return () => clearInterval(id);
   }, [tgOn, send]);
+  const [sending, setSending] = useState(false);
+  const sendNow = async () => {
+    setSending(true);
+    const at = Date.now();
+    const when = new Date(at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta", hour12: false, dateStyle: "medium", timeStyle: "short" });
+    const text = formatLabReport(buildLabReport(lab.state, lab.switches, at), ["📊 STRATEGY LAB REPORT", `Waktu: ${when} WIB`, "Jenis: Laporan Manual", ""]);
+    try { const res = await send({ data: { text } }); setTgNote(`${res.status === "SENT" ? "Terkirim" : res.status}${res.note ? ` (${res.note})` : ""} ${new Date(at).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta", hour12: false })} WIB`); }
+    catch (e) { setTgNote(`Gagal: ${(e as Error).message}`); }
+    finally { setSending(false); }
+  };
   const copy = async () => {
     try { await navigator.clipboard.writeText(formatLabReport(buildLabReport(lab.state, lab.switches, Date.now()))); setCopied(true); setTimeout(() => setCopied(false), 2000); }
     catch { alert("Gagal menyalin — izin clipboard ditolak browser."); }
@@ -50,10 +60,11 @@ export function LabLeaderboard({ lab }: { lab: LabRuntime }) {
       <span className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground"><Trophy className="h-4 w-4" />Leaderboard realtime · PAPER</span>
       <div className="flex flex-wrap items-center gap-2">
       <Button size="sm" variant={tgOn ? "default" : "outline"} onClick={toggleTg}>Telegram 1 jam: {tgOn ? "ON" : "OFF"}</Button>
+      <Button size="sm" variant="outline" disabled={sending} onClick={sendNow}>{sending ? "Mengirim…" : "🚀 Kirim Telegram Sekarang"}</Button>
       <Button size="sm" onClick={copy}>{copied ? "Tersalin ✓" : "📋 Salin Laporan untuk AI"}</Button>
       </div>
     </div>
-    {tgOn && <div className="mt-1 text-[11px] text-muted-foreground">Kirim tiap jam genap selama tab ini terbuka{tgNote ? ` · terakhir: ${tgNote}` : ""}</div>}
+    {(tgOn || tgNote) && <div className="mt-1 text-[11px] text-muted-foreground">{tgOn ? "Kirim tiap jam genap selama tab ini terbuka" : "Telegram"}{tgNote ? ` · terakhir: ${tgNote}` : ""}</div>}
     <div className="mt-2 flex flex-wrap gap-2 text-xs">
       <span className="rounded bg-muted px-2 py-1">Closed <b>{r.closed}</b></span>
       <span className="rounded bg-muted px-2 py-1">Open <b>{r.open}</b></span>
