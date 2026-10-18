@@ -19,7 +19,7 @@ export const DEFAULT_MAX_TOTAL = 10;
 export const DEFAULT_MAX_PER_MODE = 1;
 export const DEFAULT_MARKET_QUOTA = 1;
 const perModeDefault = () => Object.fromEntries(LAB_STRATEGIES.map((s) => [s, DEFAULT_MAX_PER_MODE])) as Record<LabStrategy, number>;
-const quotaDefault = () => Object.fromEntries(LAB_STRATEGIES.map((s) => [s, { XAUUSD: DEFAULT_MARKET_QUOTA, BTCUSD: DEFAULT_MARKET_QUOTA }])) as Record<LabStrategy, Record<LabMarket, number>>;
+const quotaDefault = () => Object.fromEntries(LAB_STRATEGIES.map((s) => [s, { XAUUSD: DEFAULT_MARKET_QUOTA, BTCUSD: s === "GOLD_SNIPER" ? 0 : DEFAULT_MARKET_QUOTA }])) as Record<LabStrategy, Record<LabMarket, number>>;
 export const DEFAULT_OPERATOR: OperatorSettings = Object.freeze({ targetUsd: 50, maxLossUsd: 30, paused: false, maxOpenTotal: DEFAULT_MAX_TOTAL, maxOpenPerMode: perModeDefault(), marketQuota: quotaDefault() });
 
 const posInt = (v: unknown, d: number) => (typeof v === "number" && Number.isInteger(v) && v >= 1 ? v : d);
@@ -33,7 +33,7 @@ export function parseOperator(raw: unknown): OperatorSettings {
   const legacy = !(o.marketQuota && typeof o.marketQuota === "object");
   const mq = quotaDefault();
   const qsrc = (legacy ? {} : o.marketQuota) as Record<string, Record<string, unknown> | undefined>;
-  for (const s of LAB_STRATEGIES) for (const m of LAB_MARKETS) mq[s][m] = nonNegInt(qsrc[s]?.[m], DEFAULT_MARKET_QUOTA);
+  for (const s of LAB_STRATEGIES) for (const m of LAB_MARKETS) mq[s][m] = nonNegInt(qsrc[s]?.[m], quotaDefault()[s][m]);
   // Settings saved before per-market quotas move to the new 10-slot global default once.
   const total = legacy ? DEFAULT_MAX_TOTAL : posInt(o.maxOpenTotal, DEFAULT_MAX_TOTAL);
   return { targetUsd: pos(o.targetUsd, DEFAULT_OPERATOR.targetUsd), maxLossUsd: pos(o.maxLossUsd, DEFAULT_OPERATOR.maxLossUsd), paused: o.paused === true, maxOpenTotal: total, maxOpenPerMode: pm, marketQuota: mq };

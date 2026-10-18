@@ -4,7 +4,7 @@ import { atrWilder, causalSwings, ema, engulfing, geometry, type TechBar } from 
 
 export const STRATEGY_LAB_VERSION = "strategy-lab-v5-smc-fibo-ote";
 export const LAB_STRATEGIES = ["TOUCH_SNR", "EMA_CROSS", "SNR_PA", "DUAL_WALL", "FAST_BREAKOUT",
-  "TREND_PULLBACK", "SWEEP_RECLAIM", "BREAKOUT_RETEST", "RANGE_REVERSAL", "ATR_EXPANSION", "DUAL_WALL_FAST", "SMC_FIBO_OTE"] as const;
+  "TREND_PULLBACK", "SWEEP_RECLAIM", "BREAKOUT_RETEST", "RANGE_REVERSAL", "ATR_EXPANSION", "DUAL_WALL_FAST", "SMC_FIBO_OTE", "GOLD_SNIPER"] as const;
 /** Modes 6–10 (hypotheses, paper only). */
 export const LAB_NEW_STRATEGIES = ["TREND_PULLBACK", "SWEEP_RECLAIM", "BREAKOUT_RETEST", "RANGE_REVERSAL", "ATR_EXPANSION"] as const;
 export type LabStrategy = (typeof LAB_STRATEGIES)[number];
@@ -23,6 +23,7 @@ export const LAB_LABELS: Record<LabStrategy, string> = {
   ATR_EXPANSION: "10 · ATR Expansion Breakout",
   DUAL_WALL_FAST: "11 · S/R + EMA 5/21",
   SMC_FIBO_OTE: "12 · SMC Fibo 71.5% OTE",
+  GOLD_SNIPER: "13 · Gold Sniper EMA3/12/50+MACD+RSI7",
 };
 
 /** Every experiment parameter lives here; changing one means bumping STRATEGY_LAB_VERSION. */
@@ -74,6 +75,7 @@ export const LAB_RULES: Partial<Record<LabStrategy, string>> = Object.freeze({
   BREAKOUT_RETEST: "Latest available M15 swing HIGH broken by a closed M15 close above it within the last 8 M15 bars (after the swing became available). Trigger: closed M5 low ≤ level + 0.2×ATR(M5), close > level, bullish. Invalid: close ≤ level. SL = level − 0.2×ATR(M5).",
   RANGE_REVERSAL: "H1 range: |EMA21−EMA50| ≤ 0.5×ATR14(H1) and last 24 H1 high−low ≥ 2×ATR(H1). BUY only when close is in the bottom 20% of the range AND hammer or bullish engulfing. Middle 20–80% ⇒ reject. SL = range low − 0.25×ATR(M15).",
   DUAL_WALL_FAST: "Same as DUAL_WALL with EMA5/EMA21 (M5): closed M5 touches M15 support + close within 0.3×ATR(M5) of EMA5 or EMA21 (or bar spans it) + bullish ⇒ BUY; SELL mirror at resistance. SL = zone edge ± 0.2×ATR(M5).",
+  GOLD_SNIPER: "XAU only by default. M5: close vs EMA50 trend, EMA3 crosses EMA12 on the closed bar, MACD(6,13,5) line vs signal on the same side, RSI7 >50 & <80 for BUY (<50 & >20 SELL). SL = 1×ATR(M5) base; TP/trailing = Copet.",
   SMC_FIBO_OTE: "Latest available M5 swing HIGH preceded by a swing LOW = bullish leg (≥1.5×ATR M5). Entry zone = High − 0.715×leg. Trigger: closed M5 low ≤ 71.5% level, close above it, bullish, low still above Strong Low. SL = Strong Low − 0.2×ATR(M5); TP = High + 0.15×leg (Fibo −15%). Own technical SL/TP + R-based trailing, never Copet. SELL mirror.",
   ATR_EXPANSION: "Closed M5 range ≥ 1.5×ATR14(M5), body ≥ 0.6×range, upper wick ≤ 0.2×range, bullish, close > highest high of previous 10 M5 bars. SL = 1×ATR(M5).",
 });
@@ -263,6 +265,20 @@ export function evaluateLabDetailed(m5: readonly TechBar[], m15: readonly TechBa
     else if (bull && g.upper_wick <= LAB_PARAMS.EXP_OPP_WICK_MAX * g.range && bar.close > hi10) push(S, "BUY", `Ekspansi ${(g.range / atr).toFixed(1)}×ATR tembus high 10 bar`, baseSl);
     else if (bear && g.lower_wick <= LAB_PARAMS.EXP_OPP_WICK_MAX * g.range && bar.close < lo10) push(S, "SELL", `Ekspansi ${(g.range / atr).toFixed(1)}×ATR tembus low 10 bar`, baseSl);
     else rej(S, "EXPANSION_NOT_BEYOND_RANGE");
+  }
+
+  // 13. GOLD_SNIPER — EMA3/12 cross with EMA50 trend, MACD(6,13,5) and RSI7 confirmation; Copet SL/TP.
+  {
+    const S: LabStrategy = "GOLD_SNIPER", cl = m5.map((b) => b.close);
+    const emaArr = (v: readonly number[], n: number) => { const k = 2 / (n + 1), o: number[] = []; v.forEach((x, i) => o.push(i ? x * k + o[i - 1]! * (1 - k) : x)); return o; };
+    const a3 = emaArr(cl, 3), a12 = emaArr(cl, 12), a50 = emaArr(cl, 50), f = emaArr(cl, 6), sl13 = emaArr(cl, 13);
+    const macd = f.map((x, i) => x - sl13[i]!), sig = emaArr(macd, 5), n = cl.length - 1;
+    let ag = 0, al = 0; for (let i = n - 6; i <= n; i++) { const d = cl[i]! - cl[i - 1]!; if (d > 0) ag += d; else al -= d; }
+    const rsi = al === 0 ? 100 : 100 - 100 / (1 + ag / al);
+    const up = a3[n - 1]! <= a12[n - 1]! && a3[n]! > a12[n]!, dn = a3[n - 1]! >= a12[n - 1]! && a3[n]! < a12[n]!;
+    if (up && bar.close > a50[n]! && macd[n]! > sig[n]! && rsi > 50 && rsi < 80) push(S, "BUY", `EMA3>12 di atas EMA50 · MACD+ · RSI7 ${rsi.toFixed(0)}`, baseSl);
+    else if (dn && bar.close < a50[n]! && macd[n]! < sig[n]! && rsi < 50 && rsi > 20) push(S, "SELL", `EMA3<12 di bawah EMA50 · MACD− · RSI7 ${rsi.toFixed(0)}`, baseSl);
+    else rej(S, up || dn ? "CROSS_NOT_CONFIRMED" : "NO_EMA3_12_CROSS");
   }
 
   // 12. SMC_FIBO_OTE — retrace into the 71.5% level of the latest confirmed M5 impulse leg.
