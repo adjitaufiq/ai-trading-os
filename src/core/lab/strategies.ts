@@ -91,6 +91,9 @@ export interface LabSignal {
   readonly bar_time: number;
   /** Technical TP distance (price units). When set, the ledger uses sl/tp as-is (exit profile FIBO), never Copet or TP_R. */
   readonly tp_distance?: number;
+  /** Mode 12 only: absolute technical SL/TP prices. Ledger locks them exactly, independent of the live fill. */
+  readonly sl_price?: number;
+  readonly tp_price?: number;
 }
 
 interface Zone { readonly kind: "SUPPORT" | "RESISTANCE"; readonly low: number; readonly high: number; readonly price: number }
@@ -293,11 +296,11 @@ export function evaluateLabDetailed(m5: readonly TechBar[], m15: readonly TechBa
       if (leg < atr * P.FIBO_MIN_LEG_ATR_M5) rej(S, "LEG_TOO_SMALL");
       else if (up) {
         const e = H - P.FIBO_OTE * leg, tp = H + P.FIBO_TP_EXT * leg;
-        if (bar.low <= e && bar.close > e && bull && bar.low > L) out.push({ strategy: S, side: "BUY", why: `OTE 71.5% ${fmt(e)} leg ${fmt(L)}→${fmt(H)}`, sl_distance: bar.close - (L - buf), tp_distance: tp - bar.close, bar_time: bar.open_time });
+        if (bar.low <= e && bar.close > e && bull && bar.low > L) out.push({ strategy: S, side: "BUY", why: `OTE 71.5% ${fmt(e)} leg ${fmt(L)}→${fmt(H)}`, sl_distance: bar.close - (L - buf), tp_distance: tp - bar.close, sl_price: L - buf, tp_price: tp, bar_time: bar.open_time });
         else rej(S, bar.low <= L ? "STRONG_LOW_BROKEN" : "NO_OTE_REJECTION");
       } else {
         const e = L + P.FIBO_OTE * leg, tp = L - P.FIBO_TP_EXT * leg;
-        if (bar.high >= e && bar.close < e && bear && bar.high < H) out.push({ strategy: S, side: "SELL", why: `OTE 71.5% ${fmt(e)} leg ${fmt(H)}→${fmt(L)}`, sl_distance: (H + buf) - bar.close, tp_distance: bar.close - tp, bar_time: bar.open_time });
+        if (bar.high >= e && bar.close < e && bear && bar.high < H) out.push({ strategy: S, side: "SELL", why: `OTE 71.5% ${fmt(e)} leg ${fmt(H)}→${fmt(L)}`, sl_distance: (H + buf) - bar.close, tp_distance: bar.close - tp, sl_price: H + buf, tp_price: tp, bar_time: bar.open_time });
         else rej(S, bar.high >= H ? "STRONG_HIGH_BROKEN" : "NO_OTE_REJECTION");
       }
     }

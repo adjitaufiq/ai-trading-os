@@ -64,13 +64,18 @@ export function openSignals(s: LabState, symbol: string, signals: readonly LabSi
     seen = { ...seen, [key]: true };
     const entry = sig.side === "BUY" ? q.ask : q.bid;
     const fibo = sig.tp_distance !== undefined;
+    const abs = fibo && sig.sl_price !== undefined && sig.tp_price !== undefined;
+    // Mode 12 absolute levels: fill must still sit strictly between SL and TP, else the signal is void (no chase).
+    if (abs && (sig.side === "BUY" ? !(entry > sig.sl_price! && entry < sig.tp_price!) : !(entry < sig.sl_price! && entry > sig.tp_price!))) continue;
     const copet = rrMode === "COPET" && !fibo;
     const usdPerPoint = cfg.lot * cfg.contract;
-    const d = copet ? COPET_PARAMS.SL_USD / usdPerPoint : sig.sl_distance;
+    const d = abs ? Math.abs(entry - sig.sl_price!) : copet ? COPET_PARAMS.SL_USD / usdPerPoint : sig.sl_distance;
     const tpD = fibo ? sig.tp_distance! : copet ? COPET_PARAMS.TP_USD / usdPerPoint : d * LAB_PARAMS.TP_R;
     const t: LabTrade = {
       id: `lab-${now}-${trades.length}`, strategy: sig.strategy, symbol, side: sig.side, why: sig.why, opened_at: now, signal_bar_time: sig.bar_time,
-      entry, sl: sig.side === "BUY" ? entry - d : entry + d, tp: sig.side === "BUY" ? entry + tpD : entry - tpD,
+      entry,
+      sl: abs ? sig.sl_price! : sig.side === "BUY" ? entry - d : entry + d,
+      tp: abs ? sig.tp_price! : sig.side === "BUY" ? entry + tpD : entry - tpD,
       lot: cfg.lot, status: "OPEN", mark: entry, pnl_usd: 0, closed_at: null, exit_price: null, exit_reason: null, version: STRATEGY_LAB_VERSION,
       rr_mode: rrMode, peak_pnl_usd: 0, trail_floor_usd: null,
       ...(fibo ? { exit_profile: "FIBO" as const, risk_usd: d * usdPerPoint } : {}),
