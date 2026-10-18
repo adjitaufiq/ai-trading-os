@@ -29,7 +29,7 @@ export function winLossStats(pnls: number[]): { avgWin: number | null; avgLoss: 
   return { avgWin, avgLoss, rr: avgWin != null && avgLoss ? avgWin / avgLoss : null };
 }
 
-export function buildLabReport(state: LabState, switches: ModeSwitches, now: number): LabReport {
+export function buildLabReport(state: LabState, switches: ModeSwitches, now: number, operator: OperatorSettings | null = null): LabReport {
   const board = leaderboard(state);
   const since = now - RECENT_WINDOW_MS;
   const rows: LabReportRow[] = board.rows.map((r) => {
