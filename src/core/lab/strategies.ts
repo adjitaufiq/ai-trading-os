@@ -11,7 +11,7 @@ export type LabStrategy = (typeof LAB_STRATEGIES)[number];
 export type LabSide = "BUY" | "SELL";
 
 export const LAB_LABELS: Record<LabStrategy, string> = {
-  TOUCH_SNR: "Sentuh S/R",
+  TOUCH_SNR: "1 · Sentuh S/R + EMA 9/21",
   EMA_CROSS: "EMA 9/21 Cross",
   SNR_PA: "S/R + Candle (Hammer/Star/Engulf)",
   DUAL_WALL: "S/R + EMA 21/50",

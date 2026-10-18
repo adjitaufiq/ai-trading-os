@@ -10,7 +10,10 @@ export const LEDGER_PROFILES: readonly LabRrMode[] = ["NORMAL", "COPET"];
 export const LEDGER_COSTS_NOTE = "Biaya broker (komisi, swap, slippage) belum dimodelkan; fill = Bid/Ask live. Tanpa aturan margin: saldo bisa negatif.";
 
 export type LedgerKey = `${LabStrategy}:${LabRrMode}`;
-export interface Ledger { readonly key: LedgerKey; readonly strategy: LabStrategy; readonly profile: LabRrMode; readonly start_balance: number; readonly started_at: number; readonly state: LabState }
+export interface Ledger { readonly key: LedgerKey; readonly strategy: LabStrategy; readonly profile: LabRrMode; readonly start_balance: number; readonly started_at: number; readonly state: LabState; readonly topups?: readonly LedgerTopup[] }
+export interface LedgerTopup { readonly id: string; readonly amount: number; readonly at: number; readonly note: string }
+/** One-off labelled capital injection: Mode 1 round 2 after the H1 EMA 9/21 compass. Never resets history. */
+export const TOUCH_TOPUP: Omit<LedgerTopup, "at"> = { id: "touch-h1-compass-r2", amount: 50, note: "Ronde 2 · Sentuh S/R + EMA 9/21" };
 export interface LedgerBook { readonly version: "lab-ledgers-v1"; readonly started_at: number; readonly ledgers: Readonly<Record<string, Ledger>> }
 
 export const ledgerKey = (strategy: LabStrategy, profile: LabRrMode): LedgerKey => `${strategy}:${profile}`;
@@ -31,6 +34,10 @@ export function upgradeBook(b: LedgerBook, now: number): LedgerBook {
   for (const strategy of LAB_STRATEGIES) for (const profile of LEDGER_PROFILES) {
     const key = ledgerKey(strategy, profile);
     if (!ledgers[key]) { ledgers[key] = { key, strategy, profile, start_balance: LEDGER_START_BALANCE, started_at: now, state: emptyLab() }; added = true; }
+  }
+  for (const profile of LEDGER_PROFILES) {
+    const key = ledgerKey("TOUCH_SNR", profile), l = ledgers[key];
+    if (l && !(l.topups ?? []).some((t) => t.id === TOUCH_TOPUP.id)) { ledgers[key] = { ...l, topups: [...(l.topups ?? []), { ...TOUCH_TOPUP, at: now }] }; added = true; }
   }
   return added ? { ...b, ledgers } : b;
 }
@@ -61,7 +68,7 @@ export interface LedgerStats {
   balance: number; equity: number; realized: number; floating: number; open: number;
   closed: number; wins: number; losses: number; breakeven: number; winRate: number | null;
   exits: { TP: number; SL: number; TRAIL: number; OTHER: number };
-  maxDrawdown: number; depletedAt: number | null;
+  maxDrawdown: number; depletedAt: number | null; topupTotal: number; capitalIn: number; topups: readonly LedgerTopup[];
   openLots: number; openNotionalUsd: number;
 }
 
@@ -72,6 +79,7 @@ export function ledgerStats(l: Ledger): LedgerStats {
   const closed = trades.filter((t) => t.status === "CLOSED").sort((a, b) => (a.closed_at ?? 0) - (b.closed_at ?? 0));
   const open = trades.filter((t) => t.status === "OPEN");
   const exits = { TP: 0, SL: 0, TRAIL: 0, OTHER: 0 };
+  const topups = l.topups ?? [], topupTotal = topups.reduce((a, t) => a + t.amount, 0);
   let bal = l.start_balance, peak = bal, maxDd = 0, depletedAt: number | null = null;
   for (const t of closed) {
     const r = t.exit_reason; if (r === "TP" || r === "SL" || r === "TRAIL") exits[r]++; else exits.OTHER++;
@@ -83,7 +91,7 @@ export function ledgerStats(l: Ledger): LedgerStats {
   const notional = (t: LabTrade) => t.lot * (LAB_SYMBOLS[t.symbol]?.contract ?? 1) * t.mark;
   return {
     key: l.key, strategy: l.strategy, profile: l.profile, start_balance: l.start_balance, started_at: l.started_at,
-    balance: l.start_balance + realized, equity: l.start_balance + realized + floating, realized, floating, open: open.length,
+    balance: l.start_balance + topupTotal + realized, equity: l.start_balance + topupTotal + realized + floating, topupTotal, capitalIn: l.start_balance + topupTotal, topups, realized, floating, open: open.length,
     closed: closed.length, wins, losses, breakeven: closed.length - wins - losses,
     winRate: wins + losses ? wins / (wins + losses) : null, exits, maxDrawdown: maxDd, depletedAt,
     openLots: open.reduce((a, t) => a + t.lot, 0), openNotionalUsd: open.reduce((a, t) => a + notional(t), 0),
