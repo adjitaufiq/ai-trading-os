@@ -8,6 +8,8 @@ import type { TechBar } from "@/core/technical/indicators";
 import { evaluateLab } from "@/core/lab/strategies";
 import { emptyLab, markSymbol, openSignals, type LabState } from "@/core/lab/labLedger";
 import { bookMark, bookOpen, createBook, upgradeBook, type LedgerBook } from "@/core/lab/isolatedLedgers";
+import { OPERATOR_KEY, DEFAULT_OPERATOR, closeManual, gateState, parseOperator, type OperatorSettings } from "@/core/lab/operatorControl";
+import type { LabQuote } from "@/core/lab/labLedger";
 import { useLabCloudSync, type LabSyncStatus } from "./use-lab-cloud-sync";
 
 const KEY = "strategy-lab-v1";
@@ -19,7 +21,7 @@ function toBars(items: readonly BridgeBar[], tf: keyof typeof TF_MS): TechBar[] 
   return items.slice(0, -1).map((b) => ({ open_time: b.raw_time_s * 1000, close_time: b.raw_time_s * 1000 + TF_MS[tf], available_at: b.raw_time_s * 1000 + TF_MS[tf], open: b.open, high: b.high, low: b.low, close: b.close }));
 }
 
-export interface LabRuntime { state: LabState; lastBarAt: Record<string, number>; error: string | null; sync: LabSyncStatus; book: LedgerBook | null; reset: () => void; switches: ModeSwitches; setSwitches: (s: ModeSwitches) => void }
+export interface LabRuntime { state: LabState; lastBarAt: Record<string, number>; error: string | null; sync: LabSyncStatus; book: LedgerBook | null; reset: () => void; switches: ModeSwitches; setSwitches: (s: ModeSwitches) => void; operator: OperatorSettings; setOperator: (o: OperatorSettings) => void; closeTrades: (ids: readonly string[] | "ALL") => void }
 
 export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly string[]): LabRuntime {
   const [state, setState] = useState<LabState>(emptyLab);
@@ -29,12 +31,17 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
   const [book, setBook] = useState<LedgerBook | null>(null);
   const [switches, setSwitchesState] = useState<ModeSwitches>(defaultSwitches);
   const swRef = useRef(switches); swRef.current = switches;
+  const [operator, setOperatorState] = useState<OperatorSettings>(DEFAULT_OPERATOR);
+  const opRef = useRef(operator); opRef.current = operator;
+  const stateRef = useRef(state); stateRef.current = state;
+  const quotesRef = useRef<Record<string, LabQuote>>({});
   const { sync, rotate } = useLabCloudSync(state, hydrated);
 
   useEffect(() => {
     try { const raw = localStorage.getItem(KEY); if (raw) setState({ ...emptyLab(), ...JSON.parse(raw) }); } catch { /* corrupt ⇒ empty */ }
     try { const raw = localStorage.getItem(BOOK_KEY); setBook(raw ? upgradeBook(JSON.parse(raw), Date.now()) : createBook(Date.now())); } catch { setBook(createBook(Date.now())); }
     try { const raw = localStorage.getItem(MODE_SWITCH_KEY); setSwitchesState(parseSwitches(raw ? JSON.parse(raw) : null)); } catch { /* defaults */ }
+    try { const raw = localStorage.getItem(OPERATOR_KEY); setOperatorState(parseOperator(raw ? JSON.parse(raw) : null)); } catch { /* defaults */ }
     setHydrated(true);
   }, []);
   useEffect(() => { if (hydrated) { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* quota */ } } }, [state, hydrated]);
@@ -51,7 +58,7 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
     };
     const tickLoop = async () => {
       for (const s of symbols) {
-        try { const q = await quote(s); if (q && active) { const now = Date.now(); setState((st) => markSymbol(st, s, q, now)); setBook((b) => (b ? bookMark(b, s, q, now) : b)); } } catch { /* skip */ }
+        try { const q = await quote(s); if (q && active) { quotesRef.current[s] = q; const now = Date.now(); setState((st) => markSymbol(st, s, q, now)); setBook((b) => (b ? bookMark(b, s, q, now) : b)); } } catch { /* skip */ }
       }
     };
     const barLoop = async () => {
@@ -72,8 +79,10 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
           if (!last || last === prev) continue;
           const q = await quote(s);
           if (!q || !active) continue;
-          const signals = filterEnabled(evaluateLab(m5, m15, h1), swRef.current);
           const now = Date.now();
+          quotesRef.current[s] = q;
+          // Operator circuit breaker: paused / daily target / daily max loss ⇒ no new Lab positions (open ones keep running).
+          const signals = gateState(stateRef.current, opRef.current, now) === "RUNNING" ? filterEnabled(evaluateLab(m5, m15, h1), swRef.current) : [];
           setState((st) => openSignals(st, s, signals, q, now, "COPET"));
           setBook((b) => (b ? bookOpen(b, s, signals, q, now) : b));
           setLastBarAt((o) => ({ ...o, [s]: last }));
@@ -87,5 +96,7 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
   }, [client, symbols, hydrated]);
 
   return { state, lastBarAt, error, sync, book, reset: () => { rotate(); setState(emptyLab()); }, switches,
-    setSwitches: (sw) => { setSwitchesState(sw); try { localStorage.setItem(MODE_SWITCH_KEY, JSON.stringify(sw)); } catch { /* quota */ } } };
+    setSwitches: (sw) => { setSwitchesState(sw); try { localStorage.setItem(MODE_SWITCH_KEY, JSON.stringify(sw)); } catch { /* quota */ } },
+    operator, setOperator: (o) => { setOperatorState(o); try { localStorage.setItem(OPERATOR_KEY, JSON.stringify(o)); } catch { /* quota */ } },
+    closeTrades: (ids) => { const now = Date.now(); setState((st) => closeManual(st, ids, quotesRef.current, now)); } };
 }
