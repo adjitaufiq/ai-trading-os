@@ -2,6 +2,7 @@
 import { LAB_LABELS, type LabStrategy } from "./strategies";
 import { leaderboard, LAB_START_BALANCE, type LabRow, type LabState } from "./labLedger";
 import type { ModeSwitches } from "./modeSwitch";
+import { todayRealized, wibDayStart, type OperatorSettings } from "./operatorControl";
 
 export const RECENT_WINDOW_MS = 3 * 3600 * 1000;
 export const STACKING_OPEN_THRESHOLD = 2;
@@ -13,6 +14,8 @@ export interface LabReport {
   rows: LabReportRow[]; off: LabStrategy[]; leaders: LabReportRow[]; worstOn: LabReportRow | null; stacking: LabReportRow[];
   rrCounts: { NORMAL: number; COPET: number };
   avgWin: number | null; avgLoss: number | null; rr: number | null; maxDd: number; maxDdPct: number;
+  today: { pnl: number; trades: number; wins: number };
+  operator: OperatorSettings | null;
 }
 
 /** Realized-balance drawdown: closed trades in close order, peak → lowest later trough (USD, ≥0). */
@@ -51,6 +54,8 @@ export function buildLabReport(state: LabState, switches: ModeSwitches, now: num
     leaders: onRows.filter((r) => r.realized > 0).slice(0, 2), worstOn: losers[0] ?? null,
     stacking: rows.filter((r) => r.open > STACKING_OPEN_THRESHOLD), rrCounts: rr,
     ...winLossStats(allClosed), maxDd: dd.usd, maxDdPct: dd.pct,
+    today: (() => { const st = wibDayStart(now); const c = state.trades.filter((t) => t.status === "CLOSED" && (t.closed_at ?? 0) >= st); return { pnl: todayRealized(state, now), trades: c.length, wins: c.filter((t) => t.pnl_usd > 0).length }; })(),
+    operator,
   };
 }
 
@@ -79,7 +84,8 @@ export function formatLabReport(r: LabReport, header?: string[] | string): strin
     "",
     "📈 STATUS GLOBAL",
     `• Balance $${r.balance.toFixed(2)} · Equity $${r.equity.toFixed(2)}`,
-    `• Realized ${usd(r.realized)} · Floating ${usd(r.floating)}`,
+    `• P/L Hari Ini (WIB, sejak 00:00): ${usd(r.today.pnl)} · ${r.today.trades} closed · ${r.today.wins}W/${r.today.trades - r.today.wins}L`,
+    `• Realized All-Time (sejak $500): ${usd(r.realized)} · Floating ${usd(r.floating)}`,
     `• Open ${r.open} · Closed ${r.closed}`,
     `• AvgW ${money(r.avgWin)} · AvgL ${money(r.avgLoss)} · RR ${ratio(r.rr)}`,
     `• Max DD -$${r.maxDd.toFixed(2)} (${(r.maxDdPct * 100).toFixed(1)}% dari peak, realized)`,
@@ -98,7 +104,12 @@ export function formatLabReport(r: LabReport, header?: string[] | string): strin
     "• Karakter market: tidak dihitung otomatis (cek chart)",
     "",
     "⚙️ PARAMETER",
-    "• Max open per mode: tanpa batas",
+    ...(r.operator ? [
+      `• Maks entry total bersamaan: ${r.operator.maxOpenTotal}`,
+      `• Maks entry per mode: ${[...new Set(Object.values(r.operator.maxOpenPerMode))].length === 1 ? Object.values(r.operator.maxOpenPerMode)[0] : r.rows.map((x) => `${LAB_LABELS[x.strategy].split(" ")[0]}=${r.operator!.maxOpenPerMode[x.strategy]}`).join(", ")}`,
+      `• Target harian +$${r.operator.targetUsd} · Batas rugi −$${r.operator.maxLossUsd} · ${r.operator.paused ? "PAUSED" : "aktif"}`,
+    ] : ["• Limit entry: tidak tersedia"]),
+    "• Data dari browser pengirim ini (saklar & limit per perangkat)",
     `• Exit profile: NORMAL ${r.rrCounts.NORMAL} · COPET ${r.rrCounts.COPET} trade`,
   ];
   return L.join("\n");

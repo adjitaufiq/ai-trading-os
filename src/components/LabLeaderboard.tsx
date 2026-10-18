@@ -19,7 +19,7 @@ export function LabLeaderboard({ lab }: { lab: LabRuntime }) {
   const [now, setNow] = useState(() => Date.now());
   const [copied, setCopied] = useState(false);
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(id); }, []);
-  const r = buildLabReport(lab.state, lab.switches, now);
+  const r = buildLabReport(lab.state, lab.switches, now, lab.operator);
   const send = useServerFn(sendLabReportTelegram);
   const [tgOn, setTgOn] = useState(false);
   const [tgNote, setTgNote] = useState<string>("");
@@ -33,7 +33,7 @@ export function LabLeaderboard({ lab }: { lab: LabRuntime }) {
       if (Number(localStorage.getItem(TG_LAST_KEY) ?? 0) >= hour) return;
       localStorage.setItem(TG_LAST_KEY, String(hour));
       const at = Date.now();
-      const text = formatLabReport(buildLabReport(labRef.current.state, labRef.current.switches, at), "Laporan Otomatis 1 Jam");
+      const text = formatLabReport(buildLabReport(labRef.current.state, labRef.current.switches, at, labRef.current.operator), "Laporan Otomatis 1 Jam");
       try { const res = await send({ data: { text } }); setTgNote(`${res.status === "SENT" ? "Terkirim" : res.status} ${new Date(at).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta", hour12: false })} WIB`); }
       catch (e) { setTgNote(`Gagal: ${(e as Error).message}`); }
     };
@@ -44,13 +44,13 @@ export function LabLeaderboard({ lab }: { lab: LabRuntime }) {
   const sendNow = async () => {
     setSending(true);
     const at = Date.now();
-    const text = formatLabReport(buildLabReport(lab.state, lab.switches, at), "Laporan Manual");
+    const text = formatLabReport(buildLabReport(lab.state, lab.switches, at, lab.operator), "Laporan Manual");
     try { const res = await send({ data: { text } }); setTgNote(`${res.status === "SENT" ? "Terkirim" : res.status}${res.note ? ` (${res.note})` : ""} ${new Date(at).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta", hour12: false })} WIB`); }
     catch (e) { setTgNote(`Gagal: ${(e as Error).message}`); }
     finally { setSending(false); }
   };
   const copy = async () => {
-    try { await navigator.clipboard.writeText(formatLabReport(buildLabReport(lab.state, lab.switches, Date.now()))); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    try { await navigator.clipboard.writeText(formatLabReport(buildLabReport(lab.state, lab.switches, Date.now(), lab.operator))); setCopied(true); setTimeout(() => setCopied(false), 2000); }
     catch { alert("Gagal menyalin — izin clipboard ditolak browser."); }
   };
   return <div className="mt-3 rounded border border-border p-3" data-testid="lab-leaderboard">
