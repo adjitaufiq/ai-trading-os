@@ -5,6 +5,7 @@ import { LAB_LABELS, LAB_STRATEGIES } from "@/core/lab/strategies";
 import { allSwitches } from "@/core/lab/modeSwitch";
 import { LAB_START_BALANCE, LAB_SYMBOLS, leaderboard } from "@/core/lab/labLedger";
 import { LabLedgersPanel } from "./LabLedgersPanel";
+import { LabLeaderboard } from "./LabLeaderboard";
 import type { LabRuntime } from "@/hooks/use-strategy-lab";
 
 const usd = (v: number) => `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
@@ -41,6 +42,7 @@ export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
         <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold ${lab.switches[m] ? "bg-bull/15 text-bull" : "bg-muted text-muted-foreground"}`}>{lab.switches[m] ? "ON" : "OFF"}</span></label>)}</div>
     </div>; })()}
     {lab.error ? <p className="mt-2 text-xs text-warn">{lab.error}</p> : null}
+    <LabLeaderboard lab={lab} />
     <div className="mt-3 space-y-2">{board.rows.map((r, i) => <div key={r.strategy} className="rounded border border-border p-3">
       <div className="text-sm font-semibold break-words">#{i + 1} {LAB_LABELS[r.strategy]}{lab.switches[r.strategy] ? null : <span className="ml-2 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">OFF · istirahat</span>}</div>
       <div className="mt-2 grid grid-cols-3 gap-2 text-center">
