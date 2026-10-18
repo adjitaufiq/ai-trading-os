@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLabReport, formatLabReport } from "@/core/lab/labReport";
+import { buildLabReport, formatLabReport, maxDrawdown, winLossStats } from "@/core/lab/labReport";
 import { allSwitches } from "@/core/lab/modeSwitch";
 import type { LabTrade } from "@/core/lab/labLedger";
 
@@ -31,5 +31,11 @@ describe("lab report", () => {
   });
   it("labels the copied text as paper simulation", () => {
     expect(formatLabReport(buildLabReport(state, sw, NOW))).toContain("SIMULASI PAPER");
+  });
+  it("computes avg win/loss and actual R:R", () => {
+    expect(winLossStats([2, 4, -5, -5])).toEqual({ avgWin: 3, avgLoss: 5, rr: 0.6 });
+  });
+  it("max drawdown is peak to lowest later trough of realized balance", () => {
+    expect(maxDrawdown([5, -3, -4, 10, -2], 500).usd).toBe(7);
   });
 });
