@@ -72,7 +72,7 @@ describe("ledgers for modes 6–10", () => {
     const old = { ...fresh, ledgers: oldLedgers };
     const traded = bookOpen(old, "BTCUSD", [{ strategy: "TOUCH_SNR", side: "BUY", why: "t", sl_distance: 200, bar_time: 1 }], { bid: 1000, ask: 1000 }, 2);
     const up = upgradeBook(traded, 5);
-    expect(bookStats(up)).toHaveLength(22);
+    expect(bookStats(up)).toHaveLength(26);
     expect(up.ledgers["TOUCH_SNR:COPET"]!.state).toBe(traded.ledgers["TOUCH_SNR:COPET"]!.state);
     expect(up.ledgers["ATR_EXPANSION:COPET"]!.start_balance).toBe(50);
   });
