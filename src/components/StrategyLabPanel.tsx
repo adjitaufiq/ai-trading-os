@@ -27,7 +27,7 @@ export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
       {lab.sync.status === "LOGIN_REQUIRED" ? <Button asChild variant="outline" size="sm"><Link to="/auth">Masuk untuk sinkron</Link></Button> : null}
       {lab.sync.error ? <span className="w-full break-words text-warn">{lab.sync.error}</span> : null}
     </div>
-    <p className="mt-1 text-xs text-muted-foreground">Harga & candle asli MT5, posisi virtual (bukan order MT5). Modal ${LAB_START_BALANCE}, lot XAU {LAB_SYMBOLS["XAUUSD"]!.lot} · BTC {LAB_SYMBOLS["BTCUSD"]!.lot}, tanpa batas posisi. Jalan selama dashboard terbuka.</p>
+    <p className="mt-1 text-xs text-muted-foreground">Harga & candle asli MT5, posisi virtual (bukan order MT5). Modal ${LAB_START_BALANCE}, lot XAU {LAB_SYMBOLS["XAUUSD"]!.lot} · BTC {LAB_SYMBOLS["BTCUSD"]!.lot}, batas entry diatur di Setting mode. Jalan selama dashboard terbuka.</p>
     <div className="mt-3 grid grid-cols-2 gap-2">
       <div className="rounded border border-border p-3"><div className="text-xs text-muted-foreground">Balance</div><div className={`font-mono text-lg font-semibold ${tone(board.balance - LAB_START_BALANCE)}`}>${board.balance.toFixed(2)}</div><div className={`text-xs font-mono ${tone(board.balance - LAB_START_BALANCE)}`}>Realized {usd(board.balance - LAB_START_BALANCE)}</div></div>
       <div className="rounded border border-border p-3"><div className="text-xs text-muted-foreground">Equity</div><div className={`font-mono text-lg font-semibold ${tone(board.equity - LAB_START_BALANCE)}`}>${board.equity.toFixed(2)}</div><div className={`text-xs font-mono ${tone(board.equity - board.balance)}`}>Floating {usd(board.equity - board.balance)}</div></div>
