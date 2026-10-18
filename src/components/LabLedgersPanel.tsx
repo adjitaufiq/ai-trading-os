@@ -8,8 +8,8 @@ export function LabLedgersPanel({ book }: { book: LedgerBook | null }) {
   if (!book) return null;
   const stats = bookStats(book);
   const tone = (v: number) => (v >= 0 ? "text-bull" : "text-bear");
-  return <section aria-label="Ledger terpisah" className="mt-4" data-testid="lab-ledgers">
-    <h4 className="text-xs font-semibold uppercase text-muted-foreground">Ledger terpisah · ${LEDGER_START_BALANCE} per mode × exit · VIRTUAL STRATEGY LAB</h4>
+  return <details aria-label="Ledger terpisah" className="mt-4 rounded border border-border p-2" data-testid="lab-ledgers">
+    <summary className="cursor-pointer select-none text-xs font-semibold uppercase text-muted-foreground">👁️ Ledger terpisah ({stats.length} buku NORMAL vs COPET) · ${LEDGER_START_BALANCE} per mode × exit — klik buka/tutup</summary>
     <p className="mt-1 text-xs text-muted-foreground break-words">Bukan akun DEMO broker. Mulai {time(book.started_at)}. {LEDGER_COSTS_NOTE}</p>
     <div className="mt-2 space-y-2">{stats.map((s) => <div key={s.key} className="rounded border border-border p-3 text-xs">
       <div className="flex flex-wrap items-center justify-between gap-1"><span className="text-sm font-semibold break-words">Mode {LAB_LABELS[s.strategy]}</span><span className="rounded bg-muted px-2 py-0.5 font-mono">{s.profile}</span></div>
@@ -28,5 +28,5 @@ export function LabLedgersPanel({ book }: { book: LedgerBook | null }) {
       </div>
       {s.depletedAt ? <div className="mt-1 text-bear">Saldo habis pada {time(s.depletedAt)} — tidak direset otomatis.</div> : null}
     </div>)}</div>
-  </section>;
+  </details>;
 }
