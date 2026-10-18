@@ -26,7 +26,7 @@ export interface LabTrade {
   readonly pnl_usd: number;
   readonly closed_at: number | null;
   readonly exit_price: number | null;
-  readonly exit_reason: "SL" | "TP" | "TRAIL" | null;
+  readonly exit_reason: "SL" | "TP" | "TRAIL" | "MANUAL" | null;
   readonly version: string;
   /** Exit profile. COPET = 1:1 fixed-dollar TP/SL with $1 step trailing lock. Absent on old trades ⇒ NORMAL. */
   readonly rr_mode?: LabRrMode;
