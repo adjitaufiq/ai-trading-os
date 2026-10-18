@@ -1,7 +1,8 @@
 import { Swords } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { LAB_LABELS, LAB_STRATEGIES } from "@/core/lab/strategies";
+import { LAB_LABELS, LAB_STRATEGIES, type LabStrategy } from "@/core/lab/strategies";
+import { LAB_MARKETS, type LabMarket } from "@/core/lab/operatorControl";
 import { allSwitches } from "@/core/lab/modeSwitch";
 import { LAB_START_BALANCE, LAB_SYMBOLS, leaderboard } from "@/core/lab/labLedger";
 import { LabLedgersPanel } from "./LabLedgersPanel";
@@ -50,23 +51,29 @@ export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
     </div>)}</div>
     <LabLedgersPanel book={lab.book} />
     {(() => { const on = LAB_STRATEGIES.filter((m) => lab.switches[m]).length; const op = lab.operator;
-      const openBy = (m: string) => lab.state.trades.filter((t) => t.status === "OPEN" && t.strategy === m).length;
+      const openBy = (m: string, sym: string) => lab.state.trades.filter((t) => t.status === "OPEN" && t.strategy === m && t.symbol === sym).length;
       const openTotal = lab.state.trades.filter((t) => t.status === "OPEN").length;
       const num = (v: string) => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n >= 1 ? n : null; };
+      const setQuota = (m: LabStrategy, sym: LabMarket, n: number) => lab.setOperator({ ...op, marketQuota: { ...op.marketQuota, [m]: { ...op.marketQuota[m], [sym]: n } } });
+      const MK: Record<LabMarket, string> = { XAUUSD: "🟡 XAU", BTCUSD: "🟠 BTC" };
       return <div className="mt-3 rounded border border-border p-3" data-testid="lab-mode-switches">
       <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold uppercase text-muted-foreground">Setting mode · {on} ON · {LAB_STRATEGIES.length - on} OFF</span>
         <span className="flex gap-1"><Button size="sm" variant="outline" onClick={() => lab.setSwitches(allSwitches(true))}>Select All</Button><Button size="sm" variant="outline" onClick={() => lab.setSwitches(allSwitches(false))}>Deselect All</Button></span></div>
       <label className="mt-2 flex flex-wrap items-center gap-2 text-xs">Maks entry total bersamaan
         <input type="number" min={1} inputMode="numeric" className="w-16 rounded border border-border bg-background px-2 py-1 font-mono" value={op.maxOpenTotal} onChange={(e) => { const n = num(e.target.value); if (n) lab.setOperator({ ...op, maxOpenTotal: n }); }} />
         <span className={`rounded px-1.5 py-0.5 font-mono text-[11px] font-semibold ${openTotal >= op.maxOpenTotal ? "bg-bear/15 text-bear" : "bg-bull/15 text-bull"}`}>Entry aktif {openTotal} / {op.maxOpenTotal}</span></label>
-      <p className="mt-1 text-[11px] text-muted-foreground">Mode OFF atau jatah entry penuh tidak buka posisi baru; posisi yang sudah open tetap jalan sampai selesai.</p>
-      <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-flow-col sm:grid-cols-2 sm:grid-rows-6">{LAB_STRATEGIES.map((m) => <div key={m} className="flex items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted">
-        <input type="checkbox" aria-label={`Mode ${LAB_LABELS[m]}`} className="h-4 w-4 accent-primary" checked={lab.switches[m]} onChange={(e) => lab.setSwitches({ ...lab.switches, [m]: e.target.checked })} />
-        <span className="flex-1 break-words">Mode {LAB_LABELS[m]}</span>
-        <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold ${lab.switches[m] ? "bg-bull/15 text-bull" : "bg-muted text-muted-foreground"}`}>{lab.switches[m] ? "ON" : "OFF"}</span>
-        <label className="flex items-center gap-1 text-[10px] text-muted-foreground">Maks entry
-          <input type="number" min={1} inputMode="numeric" disabled={!lab.switches[m]} className="w-12 rounded border border-border bg-background px-1 py-0.5 font-mono text-xs text-foreground disabled:opacity-40" value={op.maxOpenPerMode[m]} onChange={(e) => { const n = num(e.target.value); if (n) lab.setOperator({ ...op, maxOpenPerMode: { ...op.maxOpenPerMode, [m]: n } }); }} />
-          <span className="font-mono">{openBy(m)}/{op.maxOpenPerMode[m]}</span></label></div>)}</div>
+      <p className="mt-1 text-[11px] text-muted-foreground">Tiap mode punya jatah peluru per market (XAU & BTC jalan bareng). Mode OFF, market dimatikan, atau jatah penuh tidak buka posisi baru; posisi yang sudah open tetap jalan sampai selesai.</p>
+      <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">{LAB_STRATEGIES.map((m) => <div key={m} className="rounded border border-border px-2 py-1.5 text-xs">
+        <div className="flex items-center gap-2">
+          <input type="checkbox" aria-label={`Mode ${LAB_LABELS[m]}`} className="h-4 w-4 accent-primary" checked={lab.switches[m]} onChange={(e) => lab.setSwitches({ ...lab.switches, [m]: e.target.checked })} />
+          <span className="flex-1 break-words">Mode {LAB_LABELS[m]}</span>
+          <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold ${lab.switches[m] ? "bg-bull/15 text-bull" : "bg-muted text-muted-foreground"}`}>{lab.switches[m] ? "ON" : "OFF"}</span></div>
+        <div className="mt-1 flex flex-wrap gap-2 pl-6">{LAB_MARKETS.map((sym) => { const q = op.marketQuota[m]?.[sym] ?? 0; const n = openBy(m, sym); const full = q > 0 && n >= q;
+          return <label key={sym} className={`flex items-center gap-1 text-[10px] ${lab.switches[m] ? "" : "opacity-40"}`}>
+            <input type="checkbox" aria-label={`Mode ${LAB_LABELS[m]} ${sym}`} disabled={!lab.switches[m]} className="h-3.5 w-3.5 accent-primary" checked={q > 0} onChange={(e) => setQuota(m, sym, e.target.checked ? 1 : 0)} />
+            <span className="font-semibold">{MK[sym]}</span>
+            <input type="number" min={1} inputMode="numeric" aria-label={`Jatah ${sym}`} disabled={!lab.switches[m] || q === 0} className="w-10 rounded border border-border bg-background px-1 py-0.5 font-mono text-xs disabled:opacity-40" value={q || ""} onChange={(e) => { const v = num(e.target.value); if (v) setQuota(m, sym, v); }} />
+            <span className={`rounded px-1 font-mono ${q === 0 ? "text-muted-foreground" : full ? "bg-bear/15 text-bear" : "bg-bull/15 text-bull"}`}>{q === 0 ? "off" : `${n}/${q}${full ? " penuh" : ""}`}</span></label>; })}</div></div>)}</div>
     </div>; })()}
   </section>;
 }

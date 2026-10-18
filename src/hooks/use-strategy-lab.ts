@@ -83,7 +83,7 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
           quotesRef.current[s] = q;
           // Operator circuit breaker: paused / daily target / daily max loss ⇒ no new Lab positions (open ones keep running).
           // Entry limits (per mode + global) count OPEN entries of the shared journal before opening.
-          const signals = gateState(stateRef.current, opRef.current, now) === "RUNNING" ? capEntries(filterEnabled(evaluateLab(m5, m15, h1), swRef.current), stateRef.current, opRef.current) : [];
+          const signals = gateState(stateRef.current, opRef.current, now) === "RUNNING" ? capEntries(filterEnabled(evaluateLab(m5, m15, h1), swRef.current), stateRef.current, opRef.current, s) : [];
           setState((st) => openSignals(st, s, signals, q, now, "COPET"));
           setBook((b) => (b ? bookOpen(b, s, signals, q, now) : b));
           setLastBarAt((o) => ({ ...o, [s]: last }));
