@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { LAB_LABELS } from "@/core/lab/strategies";
-import { gateState, todayRealized } from "@/core/lab/operatorControl";
+import { LAB_MARKETS, gateState, todayRealized } from "@/core/lab/operatorControl";
+import { cooldownLeftMs } from "@/core/lab/safetyRiders";
 import type { LabRuntime } from "@/hooks/use-strategy-lab";
 
 const usd = (v: number) => `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
@@ -35,6 +36,15 @@ export function LabOperatorConsole({ lab }: { lab: LabRuntime }) {
       <Button size="sm" variant="destructive" disabled={!open.length} onClick={() => { if (confirm(`Tutup ${open.length} posisi paper sekarang?`)) lab.closeTrades("ALL"); }}>🚨 Close All ({open.length})</Button>
     </div>
     <p className="mt-1 text-[11px] text-muted-foreground">Saat pause/target/rem aktif, bot tidak buka posisi baru; posisi open tetap jalan kecuali ditutup manual. Reset otomatis jam 00.00 WIB.</p>
+    <div className="mt-2 rounded border border-border p-2 text-xs" data-testid="safety-riders">
+      <div className="font-semibold text-muted-foreground">🛡️ Safety Riders</div>
+      {LAB_MARKETS.map((m) => { const left = cooldownLeftMs(lab.state, m, now); const b = lab.safety[m]; return <div key={m} className="mt-1 flex flex-wrap items-center gap-2">
+        <span className="font-mono">{m === "XAUUSD" ? "🟡 XAU" : "🟠 BTC"}</span>
+        {left > 0 ? <span className="rounded bg-bear/15 px-1.5 text-bear">⏳ Cooldown pasca SL {Math.floor(left / 60000)}:{String(Math.floor((left % 60000) / 1000)).padStart(2, "0")}</span> : <span className="rounded bg-bull/15 px-1.5 text-bull">Aman</span>}
+        {b && b !== "BLOCK_POST_SL_COOLDOWN" ? <span className="rounded bg-bear/15 px-1.5 text-bear">{b === "BLOCK_SPIKE_VOLATILITY" ? "⚡ Candle spike — entry ditahan" : "🐋 Jarum whale — arah jarum ditolak"}</span> : null}
+      </div>; })}
+      <p className="mt-1 text-[11px] text-muted-foreground">Habis SL: puasa 15 menit per market. Candle &gt; 1.8× ATR: tahan entry. Jarum ≥ 60%: jangan kejar arah jarum.</p>
+    </div>
     {open.length ? <ul className="mt-2 divide-y divide-border text-xs">{open.slice(0, 30).map((t) => <li key={t.id} className="flex items-center justify-between gap-2 py-1.5">
       <span className="min-w-0 break-words"><b className={t.side === "BUY" ? "text-bull" : "text-bear"}>{t.symbol} {t.side}</b> · Mode {LAB_LABELS[t.strategy]} · <span className={`font-mono ${t.pnl_usd >= 0 ? "text-bull" : "text-bear"}`}>{usd(t.pnl_usd)}</span></span>
       <Button size="sm" variant="outline" onClick={() => lab.closeTrades([t.id])}>Close</Button>
