@@ -39,3 +39,17 @@ describe("lab report", () => {
     expect(maxDrawdown([5, -3, -4, 10, -2], 500).usd).toBe(7);
   });
 });
+
+describe("lab report daily + limits", () => {
+  it("separates today WIB P/L from all-time and prints real limits", async () => {
+    const { DEFAULT_OPERATOR } = await import("@/core/lab/operatorControl");
+    const now = Date.UTC(2026, 9, 18, 18, 0); // 01:00 WIB 19 Oct
+    const tr = [t("y", "FAST_BREAKOUT", -10, Date.UTC(2026, 9, 18, 16, 0)), t("z", "FAST_BREAKOUT", 4, Date.UTC(2026, 9, 18, 17, 30))];
+    const r = buildLabReport({ trades: tr, seen: {}, started_at: 0 }, allSwitches(true), now, { ...DEFAULT_OPERATOR, maxOpenTotal: 3 });
+    expect(r.today.pnl).toBe(4);
+    expect(r.realized).toBe(-6);
+    const txt = formatLabReport(r);
+    expect(txt).toContain("Maks entry total bersamaan: 3");
+    expect(txt).not.toContain("tanpa batas");
+  });
+});
