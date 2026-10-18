@@ -44,7 +44,7 @@ export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
     {lab.error ? <p className="mt-2 text-xs text-warn">{lab.error}</p> : null}
     <LabLeaderboard lab={lab} />
     <div className="mt-3 space-y-2">{board.rows.map((r, i) => <div key={r.strategy} className="rounded border border-border p-3">
-      <div className="text-sm font-semibold break-words">#{i + 1} {LAB_LABELS[r.strategy]}{lab.switches[r.strategy] ? null : <span className="ml-2 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">OFF · istirahat</span>}</div>
+      <div className="text-sm font-semibold break-words">Mode {LAB_LABELS[r.strategy]}{lab.switches[r.strategy] ? null : <span className="ml-2 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">OFF · istirahat</span>}</div>
       <div className="mt-2 grid grid-cols-3 gap-2 text-center">
         <div><div className="text-[11px] text-muted-foreground">Tembakan</div><div className="font-mono text-base font-semibold">{r.trades}</div></div>
         <div><div className="text-[11px] text-muted-foreground">Win / Lose</div><div className="font-mono text-base font-semibold"><span className="text-bull">{r.wins}</span> / <span className="text-bear">{r.losses}</span></div><div className="text-[11px] text-muted-foreground">WR {r.winRate == null ? "—" : `${Math.round(r.winRate * 100)}%`}</div></div>
