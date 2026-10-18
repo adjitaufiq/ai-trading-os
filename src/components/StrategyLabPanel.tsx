@@ -1,7 +1,8 @@
 import { Swords } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { LAB_LABELS } from "@/core/lab/strategies";
+import { LAB_LABELS, LAB_STRATEGIES } from "@/core/lab/strategies";
+import { allSwitches } from "@/core/lab/modeSwitch";
 import { LAB_START_BALANCE, LAB_SYMBOLS, leaderboard } from "@/core/lab/labLedger";
 import { LabLedgersPanel } from "./LabLedgersPanel";
 import type { LabRuntime } from "@/hooks/use-strategy-lab";
@@ -30,9 +31,18 @@ export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
       <div className="rounded border border-border p-3"><div className="text-xs text-muted-foreground">Equity</div><div className={`font-mono text-lg font-semibold ${tone(board.equity - LAB_START_BALANCE)}`}>${board.equity.toFixed(2)}</div><div className={`text-xs font-mono ${tone(board.equity - board.balance)}`}>Floating {usd(board.equity - board.balance)}</div></div>
     </div>
     {(() => { const t = board.rows.reduce((a, r) => ({ n: a.n + r.trades, w: a.w + r.wins, l: a.l + r.losses, o: a.o + r.open }), { n: 0, w: 0, l: 0, o: 0 }); return <div className="mt-2 flex flex-wrap gap-2 text-xs"><span className="rounded bg-muted px-2 py-1">Tembakan selesai: <b>{t.n}</b></span><span className="rounded bg-bull/15 px-2 py-1 text-bull">Win <b>{t.w}</b></span><span className="rounded bg-bear/15 px-2 py-1 text-bear">Lose <b>{t.l}</b></span><span className="rounded bg-muted px-2 py-1">Masih open: <b>{t.o}</b></span></div>; })()}
+    {(() => { const on = LAB_STRATEGIES.filter((m) => lab.switches[m]).length; return <div className="mt-3 rounded border border-border p-3" data-testid="lab-mode-switches">
+      <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold uppercase text-muted-foreground">Saklar mode · {on} ON · {LAB_STRATEGIES.length - on} OFF</span>
+        <span className="flex gap-1"><Button size="sm" variant="outline" onClick={() => lab.setSwitches(allSwitches(true))}>Select All</Button><Button size="sm" variant="outline" onClick={() => lab.setSwitches(allSwitches(false))}>Deselect All</Button></span></div>
+      <p className="mt-1 text-[11px] text-muted-foreground">Mode OFF tidak buka posisi baru; posisi yang sudah open tetap jalan sampai selesai.</p>
+      <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">{LAB_STRATEGIES.map((m) => <label key={m} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted">
+        <input type="checkbox" className="h-4 w-4 accent-primary" checked={lab.switches[m]} onChange={(e) => lab.setSwitches({ ...lab.switches, [m]: e.target.checked })} />
+        <span className="flex-1 break-words">{LAB_LABELS[m]}</span>
+        <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold ${lab.switches[m] ? "bg-bull/15 text-bull" : "bg-muted text-muted-foreground"}`}>{lab.switches[m] ? "ON" : "OFF"}</span></label>)}</div>
+    </div>; })()}
     {lab.error ? <p className="mt-2 text-xs text-warn">{lab.error}</p> : null}
     <div className="mt-3 space-y-2">{board.rows.map((r, i) => <div key={r.strategy} className="rounded border border-border p-3">
-      <div className="text-sm font-semibold break-words">#{i + 1} {LAB_LABELS[r.strategy]}</div>
+      <div className="text-sm font-semibold break-words">#{i + 1} {LAB_LABELS[r.strategy]}{lab.switches[r.strategy] ? null : <span className="ml-2 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">OFF · istirahat</span>}</div>
       <div className="mt-2 grid grid-cols-3 gap-2 text-center">
         <div><div className="text-[11px] text-muted-foreground">Tembakan</div><div className="font-mono text-base font-semibold">{r.trades}</div></div>
         <div><div className="text-[11px] text-muted-foreground">Win / Lose</div><div className="font-mono text-base font-semibold"><span className="text-bull">{r.wins}</span> / <span className="text-bear">{r.losses}</span></div><div className="text-[11px] text-muted-foreground">WR {r.winRate == null ? "—" : `${Math.round(r.winRate * 100)}%`}</div></div>
