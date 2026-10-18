@@ -21,18 +21,26 @@ describe("lab operator", () => {
     expect(c.trades[0]).toMatchObject({ status: "CLOSED", exit_reason: "MANUAL", exit_price: 111 });
     expect(c.trades[0]!.pnl_usd).toBeCloseTo(0.5);
   });
-  it("defaults 1 entry per mode and 3 total", () => { expect(DEFAULT_OPERATOR.maxOpenTotal).toBe(3); expect(DEFAULT_OPERATOR.maxOpenPerMode.FAST_BREAKOUT).toBe(1); });
-  const open = (strategy: string) => ({ id: strategy + Math.random(), status: "OPEN", strategy } as unknown as LabTrade);
-  it("blocks a mode at its per-mode entry limit", () => {
-    const out = capEntries([{ strategy: "FAST_BREAKOUT" }, { strategy: "BREAKOUT_RETEST" }] as never[], st(open("FAST_BREAKOUT")), DEFAULT_OPERATOR);
+  it("defaults 1 entry per mode per market and 10 total", () => { expect(DEFAULT_OPERATOR.maxOpenTotal).toBe(10); expect(DEFAULT_OPERATOR.marketQuota.FAST_BREAKOUT).toEqual({ XAUUSD: 1, BTCUSD: 1 }); });
+  const open = (strategy: string, symbol = "XAUUSD") => ({ id: strategy + Math.random(), status: "OPEN", strategy, symbol } as unknown as LabTrade);
+  it("blocks a second entry of a mode on the same market", () => {
+    const out = capEntries([{ strategy: "FAST_BREAKOUT" }, { strategy: "BREAKOUT_RETEST" }] as never[], st(open("FAST_BREAKOUT")), DEFAULT_OPERATOR, "XAUUSD");
     expect(out.map((s: { strategy: string }) => s.strategy)).toEqual(["BREAKOUT_RETEST"]);
   });
-  it("stops all new entries at the global limit", () => {
-    const out = capEntries([{ strategy: "TREND_PULLBACK" }] as never[], st(open("FAST_BREAKOUT"), open("BREAKOUT_RETEST"), open("DUAL_WALL_FAST")), DEFAULT_OPERATOR);
-    expect(out).toEqual([]);
+  it("allows the same mode on the other market at the same time", () => {
+    expect(capEntries([{ strategy: "FAST_BREAKOUT" }] as never[], st(open("FAST_BREAKOUT", "XAUUSD")), DEFAULT_OPERATOR, "BTCUSD")).toHaveLength(1);
   });
-  it("adjusted per-mode limit 2 allows a second entry", () => {
-    const op = parseOperator({ maxOpenPerMode: { FAST_BREAKOUT: 2 } });
-    expect(capEntries([{ strategy: "FAST_BREAKOUT" }] as never[], st(open("FAST_BREAKOUT")), op)).toHaveLength(1);
+  it("stops all new entries at the global limit of 10", () => {
+    const ten = Array.from({ length: 10 }, (_, i) => open(`M${i}`, i % 2 ? "BTCUSD" : "XAUUSD"));
+    expect(capEntries([{ strategy: "TREND_PULLBACK" }] as never[], st(...ten), DEFAULT_OPERATOR, "BTCUSD")).toEqual([]);
+  });
+  it("market quota 0 disables a mode on that market, quota 2 allows a second entry", () => {
+    const op = parseOperator({ maxOpenTotal: 10, marketQuota: { FAST_BREAKOUT: { XAUUSD: 2, BTCUSD: 0 } } });
+    expect(capEntries([{ strategy: "FAST_BREAKOUT" }] as never[], st(open("FAST_BREAKOUT")), op, "XAUUSD")).toHaveLength(1);
+    expect(capEntries([{ strategy: "FAST_BREAKOUT" }] as never[], st(), op, "BTCUSD")).toEqual([]);
+  });
+  it("old saved settings migrate to 10 total and 1 per market", () => {
+    const op = parseOperator({ maxOpenTotal: 3, maxOpenPerMode: { FAST_BREAKOUT: 1 } });
+    expect(op.maxOpenTotal).toBe(10); expect(op.marketQuota.FAST_BREAKOUT).toEqual({ XAUUSD: 1, BTCUSD: 1 });
   });
 });
