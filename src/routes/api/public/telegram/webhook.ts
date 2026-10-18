@@ -23,8 +23,17 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
           await sendTelegramMessage(chatId, `Chat ini belum terdaftar sebagai operator. Chat ID: <code>${chatId}</code>`);
           return Response.json({ ok: true });
         }
-        if (text === "/start" || text === "/help") {
-          await sendTelegramMessage(chatId, "AI Trading Assistant (mobile). Tanya apa saja, mis. <i>Kenapa BTC SELL?</i> atau <i>Briefing XAUUSD</i>. Bot ini hanya menjelaskan keputusan engine — tidak bisa order.");
+        const { COCKPIT_KEYBOARD, matchButton, renderCockpit } = await import("@/lib/assistant/telegramCockpit.server");
+        if (text === "/start" || text === "/help" || text === "/menu") {
+          await sendTelegramMessage(chatId, "AI Trading Assistant (mobile). Pakai 6 tombol di bawah untuk data engine, atau tanya bebas, mis. <i>Kenapa BTC SELL?</i>. Bot ini hanya menjelaskan — tidak bisa order.", COCKPIT_KEYBOARD);
+          return Response.json({ ok: true });
+        }
+        const action = matchButton(text);
+        if (action) {
+          let card: string;
+          try { card = await renderCockpit(action, Date.now()); }
+          catch (e) { console.error("[telegram] cockpit failed", e); card = "Data engine belum bisa dibaca. Coba lagi sebentar."; }
+          try { await sendTelegramMessage(chatId, card, COCKPIT_KEYBOARD); } catch (e) { console.error("[telegram] send failed", e); }
           return Response.json({ ok: true });
         }
         // Never 500 back to Telegram (it retries forever and blocks the queue); log and reply with a safe fallback.

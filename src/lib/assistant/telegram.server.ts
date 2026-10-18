@@ -172,12 +172,12 @@ export function telegramWebhookSeed(): string | undefined {
   return process.env["TELEGRAM_BOT_TOKEN"]?.trim() || undefined;
 }
 
-export async function sendTelegramMessage(chatId: string | number, text: string): Promise<{ status: "SENT" | "FAILED" | "PENDING"; note: string }> {
+export async function sendTelegramMessage(chatId: string | number, text: string, replyMarkup?: unknown): Promise<{ status: "SENT" | "FAILED" | "PENDING"; note: string }> {
   const bot = process.env["TELEGRAM_BOT_TOKEN"]?.trim();
   if (!chatId || !bot) return { status: "PENDING", note: `Telegram not configured (${[!bot && "TELEGRAM_BOT_TOKEN", !chatId && "TELEGRAM_CHAT_ID"].filter(Boolean).join(", ")} missing)` };
   try {
     const deliver = async (message: string, html: boolean) => {
-    const body0 = JSON.stringify({ chat_id: chatId, text: message, ...(html ? { parse_mode: "HTML" } : {}), disable_web_page_preview: true });
+    const body0 = JSON.stringify({ chat_id: chatId, text: message, ...(html ? { parse_mode: "HTML" } : {}), ...(replyMarkup ? { reply_markup: replyMarkup } : {}), disable_web_page_preview: true });
     const r = await fetch(`https://api.telegram.org/bot${bot}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: body0 });
     const body = await r.text();
     let payload: { ok?: boolean; description?: string; error_code?: number } | null = null;
