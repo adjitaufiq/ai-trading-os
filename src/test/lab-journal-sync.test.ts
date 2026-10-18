@@ -25,12 +25,12 @@ describe('Lab cloud queue', () => {
     const session = q.sessions[0];
     if (!session) throw new Error('missing session');
     const sent = Object.values(session.pending);
-    const closed = markSymbol(open(), 'BTCUSD', { bid: 1100, ask: 1100 }, 3000);
+    const closed = markSymbol(open(), 'BTCUSD', { bid: 1400, ask: 1400 }, 3000);
     const updated = stageJournal(q, closed, 3000, id);
     const acknowledged = acknowledgeJournal(updated, session.id, sent);
     expect(pendingCount(acknowledged)).toBe(1);
     expect(Object.values(acknowledged.sessions[0]?.pending ?? {})[0]?.trade.exit_reason).toBe('TP');
-    expect(Object.values(acknowledged.sessions[0]?.pending ?? {})[0]?.trade.pnl_usd).toBe(5);
+    expect(Object.values(acknowledged.sessions[0]?.pending ?? {})[0]?.trade.pnl_usd).toBe(20);
   });
   it('keeps previous pending history when Lab is reset into a new session', () => {
     const q = stageJournal(newJournalQueue(id), open(), 2000, id);
