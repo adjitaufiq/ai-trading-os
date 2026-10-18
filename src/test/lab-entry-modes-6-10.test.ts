@@ -73,8 +73,17 @@ describe("ledgers for modes 6–10", () => {
     const traded = bookOpen(old, "BTCUSD", [{ strategy: "TOUCH_SNR", side: "BUY", why: "t", sl_distance: 200, bar_time: 1 }], { bid: 1000, ask: 1000 }, 2);
     const up = upgradeBook(traded, 5);
     expect(bookStats(up)).toHaveLength(22);
-    expect(up.ledgers["TOUCH_SNR:COPET"]).toBe(traded.ledgers["TOUCH_SNR:COPET"]);
+    expect(up.ledgers["TOUCH_SNR:COPET"]!.state).toBe(traded.ledgers["TOUCH_SNR:COPET"]!.state);
     expect(up.ledgers["ATR_EXPANSION:COPET"]!.start_balance).toBe(50);
+  });
+
+  it("Mode 1 gets one labelled $50 top-up (capital $100), history kept, never applied twice", () => {
+    const up = upgradeBook(upgradeBook(createBook(1), 5), 9);
+    const s = bookStats(up).find((x) => x.key === "TOUCH_SNR:COPET")!;
+    expect(s.capitalIn).toBe(100);
+    expect(s.balance).toBe(100);
+    expect(s.topups).toHaveLength(1);
+    expect(bookStats(up).find((x) => x.key === "DUAL_WALL:COPET")!.capitalIn).toBe(50);
   });
 
   it("a mode-10 signal opens only mode-10 ledgers; duplicate bar ignored; COPET trails while NORMAL stays open", () => {
