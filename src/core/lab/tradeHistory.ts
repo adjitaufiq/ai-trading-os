@@ -46,7 +46,7 @@ export function getMonthCalendar(trades: readonly LabTrade[], year: number, mont
     if (t.status !== "CLOSED" || (market !== "ALL" && t.symbol !== market)) continue;
     const d = wibDay(t.opened_at);
     if (!d.startsWith(prefix)) continue;
-    const c = cells[Number(d.slice(8)) - 1];
+    const c = cells[Number(d.slice(8)) - 1]!;
     c.trades++; c.net += t.pnl_usd; if (t.pnl_usd > 0) c.wins++; else c.losses++;
   }
   const active = cells.filter((c) => c.trades > 0);
