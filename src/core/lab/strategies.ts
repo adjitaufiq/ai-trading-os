@@ -2,9 +2,9 @@
 // Authority: EXPERIMENT. Never imports broker/gateway/execution; never feeds LivePaperLoop, Decision Gate, Risk or demo bridge.
 import { atrWilder, causalSwings, ema, engulfing, geometry, type TechBar } from "@/core/technical/indicators";
 
-export const STRATEGY_LAB_VERSION = "strategy-lab-v4-touch-h1-compass";
+export const STRATEGY_LAB_VERSION = "strategy-lab-v5-smc-fibo-ote";
 export const LAB_STRATEGIES = ["TOUCH_SNR", "EMA_CROSS", "SNR_PA", "DUAL_WALL", "FAST_BREAKOUT",
-  "TREND_PULLBACK", "SWEEP_RECLAIM", "BREAKOUT_RETEST", "RANGE_REVERSAL", "ATR_EXPANSION", "DUAL_WALL_FAST"] as const;
+  "TREND_PULLBACK", "SWEEP_RECLAIM", "BREAKOUT_RETEST", "RANGE_REVERSAL", "ATR_EXPANSION", "DUAL_WALL_FAST", "SMC_FIBO_OTE"] as const;
 /** Modes 6–10 (hypotheses, paper only). */
 export const LAB_NEW_STRATEGIES = ["TREND_PULLBACK", "SWEEP_RECLAIM", "BREAKOUT_RETEST", "RANGE_REVERSAL", "ATR_EXPANSION"] as const;
 export type LabStrategy = (typeof LAB_STRATEGIES)[number];
@@ -22,6 +22,7 @@ export const LAB_LABELS: Record<LabStrategy, string> = {
   RANGE_REVERSAL: "9 · Range Boundary Reversal",
   ATR_EXPANSION: "10 · ATR Expansion Breakout",
   DUAL_WALL_FAST: "11 · S/R + EMA 5/21",
+  SMC_FIBO_OTE: "12 · SMC Fibo 71.5% OTE",
 };
 
 /** Every experiment parameter lives here; changing one means bumping STRATEGY_LAB_VERSION. */
@@ -59,6 +60,11 @@ export const LAB_PARAMS = Object.freeze({
   EXP_LOOKBACK: 10,
   // Mode 1 TOUCH_SNR compass: |EMA9−EMA21| (H1) ≤ this × ATR14(H1) ⇒ RANGE (both sides allowed)
   TOUCH_H1_RANGE_GAP_ATR: 0.25,
+  // Mode 12 SMC_FIBO_OTE (M5 impulse leg Strong Low → Weak High, mirror for SELL)
+  FIBO_OTE: 0.715,
+  FIBO_TP_EXT: 0.15,
+  FIBO_MIN_LEG_ATR_M5: 1.5,
+  FIBO_SL_BUFFER_ATR_M5: 0.2,
 });
 
 /** Explicit rule text for modes 6–10 (BUY shown; SELL is the mirror). */
@@ -68,6 +74,7 @@ export const LAB_RULES: Partial<Record<LabStrategy, string>> = Object.freeze({
   BREAKOUT_RETEST: "Latest available M15 swing HIGH broken by a closed M15 close above it within the last 8 M15 bars (after the swing became available). Trigger: closed M5 low ≤ level + 0.2×ATR(M5), close > level, bullish. Invalid: close ≤ level. SL = level − 0.2×ATR(M5).",
   RANGE_REVERSAL: "H1 range: |EMA21−EMA50| ≤ 0.5×ATR14(H1) and last 24 H1 high−low ≥ 2×ATR(H1). BUY only when close is in the bottom 20% of the range AND hammer or bullish engulfing. Middle 20–80% ⇒ reject. SL = range low − 0.25×ATR(M15).",
   DUAL_WALL_FAST: "Same as DUAL_WALL with EMA5/EMA21 (M5): closed M5 touches M15 support + close within 0.3×ATR(M5) of EMA5 or EMA21 (or bar spans it) + bullish ⇒ BUY; SELL mirror at resistance. SL = zone edge ± 0.2×ATR(M5).",
+  SMC_FIBO_OTE: "Latest available M5 swing HIGH preceded by a swing LOW = bullish leg (≥1.5×ATR M5). Entry zone = High − 0.715×leg. Trigger: closed M5 low ≤ 71.5% level, close above it, bullish, low still above Strong Low. SL = Strong Low − 0.2×ATR(M5); TP = High + 0.15×leg (Fibo −15%). Own technical SL/TP + R-based trailing, never Copet. SELL mirror.",
   ATR_EXPANSION: "Closed M5 range ≥ 1.5×ATR14(M5), body ≥ 0.6×range, upper wick ≤ 0.2×range, bullish, close > highest high of previous 10 M5 bars. SL = 1×ATR(M5).",
 });
 
@@ -80,6 +87,8 @@ export interface LabSignal {
   /** Distance from fill to SL, price units (>0). TP distance = sl_distance × TP_R. */
   readonly sl_distance: number;
   readonly bar_time: number;
+  /** Technical TP distance (price units). When set, the ledger uses sl/tp as-is (exit profile FIBO), never Copet or TP_R. */
+  readonly tp_distance?: number;
 }
 
 interface Zone { readonly kind: "SUPPORT" | "RESISTANCE"; readonly low: number; readonly high: number; readonly price: number }
@@ -256,5 +265,27 @@ export function evaluateLabDetailed(m5: readonly TechBar[], m15: readonly TechBa
     else rej(S, "EXPANSION_NOT_BEYOND_RANGE");
   }
 
-  return { signals: out.filter((s) => s.sl_distance > 0 && Number.isFinite(s.sl_distance)), rejects };
+  // 12. SMC_FIBO_OTE — retrace into the 71.5% level of the latest confirmed M5 impulse leg.
+  {
+    const S: LabStrategy = "SMC_FIBO_OTE", P = LAB_PARAMS, buf = atr * P.FIBO_SL_BUFFER_ATR_M5;
+    const sw = causalSwings(m5.slice(0, -1)).filter((x) => x.available_at <= bar.close_time && !x.outside_bar);
+    const last = sw[sw.length - 1];
+    const prior = last ? [...sw].reverse().find((x) => x.kind !== last.kind && x.pivot_time < last.pivot_time) : undefined;
+    if (!last || !prior) rej(S, "NO_IMPULSE_LEG");
+    else {
+      const up = last.kind === "HIGH", H = up ? last.price : prior.price, L = up ? prior.price : last.price, leg = H - L;
+      if (leg < atr * P.FIBO_MIN_LEG_ATR_M5) rej(S, "LEG_TOO_SMALL");
+      else if (up) {
+        const e = H - P.FIBO_OTE * leg, tp = H + P.FIBO_TP_EXT * leg;
+        if (bar.low <= e && bar.close > e && bull && bar.low > L) out.push({ strategy: S, side: "BUY", why: `OTE 71.5% ${fmt(e)} leg ${fmt(L)}→${fmt(H)}`, sl_distance: bar.close - (L - buf), tp_distance: tp - bar.close, bar_time: bar.open_time });
+        else rej(S, bar.low <= L ? "STRONG_LOW_BROKEN" : "NO_OTE_REJECTION");
+      } else {
+        const e = L + P.FIBO_OTE * leg, tp = L - P.FIBO_TP_EXT * leg;
+        if (bar.high >= e && bar.close < e && bear && bar.high < H) out.push({ strategy: S, side: "SELL", why: `OTE 71.5% ${fmt(e)} leg ${fmt(H)}→${fmt(L)}`, sl_distance: (H + buf) - bar.close, tp_distance: bar.close - tp, bar_time: bar.open_time });
+        else rej(S, bar.high >= H ? "STRONG_HIGH_BROKEN" : "NO_OTE_REJECTION");
+      }
+    }
+  }
+
+  return { signals: out.filter((s) => s.tp_distance === undefined || (s.tp_distance > 0 && Number.isFinite(s.tp_distance))).filter((s) => s.sl_distance > 0 && Number.isFinite(s.sl_distance)), rejects };
 }
