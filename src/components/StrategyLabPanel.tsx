@@ -34,6 +34,21 @@ export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
       <div className="rounded border border-border p-3"><div className="text-xs text-muted-foreground">Equity</div><div className={`font-mono text-lg font-semibold ${tone(board.equity - LAB_START_BALANCE)}`}>${board.equity.toFixed(2)}</div><div className={`text-xs font-mono ${tone(board.equity - board.balance)}`}>Floating {usd(board.equity - board.balance)}</div></div>
     </div>
     {(() => { const t = board.rows.reduce((a, r) => ({ n: a.n + r.trades, w: a.w + r.wins, l: a.l + r.losses, o: a.o + r.open }), { n: 0, w: 0, l: 0, o: 0 }); return <div className="mt-2 flex flex-wrap gap-2 text-xs"><span className="rounded bg-muted px-2 py-1">Tembakan selesai: <b>{t.n}</b></span><span className="rounded bg-bull/15 px-2 py-1 text-bull">Win <b>{t.w}</b></span><span className="rounded bg-bear/15 px-2 py-1 text-bear">Lose <b>{t.l}</b></span><span className="rounded bg-muted px-2 py-1">Masih open: <b>{t.o}</b></span></div>; })()}
+    {lab.error ? <p className="mt-2 text-xs text-warn">{lab.error}</p> : null}
+    <LabOperatorConsole lab={lab} />
+    <h4 className="mt-4 text-xs font-semibold uppercase text-muted-foreground">Log tembakan · semua market</h4>
+    <LabTradeHistory trades={lab.state.trades} />
+    <LabLeaderboard lab={lab} />
+    <div className="mt-3 space-y-2">{board.rows.map((r, i) => <div key={r.strategy} className="rounded border border-border p-3">
+      <div className="text-sm font-semibold break-words">Mode {LAB_LABELS[r.strategy]}{lab.switches[r.strategy] ? null : <span className="ml-2 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">OFF · istirahat</span>}</div>
+      <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+        <div><div className="text-[11px] text-muted-foreground">Tembakan</div><div className="font-mono text-base font-semibold">{r.trades}</div></div>
+        <div><div className="text-[11px] text-muted-foreground">Win / Lose</div><div className="font-mono text-base font-semibold"><span className="text-bull">{r.wins}</span> / <span className="text-bear">{r.losses}</span></div><div className="text-[11px] text-muted-foreground">WR {r.winRate == null ? "—" : `${Math.round(r.winRate * 100)}%`}</div></div>
+        <div><div className="text-[11px] text-muted-foreground">Net P/L</div><div className={`inline-block rounded px-2 py-0.5 font-mono text-sm font-semibold ${r.realized >= 0 ? "bg-bull/15 text-bull" : "bg-bear/15 text-bear"}`}>{usd(r.realized)}</div></div>
+      </div>
+      <div className="mt-2 text-xs text-muted-foreground">Posisi aktif: {r.open ? <span className={`font-mono ${tone(r.floating)}`}>{r.open} trade · floating {usd(r.floating)}</span> : "—"}</div>
+    </div>)}</div>
+    <LabLedgersPanel book={lab.book} />
     {(() => { const on = LAB_STRATEGIES.filter((m) => lab.switches[m]).length; const op = lab.operator;
       const openBy = (m: string) => lab.state.trades.filter((t) => t.status === "OPEN" && t.strategy === m).length;
       const openTotal = lab.state.trades.filter((t) => t.status === "OPEN").length;
@@ -53,20 +68,5 @@ export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
           <input type="number" min={1} inputMode="numeric" disabled={!lab.switches[m]} className="w-12 rounded border border-border bg-background px-1 py-0.5 font-mono text-xs text-foreground disabled:opacity-40" value={op.maxOpenPerMode[m]} onChange={(e) => { const n = num(e.target.value); if (n) lab.setOperator({ ...op, maxOpenPerMode: { ...op.maxOpenPerMode, [m]: n } }); }} />
           <span className="font-mono">{openBy(m)}/{op.maxOpenPerMode[m]}</span></label></div>)}</div>
     </div>; })()}
-    {lab.error ? <p className="mt-2 text-xs text-warn">{lab.error}</p> : null}
-    <LabOperatorConsole lab={lab} />
-    <LabLeaderboard lab={lab} />
-    <div className="mt-3 space-y-2">{board.rows.map((r, i) => <div key={r.strategy} className="rounded border border-border p-3">
-      <div className="text-sm font-semibold break-words">Mode {LAB_LABELS[r.strategy]}{lab.switches[r.strategy] ? null : <span className="ml-2 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">OFF · istirahat</span>}</div>
-      <div className="mt-2 grid grid-cols-3 gap-2 text-center">
-        <div><div className="text-[11px] text-muted-foreground">Tembakan</div><div className="font-mono text-base font-semibold">{r.trades}</div></div>
-        <div><div className="text-[11px] text-muted-foreground">Win / Lose</div><div className="font-mono text-base font-semibold"><span className="text-bull">{r.wins}</span> / <span className="text-bear">{r.losses}</span></div><div className="text-[11px] text-muted-foreground">WR {r.winRate == null ? "—" : `${Math.round(r.winRate * 100)}%`}</div></div>
-        <div><div className="text-[11px] text-muted-foreground">Net P/L</div><div className={`inline-block rounded px-2 py-0.5 font-mono text-sm font-semibold ${r.realized >= 0 ? "bg-bull/15 text-bull" : "bg-bear/15 text-bear"}`}>{usd(r.realized)}</div></div>
-      </div>
-      <div className="mt-2 text-xs text-muted-foreground">Posisi aktif: {r.open ? <span className={`font-mono ${tone(r.floating)}`}>{r.open} trade · floating {usd(r.floating)}</span> : "—"}</div>
-    </div>)}</div>
-    <LabLedgersPanel book={lab.book} />
-    <h4 className="mt-4 text-xs font-semibold uppercase text-muted-foreground">Log tembakan (jurnal lama gabungan $500)</h4>
-    <LabTradeHistory trades={lab.state.trades} />
   </section>;
 }
