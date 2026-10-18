@@ -25,7 +25,7 @@ export function matchButton(text: string): CockpitAction | null {
   const t = text.trim().toLowerCase();
   for (const [k, v] of Object.entries(BTN)) if (t === v.toLowerCase()) return k as CockpitAction;
   const cmd: Record<string, CockpitAction> = { "/xau": "XAU", "/gold": "XAU", "/btc": "BTC", "/setup": "SETUP", "/lab": "LAB", "/update": "LAB", "/audit": "AUDIT", "/report": "AUDIT", "/health": "HEALTH" };
-  return cmd[t.split(/[\s@]/)[0]] ?? null;
+  return cmd[t.split(/[\s@]/)[0] ?? ""] ?? null;
 }
 
 const WIB = (ms: number) => new Date(ms).toLocaleString("id-ID", { timeZone: "Asia/Jakarta", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) + " WIB";
@@ -158,7 +158,7 @@ export async function labCard(now: number, full = false): Promise<string> {
     `• Closed: ${all?.n ?? 0} · W/L ${all?.w ?? 0}/${(all?.n ?? 0) - (all?.w ?? 0)} (${all ? wr(all) : "-"})`,
     `• Open: ${all?.open ?? 0} · 3 jam: ${usd(all?.recent ?? 0)}`,
     `• AvgW ${wl.avgWin == null ? "-" : "$" + wl.avgWin.toFixed(2)} · AvgL ${wl.avgLoss == null ? "-" : "$" + wl.avgLoss.toFixed(2)} · RR ${wl.rr == null ? "-" : wl.rr.toFixed(2)}`,
-    `• Max DD: −$${dd.usd.toFixed(2)} (${dd.pct.toFixed(1)}%)`,
+    `• Max DD: −$${dd.usd.toFixed(2)} (${(dd.pct * 100).toFixed(1)}% dari peak)`,
     "",
     "<b>🪙 Per Pair</b>",
   ];
