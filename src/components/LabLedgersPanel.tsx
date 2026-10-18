@@ -12,7 +12,7 @@ export function LabLedgersPanel({ book }: { book: LedgerBook | null }) {
     <h4 className="text-xs font-semibold uppercase text-muted-foreground">Ledger terpisah · ${LEDGER_START_BALANCE} per mode × exit · VIRTUAL STRATEGY LAB</h4>
     <p className="mt-1 text-xs text-muted-foreground break-words">Bukan akun DEMO broker. Mulai {time(book.started_at)}. {LEDGER_COSTS_NOTE}</p>
     <div className="mt-2 space-y-2">{stats.map((s) => <div key={s.key} className="rounded border border-border p-3 text-xs">
-      <div className="flex flex-wrap items-center justify-between gap-1"><span className="text-sm font-semibold break-words">{LAB_LABELS[s.strategy]}</span><span className="rounded bg-muted px-2 py-0.5 font-mono">{s.profile}</span></div>
+      <div className="flex flex-wrap items-center justify-between gap-1"><span className="text-sm font-semibold break-words">Mode {LAB_LABELS[s.strategy]}</span><span className="rounded bg-muted px-2 py-0.5 font-mono">{s.profile}</span></div>
       {s.topupTotal ? <div className="mt-2 rounded bg-warn/15 px-2 py-1 text-warn break-words" data-testid="ledger-topup">TOP-UP · Modal disetor ${s.capitalIn.toFixed(2)} (${s.start_balance.toFixed(0)} ronde 1 + ${s.topupTotal.toFixed(0)} ronde 2 · {time(s.topups[0]!.at)}). Hasil ronde 1 tetap tercatat.</div> : null}
       <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 font-mono">
         <span>Modal ${s.capitalIn.toFixed(2)} → <b className={tone(s.realized)}>${s.balance.toFixed(2)}</b></span>

@@ -12,10 +12,10 @@ export type LabSide = "BUY" | "SELL";
 
 export const LAB_LABELS: Record<LabStrategy, string> = {
   TOUCH_SNR: "1 · Sentuh S/R + EMA 9/21",
-  EMA_CROSS: "EMA 9/21 Cross",
-  SNR_PA: "S/R + Candle (Hammer/Star/Engulf)",
-  DUAL_WALL: "S/R + EMA 21/50",
-  FAST_BREAKOUT: "Breakout 5 bar",
+  EMA_CROSS: "2 · EMA 9/21 Cross",
+  SNR_PA: "3 · S/R + Candle (Hammer/Star/Engulf)",
+  DUAL_WALL: "4 · S/R + EMA 21/50",
+  FAST_BREAKOUT: "5 · Breakout 5 bar",
   TREND_PULLBACK: "6 · Trend Pullback + Struktur",
   SWEEP_RECLAIM: "7 · SNR Sweep & Reclaim",
   BREAKOUT_RETEST: "8 · Breakout M15 – Retest",

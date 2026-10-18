@@ -74,7 +74,7 @@ export function LabLeaderboard({ lab }: { lab: LabRuntime }) {
     </div>
     <ol className="mt-2 divide-y divide-border">{r.rows.map((x, i) => <li key={x.strategy} className={`py-2 text-xs ${x.on ? "" : "opacity-60"}`}>
       <div className="flex items-start justify-between gap-2">
-        <span className="break-words font-semibold">{MEDAL[i] ?? `${i + 1}.`} {LAB_LABELS[x.strategy]}</span>
+        <span className="break-words font-semibold">{MEDAL[i] ?? ""} Mode {LAB_LABELS[x.strategy]}</span>
         <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold ${x.on ? "bg-bull/15 text-bull" : "bg-muted text-muted-foreground"}`}>{x.on ? "ON" : "OFF"}</span>
       </div>
       <div className="mt-1 flex flex-wrap gap-x-3 font-mono text-muted-foreground">
