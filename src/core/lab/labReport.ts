@@ -106,7 +106,7 @@ export function formatLabReport(r: LabReport, header?: string[] | string): strin
     "⚙️ PARAMETER",
     ...(r.operator ? [
       `• Maks entry total bersamaan: ${r.operator.maxOpenTotal}`,
-      `• Maks entry per mode: ${[...new Set(Object.values(r.operator.maxOpenPerMode))].length === 1 ? Object.values(r.operator.maxOpenPerMode)[0] : r.rows.map((x) => `${LAB_LABELS[x.strategy].split(" ")[0]}=${r.operator!.maxOpenPerMode[x.strategy]}`).join(", ")}`,
+      `• Jatah per mode per market (XAU/BTC): ${r.rows.map((x) => `${LAB_LABELS[x.strategy].split(" ")[0]}=${r.operator!.marketQuota[x.strategy]?.XAUUSD ?? 0}/${r.operator!.marketQuota[x.strategy]?.BTCUSD ?? 0}`).join(", ")}`,
       `• Target harian +$${r.operator.targetUsd} · Batas rugi −$${r.operator.maxLossUsd} · ${r.operator.paused ? "PAUSED" : "aktif"}`,
     ] : ["• Limit entry: tidak tersedia"]),
     "• Data dari browser pengirim ini (saklar & limit per perangkat)",
