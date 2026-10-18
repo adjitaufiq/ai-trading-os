@@ -33,3 +33,28 @@ export function groupByDay(trades: readonly LabTrade[], market: HistoryMarket = 
   for (const g of map.values()) g.trades.sort((a, b) => b.opened_at - a.opened_at);
   return [...map.values()].sort((a, b) => (a.day < b.day ? 1 : -1));
 }
+
+export interface CalendarCell { day: string; date: number; net: number; wins: number; losses: number; trades: number }
+export interface MonthCalendar { year: number; month: number; leading: number; cells: CalendarCell[]; net: number; winDays: number; lossDays: number; trades: number; wins: number; losses: number; best: CalendarCell | null; worst: CalendarCell | null }
+
+/** Month grid (month 1-12, WIB entry day, CLOSED trades only, market filter). leading = blank cells before day 1 (Sunday-first). */
+export function getMonthCalendar(trades: readonly LabTrade[], year: number, month: number, market: HistoryMarket = "ALL"): MonthCalendar {
+  const prefix = `${year}-${String(month).padStart(2, "0")}-`;
+  const dim = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const cells: CalendarCell[] = Array.from({ length: dim }, (_, i) => ({ day: `${prefix}${String(i + 1).padStart(2, "0")}`, date: i + 1, net: 0, wins: 0, losses: 0, trades: 0 }));
+  for (const t of trades) {
+    if (t.status !== "CLOSED" || (market !== "ALL" && t.symbol !== market)) continue;
+    const d = wibDay(t.opened_at);
+    if (!d.startsWith(prefix)) continue;
+    const c = cells[Number(d.slice(8)) - 1];
+    c.trades++; c.net += t.pnl_usd; if (t.pnl_usd > 0) c.wins++; else c.losses++;
+  }
+  const active = cells.filter((c) => c.trades > 0);
+  const best = active.reduce<CalendarCell | null>((b, c) => (!b || c.net > b.net ? c : b), null);
+  const worst = active.reduce<CalendarCell | null>((b, c) => (!b || c.net < b.net ? c : b), null);
+  return {
+    year, month, leading: new Date(Date.UTC(year, month - 1, 1)).getUTCDay(), cells,
+    net: active.reduce((s, c) => s + c.net, 0), winDays: active.filter((c) => c.net > 0).length, lossDays: active.filter((c) => c.net <= 0).length,
+    trades: active.reduce((s, c) => s + c.trades, 0), wins: active.reduce((s, c) => s + c.wins, 0), losses: active.reduce((s, c) => s + c.losses, 0), best, worst,
+  };
+}

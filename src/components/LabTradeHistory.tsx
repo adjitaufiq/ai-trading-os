@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { LAB_LABELS } from "@/core/lab/strategies";
 import type { LabTrade } from "@/core/lab/labLedger";
+import { LabPnLCalendar } from "./LabPnLCalendar";
 import { groupByDay, wibDay, type HistoryMarket, type HistoryResult } from "@/core/lab/tradeHistory";
 
 const usd = (v: number) => `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
@@ -15,10 +16,12 @@ const RESULTS: [HistoryResult, string][] = [["ALL", "Semua"], ["PROFIT", "Profit
 export function LabTradeHistory({ trades }: { trades: readonly LabTrade[] }) {
   const [market, setMarket] = useState<HistoryMarket>("ALL");
   const [result, setResult] = useState<HistoryResult>("ALL");
-  const days = groupByDay(trades, market, result);
+  const [day, setDay] = useState<string | null>(null);
+  const days = groupByDay(trades, market, result).filter((g) => !day || g.day === day);
   return <div data-testid="lab-trade-history">
     <div className="mt-2 flex flex-wrap gap-1">{MARKETS.map(([k, l]) => <Button key={k} size="sm" variant={market === k ? "secondary" : "ghost"} onClick={() => setMarket(k)}>{l}</Button>)}</div>
     <div className="mt-1 flex flex-wrap gap-1">{RESULTS.map(([k, l]) => <Button key={k} size="sm" variant={result === k ? "secondary" : "ghost"} className={k === "PROFIT" ? "text-bull" : k === "LOSS" ? "text-bear" : k === "OPEN" ? "text-warn" : ""} onClick={() => setResult(k)}>{l}</Button>)}</div>
+    <LabPnLCalendar trades={trades} market={market} selected={day} onSelect={setDay} />
     {days.length === 0 ? <p className="mt-2 text-sm text-muted-foreground">Belum ada tembakan untuk filter ini.</p> : days.map((d) => <div key={d.day} className="mt-3">
       <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 rounded border border-border bg-muted px-3 py-2">
         <span className="text-xs font-semibold">📅 {dayLabel(d.day)}</span>
