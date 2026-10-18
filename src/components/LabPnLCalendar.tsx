@@ -12,7 +12,7 @@ const short = (v: number) => `${v >= 0 ? "+" : "-"}$${Math.abs(v) >= 100 ? Math.
 export function LabPnLCalendar({ trades, market, selected, onSelect }: { trades: readonly LabTrade[]; market: HistoryMarket; selected: string | null; onSelect: (d: string | null) => void }) {
   const today = wibDay(Date.now());
   const [ym, setYm] = useState(() => ({ y: Number(today.slice(0, 4)), m: Number(today.slice(5, 7)) }));
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const cal = getMonthCalendar(trades, ym.y, ym.m, market);
   const shift = (d: number) => setYm(({ y, m }) => { const n = m + d; return n < 1 ? { y: y - 1, m: 12 } : n > 12 ? { y: y + 1, m: 1 } : { y, m: n }; });
   const wr = cal.wins + cal.losses ? Math.round((cal.wins / (cal.wins + cal.losses)) * 100) : 0;
