@@ -91,8 +91,8 @@ describe("ledgers for modes 6–10", () => {
     let b = bookOpen(createBook(1), "BTCUSD", [s], { bid: 1000, ask: 1000 }, 2);
     b = bookOpen(b, "BTCUSD", [s], { bid: 1000, ask: 1000 }, 3);
     expect(bookStats(b).filter((x) => x.open > 0).map((x) => x.key).sort()).toEqual(["ATR_EXPANSION:COPET", "ATR_EXPANSION:NORMAL"]);
-    b = bookMark(b, "BTCUSD", { bid: 1080, ask: 1080 }, 4);
-    b = bookMark(b, "BTCUSD", { bid: 1060, ask: 1060 }, 5);
+    b = bookMark(b, "BTCUSD", { bid: 1200, ask: 1200 }, 4);
+    b = bookMark(b, "BTCUSD", { bid: 1100, ask: 1100 }, 5);
     const st = bookStats(b);
     expect(st.find((x) => x.key === "ATR_EXPANSION:COPET")!.exits.TRAIL).toBe(1);
     expect(st.find((x) => x.key === "ATR_EXPANSION:NORMAL")!.open).toBe(1);

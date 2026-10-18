@@ -41,8 +41,14 @@ export interface LabTrade {
 }
 
 export type LabRrMode = "NORMAL" | "COPET";
-/** Mode Copet (owner rule): TP +$5, SL -$5, trailing arms at +$2 peak and locks peak − $1. */
+/** Copet v2 (owner rule 2026-10-19), per symbol, 1:1. XAU SL/TP $10, arm +$3, gap $2; BTC SL/TP $20, arm +$6, gap $4. */
+export const COPET_V2_PARAMS: Readonly<Record<string, Readonly<{ TP_USD: number; SL_USD: number; TRAIL_ARM_USD: number; TRAIL_GAP_USD: number }>>> = Object.freeze({
+  XAUUSD: Object.freeze({ TP_USD: 10, SL_USD: 10, TRAIL_ARM_USD: 3, TRAIL_GAP_USD: 2 }),
+  BTCUSD: Object.freeze({ TP_USD: 20, SL_USD: 20, TRAIL_ARM_USD: 6, TRAIL_GAP_USD: 4 }),
+});
+/** Fallback for unknown symbols (legacy v1 values). */
 export const COPET_PARAMS = Object.freeze({ TP_USD: 5, SL_USD: 5, TRAIL_ARM_USD: 2, TRAIL_GAP_USD: 1 });
+export const copetParams = (symbol: string) => COPET_V2_PARAMS[symbol] ?? COPET_PARAMS;
 
 /** Mode 12 trailing: arms at +1R peak, locks peak − max($1, 0.5R). Wider TP ⇒ wider gap. */
 export const FIBO_TRAIL_PARAMS = Object.freeze({ ARM_R: 1, GAP_R: 0.5, MIN_GAP_USD: 1 });
@@ -69,8 +75,9 @@ export function openSignals(s: LabState, symbol: string, signals: readonly LabSi
     if (abs && (sig.side === "BUY" ? !(entry > sig.sl_price! && entry < sig.tp_price!) : !(entry < sig.sl_price! && entry > sig.tp_price!))) continue;
     const copet = rrMode === "COPET" && !fibo;
     const usdPerPoint = cfg.lot * cfg.contract;
-    const d = abs ? Math.abs(entry - sig.sl_price!) : copet ? COPET_PARAMS.SL_USD / usdPerPoint : sig.sl_distance;
-    const tpD = fibo ? sig.tp_distance! : copet ? COPET_PARAMS.TP_USD / usdPerPoint : d * LAB_PARAMS.TP_R;
+    const cp = copetParams(symbol);
+    const d = abs ? Math.abs(entry - sig.sl_price!) : copet ? cp.SL_USD / usdPerPoint : sig.sl_distance;
+    const tpD = fibo ? sig.tp_distance! : copet ? cp.TP_USD / usdPerPoint : d * LAB_PARAMS.TP_R;
     const t: LabTrade = {
       id: `lab-${now}-${trades.length}`, strategy: sig.strategy, symbol, side: sig.side, why: sig.why, opened_at: now, signal_bar_time: sig.bar_time,
       entry,
@@ -106,7 +113,8 @@ export function markSymbol(s: LabState, symbol: string, q: LabQuote, now: number
     if (t.rr_mode === "COPET" && t.exit_profile !== "FIBO" && !hitSl && !hitTp) {
       const pnl = usdPnl(t, px);
       const peak = Math.max(t.peak_pnl_usd ?? 0, pnl);
-      const floor = peak >= COPET_PARAMS.TRAIL_ARM_USD ? peak - COPET_PARAMS.TRAIL_GAP_USD : null;
+      const cp = copetParams(t.symbol);
+      const floor = peak >= cp.TRAIL_ARM_USD ? peak - cp.TRAIL_GAP_USD : null;
       if (floor !== null && pnl <= floor) {
         return { ...t, status: "CLOSED" as const, mark: px, pnl_usd: pnl, closed_at: now, exit_price: px, exit_reason: "TRAIL" as const, peak_pnl_usd: peak, trail_floor_usd: floor };
       }
