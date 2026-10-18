@@ -1,15 +1,45 @@
-// Operator console for the PAPER Strategy Lab: daily target/max-loss circuit breaker, pause all, manual close.
+// Operator console for the PAPER Strategy Lab: daily target/max-loss circuit breaker, pause all, manual close, entry limits.
 // Pure helpers; affects only virtual Lab trades. Never reaches broker, Engine Host, Gate or Risk.
 import { usdPnl, type LabQuote, type LabState } from "./labLedger";
+import { LAB_STRATEGIES, type LabStrategy } from "./strategies";
 
 export const OPERATOR_KEY = "strategy-lab-operator-v1";
-export interface OperatorSettings { readonly targetUsd: number; readonly maxLossUsd: number; readonly paused: boolean }
-export const DEFAULT_OPERATOR: OperatorSettings = Object.freeze({ targetUsd: 50, maxLossUsd: 30, paused: false });
+export interface OperatorSettings {
+  readonly targetUsd: number; readonly maxLossUsd: number; readonly paused: boolean;
+  /** Max simultaneous OPEN Lab entries across all modes. */
+  readonly maxOpenTotal: number;
+  /** Max simultaneous OPEN entries per mode. */
+  readonly maxOpenPerMode: Readonly<Record<LabStrategy, number>>;
+}
+export const DEFAULT_MAX_TOTAL = 3;
+export const DEFAULT_MAX_PER_MODE = 1;
+const perModeDefault = () => Object.fromEntries(LAB_STRATEGIES.map((s) => [s, DEFAULT_MAX_PER_MODE])) as Record<LabStrategy, number>;
+export const DEFAULT_OPERATOR: OperatorSettings = Object.freeze({ targetUsd: 50, maxLossUsd: 30, paused: false, maxOpenTotal: DEFAULT_MAX_TOTAL, maxOpenPerMode: perModeDefault() });
 
+const posInt = (v: unknown, d: number) => (typeof v === "number" && Number.isInteger(v) && v >= 1 ? v : d);
 export function parseOperator(raw: unknown): OperatorSettings {
   const o = (raw && typeof raw === "object" ? raw : {}) as Partial<OperatorSettings>;
   const pos = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : d);
-  return { targetUsd: pos(o.targetUsd, DEFAULT_OPERATOR.targetUsd), maxLossUsd: pos(o.maxLossUsd, DEFAULT_OPERATOR.maxLossUsd), paused: o.paused === true };
+  const pm = perModeDefault();
+  const src = (o.maxOpenPerMode && typeof o.maxOpenPerMode === "object" ? o.maxOpenPerMode : {}) as Record<string, unknown>;
+  for (const s of LAB_STRATEGIES) pm[s] = posInt(src[s], DEFAULT_MAX_PER_MODE);
+  return { targetUsd: pos(o.targetUsd, DEFAULT_OPERATOR.targetUsd), maxLossUsd: pos(o.maxLossUsd, DEFAULT_OPERATOR.maxLossUsd), paused: o.paused === true, maxOpenTotal: posInt(o.maxOpenTotal, DEFAULT_MAX_TOTAL), maxOpenPerMode: pm };
+}
+
+/** Keeps only signals that fit the per-mode and global open-entry limits, in signal order. */
+export function capEntries<T extends { strategy: LabStrategy }>(signals: readonly T[], s: LabState, op: OperatorSettings): T[] {
+  const open = s.trades.filter((t) => t.status === "OPEN");
+  let total = open.length;
+  const per: Partial<Record<LabStrategy, number>> = {};
+  for (const t of open) per[t.strategy] = (per[t.strategy] ?? 0) + 1;
+  const out: T[] = [];
+  for (const sig of signals) {
+    if (total >= op.maxOpenTotal) break;
+    const n = per[sig.strategy] ?? 0;
+    if (n >= (op.maxOpenPerMode[sig.strategy] ?? DEFAULT_MAX_PER_MODE)) continue;
+    out.push(sig); per[sig.strategy] = n + 1; total++;
+  }
+  return out;
 }
 
 const WIB_MS = 7 * 3_600_000;
