@@ -8,7 +8,7 @@ import type { TechBar } from "@/core/technical/indicators";
 import { evaluateLab } from "@/core/lab/strategies";
 import { emptyLab, markSymbol, openSignals, type LabState } from "@/core/lab/labLedger";
 import { bookMark, bookOpen, createBook, upgradeBook, type LedgerBook } from "@/core/lab/isolatedLedgers";
-import { OPERATOR_KEY, DEFAULT_OPERATOR, closeManual, gateState, parseOperator, type OperatorSettings } from "@/core/lab/operatorControl";
+import { OPERATOR_KEY, DEFAULT_OPERATOR, capEntries, closeManual, gateState, parseOperator, type OperatorSettings } from "@/core/lab/operatorControl";
 import type { LabQuote } from "@/core/lab/labLedger";
 import { useLabCloudSync, type LabSyncStatus } from "./use-lab-cloud-sync";
 
@@ -82,7 +82,8 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
           const now = Date.now();
           quotesRef.current[s] = q;
           // Operator circuit breaker: paused / daily target / daily max loss ⇒ no new Lab positions (open ones keep running).
-          const signals = gateState(stateRef.current, opRef.current, now) === "RUNNING" ? filterEnabled(evaluateLab(m5, m15, h1), swRef.current) : [];
+          // Entry limits (per mode + global) count OPEN entries of the shared journal before opening.
+          const signals = gateState(stateRef.current, opRef.current, now) === "RUNNING" ? capEntries(filterEnabled(evaluateLab(m5, m15, h1), swRef.current), stateRef.current, opRef.current) : [];
           setState((st) => openSignals(st, s, signals, q, now, "COPET"));
           setBook((b) => (b ? bookOpen(b, s, signals, q, now) : b));
           setLastBarAt((o) => ({ ...o, [s]: last }));

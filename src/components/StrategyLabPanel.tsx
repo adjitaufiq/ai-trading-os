@@ -27,20 +27,30 @@ export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
       {lab.sync.status === "LOGIN_REQUIRED" ? <Button asChild variant="outline" size="sm"><Link to="/auth">Masuk untuk sinkron</Link></Button> : null}
       {lab.sync.error ? <span className="w-full break-words text-warn">{lab.sync.error}</span> : null}
     </div>
-    <p className="mt-1 text-xs text-muted-foreground">Harga & candle asli MT5, posisi virtual (bukan order MT5). Modal ${LAB_START_BALANCE}, lot XAU {LAB_SYMBOLS["XAUUSD"]!.lot} · BTC {LAB_SYMBOLS["BTCUSD"]!.lot}, tanpa batas posisi. Jalan selama dashboard terbuka.</p>
+    <p className="mt-1 text-xs text-muted-foreground">Harga & candle asli MT5, posisi virtual (bukan order MT5). Modal ${LAB_START_BALANCE}, lot XAU {LAB_SYMBOLS["XAUUSD"]!.lot} · BTC {LAB_SYMBOLS["BTCUSD"]!.lot}, batas entry diatur di Setting mode. Jalan selama dashboard terbuka.</p>
     <div className="mt-3 grid grid-cols-2 gap-2">
       <div className="rounded border border-border p-3"><div className="text-xs text-muted-foreground">Balance</div><div className={`font-mono text-lg font-semibold ${tone(board.balance - LAB_START_BALANCE)}`}>${board.balance.toFixed(2)}</div><div className={`text-xs font-mono ${tone(board.balance - LAB_START_BALANCE)}`}>Realized {usd(board.balance - LAB_START_BALANCE)}</div></div>
       <div className="rounded border border-border p-3"><div className="text-xs text-muted-foreground">Equity</div><div className={`font-mono text-lg font-semibold ${tone(board.equity - LAB_START_BALANCE)}`}>${board.equity.toFixed(2)}</div><div className={`text-xs font-mono ${tone(board.equity - board.balance)}`}>Floating {usd(board.equity - board.balance)}</div></div>
     </div>
     {(() => { const t = board.rows.reduce((a, r) => ({ n: a.n + r.trades, w: a.w + r.wins, l: a.l + r.losses, o: a.o + r.open }), { n: 0, w: 0, l: 0, o: 0 }); return <div className="mt-2 flex flex-wrap gap-2 text-xs"><span className="rounded bg-muted px-2 py-1">Tembakan selesai: <b>{t.n}</b></span><span className="rounded bg-bull/15 px-2 py-1 text-bull">Win <b>{t.w}</b></span><span className="rounded bg-bear/15 px-2 py-1 text-bear">Lose <b>{t.l}</b></span><span className="rounded bg-muted px-2 py-1">Masih open: <b>{t.o}</b></span></div>; })()}
-    {(() => { const on = LAB_STRATEGIES.filter((m) => lab.switches[m]).length; return <div className="mt-3 rounded border border-border p-3" data-testid="lab-mode-switches">
-      <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold uppercase text-muted-foreground">Saklar mode · {on} ON · {LAB_STRATEGIES.length - on} OFF</span>
+    {(() => { const on = LAB_STRATEGIES.filter((m) => lab.switches[m]).length; const op = lab.operator;
+      const openBy = (m: string) => lab.state.trades.filter((t) => t.status === "OPEN" && t.strategy === m).length;
+      const openTotal = lab.state.trades.filter((t) => t.status === "OPEN").length;
+      const num = (v: string) => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n >= 1 ? n : null; };
+      return <div className="mt-3 rounded border border-border p-3" data-testid="lab-mode-switches">
+      <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold uppercase text-muted-foreground">Setting mode · {on} ON · {LAB_STRATEGIES.length - on} OFF</span>
         <span className="flex gap-1"><Button size="sm" variant="outline" onClick={() => lab.setSwitches(allSwitches(true))}>Select All</Button><Button size="sm" variant="outline" onClick={() => lab.setSwitches(allSwitches(false))}>Deselect All</Button></span></div>
-      <p className="mt-1 text-[11px] text-muted-foreground">Mode OFF tidak buka posisi baru; posisi yang sudah open tetap jalan sampai selesai.</p>
-      <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-flow-col sm:grid-cols-2 sm:grid-rows-6">{LAB_STRATEGIES.map((m) => <label key={m} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted">
-        <input type="checkbox" className="h-4 w-4 accent-primary" checked={lab.switches[m]} onChange={(e) => lab.setSwitches({ ...lab.switches, [m]: e.target.checked })} />
+      <label className="mt-2 flex flex-wrap items-center gap-2 text-xs">Maks entry total bersamaan
+        <input type="number" min={1} inputMode="numeric" className="w-16 rounded border border-border bg-background px-2 py-1 font-mono" value={op.maxOpenTotal} onChange={(e) => { const n = num(e.target.value); if (n) lab.setOperator({ ...op, maxOpenTotal: n }); }} />
+        <span className={`rounded px-1.5 py-0.5 font-mono text-[11px] font-semibold ${openTotal >= op.maxOpenTotal ? "bg-bear/15 text-bear" : "bg-bull/15 text-bull"}`}>Entry aktif {openTotal} / {op.maxOpenTotal}</span></label>
+      <p className="mt-1 text-[11px] text-muted-foreground">Mode OFF atau jatah entry penuh tidak buka posisi baru; posisi yang sudah open tetap jalan sampai selesai.</p>
+      <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-flow-col sm:grid-cols-2 sm:grid-rows-6">{LAB_STRATEGIES.map((m) => <div key={m} className="flex items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted">
+        <input type="checkbox" aria-label={`Mode ${LAB_LABELS[m]}`} className="h-4 w-4 accent-primary" checked={lab.switches[m]} onChange={(e) => lab.setSwitches({ ...lab.switches, [m]: e.target.checked })} />
         <span className="flex-1 break-words">Mode {LAB_LABELS[m]}</span>
-        <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold ${lab.switches[m] ? "bg-bull/15 text-bull" : "bg-muted text-muted-foreground"}`}>{lab.switches[m] ? "ON" : "OFF"}</span></label>)}</div>
+        <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold ${lab.switches[m] ? "bg-bull/15 text-bull" : "bg-muted text-muted-foreground"}`}>{lab.switches[m] ? "ON" : "OFF"}</span>
+        <label className="flex items-center gap-1 text-[10px] text-muted-foreground">Maks entry
+          <input type="number" min={1} inputMode="numeric" disabled={!lab.switches[m]} className="w-12 rounded border border-border bg-background px-1 py-0.5 font-mono text-xs text-foreground disabled:opacity-40" value={op.maxOpenPerMode[m]} onChange={(e) => { const n = num(e.target.value); if (n) lab.setOperator({ ...op, maxOpenPerMode: { ...op.maxOpenPerMode, [m]: n } }); }} />
+          <span className="font-mono">{openBy(m)}/{op.maxOpenPerMode[m]}</span></label></div>)}</div>
     </div>; })()}
     {lab.error ? <p className="mt-2 text-xs text-warn">{lab.error}</p> : null}
     <LabOperatorConsole lab={lab} />
