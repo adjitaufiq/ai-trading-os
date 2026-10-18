@@ -25,7 +25,7 @@ export function matchButton(text: string): CockpitAction | null {
   const t = text.trim().toLowerCase();
   for (const [k, v] of Object.entries(BTN)) if (t === v.toLowerCase()) return k as CockpitAction;
   const cmd: Record<string, CockpitAction> = { "/xau": "XAU", "/gold": "XAU", "/btc": "BTC", "/setup": "SETUP", "/lab": "LAB", "/update": "LAB", "/audit": "AUDIT", "/report": "AUDIT", "/health": "HEALTH" };
-  return cmd[t.split(/[\s@]/)[0]] ?? null;
+  return cmd[t.split(/[\s@]/)[0] ?? ""] ?? null;
 }
 
 const WIB = (ms: number) => new Date(ms).toLocaleString("id-ID", { timeZone: "Asia/Jakarta", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) + " WIB";
