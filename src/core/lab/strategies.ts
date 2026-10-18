@@ -2,7 +2,7 @@
 // Authority: EXPERIMENT. Never imports broker/gateway/execution; never feeds LivePaperLoop, Decision Gate, Risk or demo bridge.
 import { atrWilder, causalSwings, ema, engulfing, geometry, type TechBar } from "@/core/technical/indicators";
 
-export const STRATEGY_LAB_VERSION = "strategy-lab-v3-entry-11";
+export const STRATEGY_LAB_VERSION = "strategy-lab-v4-touch-h1-compass";
 export const LAB_STRATEGIES = ["TOUCH_SNR", "EMA_CROSS", "SNR_PA", "DUAL_WALL", "FAST_BREAKOUT",
   "TREND_PULLBACK", "SWEEP_RECLAIM", "BREAKOUT_RETEST", "RANGE_REVERSAL", "ATR_EXPANSION", "DUAL_WALL_FAST"] as const;
 /** Modes 6–10 (hypotheses, paper only). */
@@ -57,6 +57,8 @@ export const LAB_PARAMS = Object.freeze({
   EXP_BODY_MIN: 0.6,
   EXP_OPP_WICK_MAX: 0.2,
   EXP_LOOKBACK: 10,
+  // Mode 1 TOUCH_SNR compass: |EMA9−EMA21| (H1) ≤ this × ATR14(H1) ⇒ RANGE (both sides allowed)
+  TOUCH_H1_RANGE_GAP_ATR: 0.25,
 });
 
 /** Explicit rule text for modes 6–10 (BUY shown; SELL is the mirror). */
@@ -112,9 +114,22 @@ export function evaluateLabDetailed(m5: readonly TechBar[], m15: readonly TechBa
   const res = zones.filter((z) => z.kind === "RESISTANCE" && bar.high >= z.low && bar.close <= z.high);
   const zoneSl = (side: LabSide, z: Zone) => Math.max(baseSl * 0.5, side === "BUY" ? bar.close - (z.low - atr * LAB_PARAMS.ZONE_SL_BUFFER_ATR_M5) : (z.high + atr * LAB_PARAMS.ZONE_SL_BUFFER_ATR_M5) - bar.close);
 
-  // 1. TOUCH_SNR — touch of an M15 zone on the closed M5 bar.
-  if (sup[0]) push("TOUCH_SNR", "BUY", `Sentuh support M15 ${fmt(sup[0].price)}`, zoneSl("BUY", sup[0]));
-  if (res[0]) push("TOUCH_SNR", "SELL", `Sentuh resisten M15 ${fmt(res[0].price)}`, zoneSl("SELL", res[0]));
+  // 1. TOUCH_SNR — touch of an M15 zone on the closed M5 bar, filtered by H1 EMA9/21 compass + M5 candle direction.
+  {
+    const c1 = m5.length ? geometry(bar) : null;
+    const h1x = h1.filter((b) => b.close_time <= bar.close_time);
+    const h9 = ema(h1x, 9), h21 = ema(h1x, 21), ah1 = atrWilder(h1x);
+    let compass: "UP" | "DOWN" | "RANGE" | "UNKNOWN" = "UNKNOWN";
+    if (h9.status === "OK" && h21.status === "OK" && ah1.status === "OK") {
+      const gap = h9.value - h21.value;
+      compass = Math.abs(gap) <= ah1.value * LAB_PARAMS.TOUCH_H1_RANGE_GAP_ATR ? "RANGE" : gap > 0 ? "UP" : "DOWN";
+    }
+    const buyCandle = !!c1 && (c1.direction === "BULLISH" || (c1.range > 0 && c1.lower_wick >= c1.body && c1.lower_wick > 0));
+    const sellCandle = !!c1 && (c1.direction === "BEARISH" || (c1.range > 0 && c1.upper_wick >= c1.body && c1.upper_wick > 0));
+    const tag = compass === "UNKNOWN" ? "H1 n/a" : `H1 ${compass}`;
+    if (sup[0] && compass !== "DOWN" && buyCandle) push("TOUCH_SNR", "BUY", `Sentuh support M15 ${fmt(sup[0].price)} · ${tag} · candle M5 searah`, zoneSl("BUY", sup[0]));
+    if (res[0] && compass !== "UP" && sellCandle) push("TOUCH_SNR", "SELL", `Sentuh resisten M15 ${fmt(res[0].price)} · ${tag} · candle M5 searah`, zoneSl("SELL", res[0]));
+  }
 
   // 2. EMA_CROSS — EMA9 crosses EMA21 on M5.
   const e9 = ema(m5, 9), e21 = ema(m5, 21), p9 = ema(m5.slice(0, -1), 9), p21 = ema(m5.slice(0, -1), 21), e50 = ema(m5, 50);
