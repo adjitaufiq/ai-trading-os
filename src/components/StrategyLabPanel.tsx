@@ -38,7 +38,7 @@ export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
       <p className="mt-1 text-[11px] text-muted-foreground">Mode OFF tidak buka posisi baru; posisi yang sudah open tetap jalan sampai selesai.</p>
       <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">{LAB_STRATEGIES.map((m) => <label key={m} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted">
         <input type="checkbox" className="h-4 w-4 accent-primary" checked={lab.switches[m]} onChange={(e) => lab.setSwitches({ ...lab.switches, [m]: e.target.checked })} />
-        <span className="flex-1 break-words">{LAB_LABELS[m]}</span>
+        <span className="flex-1 break-words">Mode {LAB_LABELS[m]}</span>
         <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold ${lab.switches[m] ? "bg-bull/15 text-bull" : "bg-muted text-muted-foreground"}`}>{lab.switches[m] ? "ON" : "OFF"}</span></label>)}</div>
     </div>; })()}
     {lab.error ? <p className="mt-2 text-xs text-warn">{lab.error}</p> : null}
