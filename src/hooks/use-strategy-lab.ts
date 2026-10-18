@@ -8,7 +8,7 @@ import type { TechBar } from "@/core/technical/indicators";
 import { evaluateLab } from "@/core/lab/strategies";
 import { emptyLab, markSymbol, openSignals, type LabState } from "@/core/lab/labLedger";
 import { bookMark, bookOpen, createBook, upgradeBook, type LedgerBook } from "@/core/lab/isolatedLedgers";
-import { OPERATOR_KEY, DEFAULT_OPERATOR, closeManual, gateState, parseOperator, type OperatorSettings } from "@/core/lab/operatorControl";
+import { OPERATOR_KEY, DEFAULT_OPERATOR, capEntries, closeManual, gateState, parseOperator, type OperatorSettings } from "@/core/lab/operatorControl";
 import type { LabQuote } from "@/core/lab/labLedger";
 import { useLabCloudSync, type LabSyncStatus } from "./use-lab-cloud-sync";
 
