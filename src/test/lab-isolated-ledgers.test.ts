@@ -8,9 +8,9 @@ const q = (p: number) => ({ bid: p, ask: p });
 const get = (b: ReturnType<typeof createBook>, k: string) => bookStats(b).find((s) => s.key === k)!;
 
 describe("isolated lab ledgers", () => {
-  it("creates 22 ledgers at $50 each", () => {
+  it("creates 24 ledgers at $50 each", () => {
     const s = bookStats(createBook(1));
-    expect(s.length).toBe(22);
+    expect(s.length).toBe(24);
     expect(s.every((x) => x.balance === 50 && x.equity === 50)).toBe(true);
   });
   it("signal opens only in its strategy's NORMAL and COPET ledgers", () => {
