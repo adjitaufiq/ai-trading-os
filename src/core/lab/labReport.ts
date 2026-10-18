@@ -79,7 +79,7 @@ export function formatLabReport(r: LabReport, header?: string[]): string {
     `- 3 jam terakhir: ${r.recent.trades} closed | ${r.recent.wins}W/${r.recent.trades - r.recent.wins}L (${pct(r.recent.wins, r.recent.trades)}) | ${usd(r.recent.pnl)}`,
     "",
     "🏆 LEADERBOARD PERFORMA (urut Realized P/L)",
-    ...r.rows.map((x, i) => `${i + 1}. ${LAB_LABELS[x.strategy]} [${x.on ? "ON" : "OFF"}] → ${x.trades} trades | ${x.wins}W/${x.losses}L (${pct(x.wins, x.trades)}) | ${usd(x.realized)} | ${x.open} open (floating ${usd(x.floating)}) | AvgW ${money(x.avgWin)} / AvgL ${money(x.avgLoss)} | RR ${ratio(x.rr)} | MaxDD -$${x.maxDd.toFixed(2)} | 3j: ${x.recentTrades} trade ${usd(x.recentPnl)}`),
+    ...r.rows.map((x, i) => `#${i + 1} Mode ${LAB_LABELS[x.strategy]} [${x.on ? "ON" : "OFF"}] → ${x.trades} trades | ${x.wins}W/${x.losses}L (${pct(x.wins, x.trades)}) | ${usd(x.realized)} | ${x.open} open (floating ${usd(x.floating)}) | AvgW ${money(x.avgWin)} / AvgL ${money(x.avgLoss)} | RR ${ratio(x.rr)} | MaxDD -$${x.maxDd.toFixed(2)} | 3j: ${x.recentTrades} trade ${usd(x.recentPnl)}`),
     "",
     "📌 MODE YANG SEDANG OFF",
     ...(r.off.length ? r.off.map((m) => `- ${LAB_LABELS[m]}`) : ["- (tidak ada)"]),
