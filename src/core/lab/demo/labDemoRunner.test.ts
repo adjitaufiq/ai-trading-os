@@ -163,7 +163,7 @@ describe("lab demo runner v2 (fake broker only)", () => {
     await warm(r, b); await r.tick();
     expect(b.sent.length).toBe(2); // −12, −24; third would be −36
     expect(b.sent.map((s) => s.signal_id.slice(0, 3))).toEqual(["L11", "L13"]); // SPV rank order
-    expect(ev(store, "ENTRY_REJECTED").filter((e) => e["reason"] === "REJECTED_BUDGET_EXCEEDED").length).toBe(4);
+    console.log(JSON.stringify(ev(store, "ENTRY_REJECTED").map(e=>[e.strategy,e.symbol,e.reason]))); expect(ev(store, "ENTRY_REJECTED").filter((e) => e["reason"] === "REJECTED_BUDGET_EXCEEDED").length).toBe(4);
   });
 
   it("6 is a cap, not a target; one position per mode; every suppression journaled", async () => {
@@ -193,7 +193,7 @@ describe("lab demo runner v2 (fake broker only)", () => {
     expect(b.sent.map((s) => s.direction)).toEqual(["BUY"]);
     flip = true; b.now += M5; await r.tick();
     expect(b.sent.length).toBe(1);
-    expect(ev(store, "CANDIDATE_SUPPRESSED").filter((e) => e["reason"] === "SUPPRESSED_DIRECTION_LOCK").length).toBe(2);
+    console.log(JSON.stringify(ev(store, "CANDIDATE_SUPPRESSED"))); expect(ev(store, "CANDIDATE_SUPPRESSED").filter((e) => e["reason"] === "SUPPRESSED_DIRECTION_LOCK").length).toBe(2);
   });
 
   it("broker spec mismatch / invalid volume step are rejected, lot never changed", async () => {
