@@ -99,6 +99,13 @@
       "when": 1792234935531,
       "tag": "0013_lab_cloud_journal",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792430085113,
+      "tag": "0014_lab_demo_journal",
+      "breakpoints": true
     }
   ]
 }

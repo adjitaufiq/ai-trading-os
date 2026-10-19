@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Swords } from "lucide-react";
+import { LabDemoJournal } from "./LabDemoJournal";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { LAB_LABELS, LAB_STRATEGIES, type LabStrategy } from "@/core/lab/strategies";
@@ -15,7 +17,17 @@ const usd = (v: number) => `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
 const px = (v: number) => (Math.abs(v) >= 1000 ? v.toFixed(2) : v.toFixed(3));
 const time = (t: number) => new Date(t).toLocaleString("id-ID", { hour12: false });
 
+type JournalSource = "PAPER" | "DEMO";
+function JournalSourceSelector({ source, onChange }: { source: JournalSource; onChange: (s: JournalSource) => void }) {
+  return <div className="mt-2 flex flex-wrap gap-1" role="radiogroup" aria-label="Sumber jurnal" data-testid="journal-source">
+    <Button size="sm" role="radio" aria-checked={source === "PAPER"} variant={source === "PAPER" ? "secondary" : "ghost"} onClick={() => onChange("PAPER")}>Paper Simulator</Button>
+    <Button size="sm" role="radio" aria-checked={source === "DEMO"} variant={source === "DEMO" ? "secondary" : "ghost"} onClick={() => onChange("DEMO")}>MT5 DEMO</Button>
+    <Button size="sm" role="radio" aria-checked={false} variant="ghost" disabled title="Akun REAL diblokir permanen">REAL — BLOCKED</Button>
+  </div>;
+}
+
 export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
+  const [source, setSource] = useState<JournalSource>("PAPER");
   const board = leaderboard(lab.state);
   const tone = (v: number) => (v >= 0 ? "text-bull" : "text-bear");
   return <section aria-label="Arena Lab" className="border border-border bg-card p-4" data-testid="strategy-lab">
@@ -38,7 +50,8 @@ export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
     {lab.error ? <p className="mt-2 text-xs text-warn">{lab.error}</p> : null}
     <LabOperatorConsole lab={lab} />
     <h4 className="mt-4 text-xs font-semibold uppercase text-muted-foreground">Log tembakan · semua market</h4>
-    <LabTradeHistory trades={lab.state.trades} />
+    <JournalSourceSelector source={source} onChange={setSource} />
+    {source === "PAPER" ? <LabTradeHistory trades={lab.state.trades} /> : <LabDemoJournal />}
     <LabLeaderboard lab={lab} />
     <div className="mt-3 space-y-2">{board.rows.map((r, i) => <div key={r.strategy} className="rounded border border-border p-3">
       <div className="text-sm font-semibold break-words">Mode {LAB_LABELS[r.strategy]}{lab.switches[r.strategy] ? null : <span className="ml-2 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">OFF · istirahat</span>}</div>

@@ -561,6 +561,132 @@ export type Database = {
         }
         Relationships: []
       }
+      lab_demo_events: {
+        Row: {
+          agent_id: string
+          at_ms: number | null
+          event_key: string
+          event_type: string
+          payload: Json
+          received_at: string
+          signal_id: string | null
+          strategy: string | null
+          symbol: string | null
+        }
+        Insert: {
+          agent_id: string
+          at_ms?: number | null
+          event_key: string
+          event_type: string
+          payload: Json
+          received_at?: string
+          signal_id?: string | null
+          strategy?: string | null
+          symbol?: string | null
+        }
+        Update: {
+          agent_id?: string
+          at_ms?: number | null
+          event_key?: string
+          event_type?: string
+          payload?: Json
+          received_at?: string
+          signal_id?: string | null
+          strategy?: string | null
+          symbol?: string | null
+        }
+        Relationships: []
+      }
+      lab_demo_sync_status: {
+        Row: {
+          agent_id: string
+          armed: boolean | null
+          block_reason: string | null
+          last_received_at: string
+          phase: string | null
+          reconciliation_clean: boolean | null
+          runner_version: string | null
+          snapshot_at_ms: number
+          trades_count: number
+        }
+        Insert: {
+          agent_id: string
+          armed?: boolean | null
+          block_reason?: string | null
+          last_received_at?: string
+          phase?: string | null
+          reconciliation_clean?: boolean | null
+          runner_version?: string | null
+          snapshot_at_ms: number
+          trades_count?: number
+        }
+        Update: {
+          agent_id?: string
+          armed?: boolean | null
+          block_reason?: string | null
+          last_received_at?: string
+          phase?: string | null
+          reconciliation_clean?: boolean | null
+          runner_version?: string | null
+          snapshot_at_ms?: number
+          trades_count?: number
+        }
+        Relationships: []
+      }
+      lab_demo_trades: {
+        Row: {
+          agent_id: string
+          closed_at_ms: number | null
+          fingerprint: string
+          first_seen_at: string
+          opened_at_ms: number
+          payload: Json
+          pnl_usd: number | null
+          side: string
+          signal_id: string
+          snapshot_at_ms: number
+          status: string
+          strategy: string
+          symbol: string
+          ticket: number | null
+          updated_at: string
+        }
+        Insert: {
+          agent_id: string
+          closed_at_ms?: number | null
+          fingerprint: string
+          first_seen_at?: string
+          opened_at_ms: number
+          payload: Json
+          pnl_usd?: number | null
+          side: string
+          signal_id: string
+          snapshot_at_ms: number
+          status: string
+          strategy: string
+          symbol: string
+          ticket?: number | null
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          closed_at_ms?: number | null
+          fingerprint?: string
+          first_seen_at?: string
+          opened_at_ms?: number
+          payload?: Json
+          pnl_usd?: number | null
+          side?: string
+          signal_id?: string
+          snapshot_at_ms?: number
+          status?: string
+          strategy?: string
+          symbol?: string
+          ticket?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       lab_journal_sessions: {
         Row: {
           client_as_of_ms: number
