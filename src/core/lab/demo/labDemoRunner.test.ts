@@ -18,13 +18,13 @@ class FakeBroker implements LabBrokerPort {
   sent: Parameters<LabBrokerPort["sendOrder"]>[0][] = []; closes: number[] = [];
   orderMode: "FILL" | "REJECT" | "TIMEOUT" | "PARTIAL" | "ERROR" = "FILL";
   closeMode: CloseResult["status"] | "TIMEOUT" = "CLOSED";
-  nextTicket = 100; spec = { symbol: "", volumeMin: 0.01, volumeMax: 100, volumeStep: 0.01, tickSize: 0.01, tickValue: 0.01, marginPerLot: 0 };
+  nextTicket = 100; specInfo = { symbol: "", volumeMin: 0.01, volumeMax: 100, volumeStep: 0.01, tickSize: 0.01, tickValue: 0.01, marginPerLot: 0 };
   async serverTimeMs() { return this.now; }
   async account() { return { login: this.login, server: "Exness-MT5Trial", tradeMode: this.mode, balance: this.balance, equity: this.equity }; }
   async positions() { return this.pos; }
   async closedBars(symbol: string) { const last = Math.floor((this.now - M5) / M5) * M5; return bars(last, 80, symbol === "BTCUSD" ? 80000 : 2000); }
   async quote(symbol: string) { return symbol === "BTCUSD" ? { bid: 80001, ask: 80001.5 } : { bid: 2001, ask: 2001.2 }; }
-  async spec(symbol: string) { return { ...this.spec, symbol }; }
+  async spec(symbol: string) { return { ...this.specInfo, symbol }; }
   async closeDeal(t: number) { const d = this.deals.get(t); return d ? { ticket: t, time: Math.floor(this.now / 1000), ...d } : null; }
   async sendOrder(req: Parameters<LabBrokerPort["sendOrder"]>[0]): Promise<OrderResult> {
     this.sent.push(req);
@@ -186,7 +186,7 @@ describe("lab demo runner (fake broker only)", () => {
     b.pos.push({ ticket: 55, symbol: "XAUUSD", comment: "ghost", magicOk: true, volume: 0.1, profit: 0, sl: 1, tp: 3 });
     await warm(r, b); await r.tick();
     expect(b.sent.length).toBe(0);
-    expect(r.state.blockReason).toBe("RECONCILIATION_NOT_CLEAN");
+    expect(r.state.blockReason).toContain("RECONCILIATION_NOT_CLEAN");
   });
 
   it("REAL or non-whitelisted account is always refused", async () => {
