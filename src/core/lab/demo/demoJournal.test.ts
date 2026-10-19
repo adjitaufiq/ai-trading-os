@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { readFileSync } from "node:fs";
-import { demoBucket, demoModeRanking, demoStats, eventKey, mapRunnerTrade, netPnl, tradeFingerprint, upsertDecision } from "./demoJournal";
+import { demoBucket, demoModeRanking, demoStats, eventKey, mapRunnerTrade, netPnl, syncStatusDecision, tradeFingerprint, upsertDecision } from "./demoJournal";
 import type { RunnerTrade } from "./labDemoRunner";
 
 const base: RunnerTrade = { signalId: "L11XAUabcB", strategy: "DUAL_WALL_FAST", symbol: "XAUUSD", side: "BUY", barTime: 1, status: "CLOSED", ticket: 42, volume: 0.02, requestedVolume: 0.02, requestedPrice: 2400, entry: 2400.2, sl: 2395, tp: 2405, plannedRiskUsd: 10, profile: "COPET", peakUsd: 3, trailArmed: true, openedAt: 1000, dayBaseUsd: 0, closedAt: 2000, closedDay: "2026-10-20", exitReason: "TRAIL", closeReason: null, closeAttempts: 0, pnlUsd: 4, commissionUsd: -0.14, swapUsd: 0, slippagePoints: 20, absentCycles: 0, partial: false };
@@ -57,6 +57,25 @@ describe("Lab DEMO journal", () => {
     const s = demoStats(ts);
     expect(s.closed).toBe(3); expect(s.maxDrawdown).toBe(10); expect(s.maxLossStreak).toBe(2); expect(s.shadow).toBe(1); expect(s.profitFactor).toBe(1);
     expect(demoModeRanking(ts)[0]!.closed).toBe(3);
+  });
+  test("older snapshot never downgrades sync status (phase/version/last received)", () => {
+    expect(syncStatusDecision(null, { snapshot_at_ms: 100 })).toBe("APPLY");
+    expect(syncStatusDecision({ snapshot_at_ms: 200 }, { snapshot_at_ms: 100 })).toBe("SKIP_STALE");
+    expect(syncStatusDecision({ snapshot_at_ms: 200 }, { snapshot_at_ms: 200 })).toBe("APPLY");
+    expect(syncStatusDecision({ snapshot_at_ms: 200 }, { snapshot_at_ms: 300 })).toBe("APPLY");
+  });
+  test("repeated delivery of same batch: no duplicate trade or event, no status regression", () => {
+    const fp = tradeFingerprint(base), line = '{"type":"ORDER_INTENT","signalId":"x"}';
+    let stored = { fingerprint: fp, snapshot_at_ms: 500 };
+    for (let i = 0; i < 5; i++) {
+      expect(upsertDecision(stored, { fingerprint: fp, snapshot_at_ms: 500 + i })).toBe("SKIP_DUPLICATE");
+      expect(syncStatusDecision(stored, { snapshot_at_ms: 500 + i })).toBe("APPLY");
+      expect(eventKey(line)).toBe(eventKey(line));
+    }
+    // a retried OLD batch arriving after a newer one is stale for both trade and status
+    stored = { fingerprint: "newer", snapshot_at_ms: 900 };
+    expect(upsertDecision(stored, { fingerprint: fp, snapshot_at_ms: 500 })).toBe("SKIP_STALE");
+    expect(syncStatusDecision(stored, { snapshot_at_ms: 500 })).toBe("SKIP_STALE");
   });
   test("journal UI/endpoint/transmitter never reference broker mutation", () => {
     for (const f of ["src/routes/api/public/agent/lab-demo-journal.ts", "src/components/LabDemoJournal.tsx", "src/hooks/use-lab-demo-journal.ts", "engine-host/lab-journal-transmitter.ts", "src/core/lab/demo/demoJournal.ts"]) {
