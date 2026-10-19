@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applySafetyRiders, cooldownLeftMs } from "./safetyRiders";
+import { applySafetyRiders, breathLeftMs, cooldownLeftMs } from "./safetyRiders";
 import type { LabState } from "./labLedger";
 
 const st = (trades: unknown[]) => ({ trades } as unknown as LabState);
@@ -29,5 +29,26 @@ describe("safety riders", () => {
   });
   it("normal candle passes everything", () => {
     expect(applySafetyRiders(sig, st([]), "XAUUSD", flat(21), 0)).toEqual({ pass: sig, blocked: null });
+  });
+});
+
+describe("post-exit breath per mode+market", () => {
+  const T0 = 10_000_000;
+  const s = st([
+    { symbol: "XAUUSD", strategy: "A", exit_reason: "TP", closed_at: T0 },
+    { symbol: "XAUUSD", strategy: "B", exit_reason: "TRAIL", closed_at: T0 },
+    { symbol: "XAUUSD", strategy: "C", exit_reason: "MANUAL", closed_at: T0 },
+  ]);
+  it("TP rests 5 minutes, TRAIL and other exits 10 minutes", () => {
+    expect(breathLeftMs(s, "A", "XAUUSD", T0 + 4 * 60_000)).toBe(60_000);
+    expect(breathLeftMs(s, "A", "XAUUSD", T0 + 5 * 60_000)).toBe(0);
+    expect(breathLeftMs(s, "B", "XAUUSD", T0 + 9 * 60_000)).toBe(60_000);
+    expect(breathLeftMs(s, "C", "XAUUSD", T0 + 10 * 60_000)).toBe(0);
+  });
+  it("only the resting mode on that market is blocked", () => {
+    expect(breathLeftMs(s, "A", "BTCUSD", T0)).toBe(0);
+    const r = applySafetyRiders([{ side: "BUY" as const, strategy: "A" }, { side: "BUY" as const, strategy: "Z" }], s, "XAUUSD", flat(20), T0 + 60_000);
+    expect(r.pass.map((x) => x.strategy)).toEqual(["Z"]);
+    expect(r.blocked).toBe("BLOCK_POST_EXIT_BREATH");
   });
 });
