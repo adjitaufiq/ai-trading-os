@@ -11,6 +11,7 @@ import { bookMark, bookOpen, createBook, upgradeBook, type LedgerBook } from "@/
 import { OPERATOR_KEY, DEFAULT_OPERATOR, capEntries, closeManual, gateState, parseOperator, type OperatorSettings } from "@/core/lab/operatorControl";
 import type { LabQuote } from "@/core/lab/labLedger";
 import { applySafetyRiders, type SafetyBlock } from "@/core/lab/safetyRiders";
+import { applySpv, type SpvBlock } from "@/core/lab/spvTraffic";
 import { useLabCloudSync, type LabSyncStatus } from "./use-lab-cloud-sync";
 
 const KEY = "strategy-lab-v1";
@@ -22,13 +23,13 @@ function toBars(items: readonly BridgeBar[], tf: keyof typeof TF_MS): TechBar[] 
   return items.slice(0, -1).map((b) => ({ open_time: b.raw_time_s * 1000, close_time: b.raw_time_s * 1000 + TF_MS[tf], available_at: b.raw_time_s * 1000 + TF_MS[tf], open: b.open, high: b.high, low: b.low, close: b.close }));
 }
 
-export interface LabRuntime { state: LabState; lastBarAt: Record<string, number>; error: string | null; sync: LabSyncStatus; book: LedgerBook | null; safety: Record<string, SafetyBlock | null>; reset: () => void; switches: ModeSwitches; setSwitches: (s: ModeSwitches) => void; operator: OperatorSettings; setOperator: (o: OperatorSettings) => void; closeTrades: (ids: readonly string[] | "ALL") => void }
+export interface LabRuntime { state: LabState; lastBarAt: Record<string, number>; error: string | null; sync: LabSyncStatus; book: LedgerBook | null; safety: Record<string, SafetyBlock | SpvBlock | null>; reset: () => void; switches: ModeSwitches; setSwitches: (s: ModeSwitches) => void; operator: OperatorSettings; setOperator: (o: OperatorSettings) => void; closeTrades: (ids: readonly string[] | "ALL") => void }
 
 export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly string[]): LabRuntime {
   const [state, setState] = useState<LabState>(emptyLab);
   const [lastBarAt, setLastBarAt] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
-  const [safety, setSafety] = useState<Record<string, SafetyBlock | null>>({});
+  const [safety, setSafety] = useState<Record<string, SafetyBlock | SpvBlock | null>>({});
   const [hydrated, setHydrated] = useState(false);
   const [book, setBook] = useState<LedgerBook | null>(null);
   const [switches, setSwitchesState] = useState<ModeSwitches>(defaultSwitches);

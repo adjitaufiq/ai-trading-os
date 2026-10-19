@@ -23,7 +23,7 @@ export function applySpv<T extends { side: "BUY" | "SELL"; strategy?: string; ba
   if (!fresh.length) return { pass: [], blocked: "BLOCK_SPV_STALE_SIGNAL", lock: null };
   const sorted = [...fresh].sort((a, b) => rank(a.strategy) - rank(b.strategy));
   const existing = s.trades.find((t) => t.symbol === symbol && t.signal_bar_time === newest);
-  const side = existing ? existing.side : sorted[0].side;
+  const side = existing ? existing.side : sorted[0]!.side;
   const pass = sorted.filter((x) => x.side === side);
   const blocked: SpvBlock | null = pass.length < sorted.length ? "BLOCK_SPV_DIRECTION_LOCK" : fresh.length < signals.length ? "BLOCK_SPV_STALE_SIGNAL" : null;
   return { pass, blocked, lock: { bar_time: newest, side } };
