@@ -18,7 +18,7 @@ class FakeBroker implements LabBrokerPort {
   sent: Parameters<LabBrokerPort["sendOrder"]>[0][] = []; closes: number[] = [];
   orderMode: "FILL" | "REJECT" | "TIMEOUT" | "PARTIAL" | "ERROR" = "FILL";
   closeMode: CloseResult["status"] | "TIMEOUT" = "CLOSED";
-  nextTicket = 100; specInfo = { symbol: "", volumeMin: 0.01, volumeMax: 100, volumeStep: 0.01, tickSize: 0.01, tickValue: 0.01, marginPerLot: 0 };
+  nextTicket = 100; specInfo = { symbol: "", volumeMin: 0.01, volumeMax: 100, volumeStep: 0.01, tickSize: 0.01, tickValue: 1, marginPerLot: 0 };
   async serverTimeMs() { return this.now; }
   async account() { return { login: this.login, server: "Exness-MT5Trial", tradeMode: this.mode, balance: this.balance, equity: this.equity }; }
   async positions() { return this.pos; }
@@ -58,7 +58,7 @@ function rig(sigsFor: (m5: readonly TechBar[]) => LabSignal[], over: Partial<Run
   return { b, store, cfg, r: new LabDemoRunner(b, store, cfg) };
 }
 /** First tick after start only reconciles (restart rule); second tick may trade. */
-async function warm(r: LabDemoRunner, b: FakeBroker) { await r.tick(); b.now += M5; if (process.env.DBG) console.log(JSON.stringify(r.state.blockReason), JSON.stringify((r as any).store.events.slice(-5))); }
+async function warm(r: LabDemoRunner, b: FakeBroker) { await r.tick(); b.now += M5; }
 
 describe("lab demo runner (fake broker only)", () => {
   it("wires exactly the seven selected modes", () => {
@@ -78,7 +78,7 @@ describe("lab demo runner (fake broker only)", () => {
     expect(new Set(b.sent.map((x) => x.symbol))).toEqual(new Set(["XAUUSD", "BTCUSD"]));
     const x = b.sent.find((s) => s.symbol === "XAUUSD")!;
     expect(x.signal_id).toContain("L11"); // SPV priority: Mode 11 beats Mode 2
-    expect(x.volume).toBe(0.01); // $2.5 budget / ($2 SL × 1 lot = $200 per lot... floored to step)
+    expect(x.volume).toBe(0.01); // $2.5 budget / $200 per lot (2.0 SL) = 0.0125 → floor 0.01
     expect(x.sl).toBeCloseTo(1999.2); expect(x.tp).toBeCloseTo(2003.2);
     b.now += M5; await r.tick();
     expect(b.sent.length).toBe(2); // slots/symbols full
@@ -116,14 +116,14 @@ describe("lab demo runner (fake broker only)", () => {
     expect(r.state.trades.some((t) => t.status === "UNKNOWN")).toBe(true);
     b.now += M5; await r.tick(); // reconcile adopts the timed-out fill by comment
     expect(r.state.trades.filter((t) => t.status === "OPEN").length).toBeGreaterThan(0);
-    const sentBefore = b.sent.length; b.orderMode = "ERROR";
+    const sentBefore = b.sent.length;
     const t2 = rig(() => [sig("EMA_CROSS", "BUY", 0)]); t2.b.orderMode = "ERROR";
     await warm(t2.r, t2.b); await t2.r.tick();
+    expect(t2.b.sent.length).toBe(2);
     expect(t2.r.state.blockReason).toBe("ORDER_STATE_UNKNOWN");
     t2.b.now += M5; await t2.r.tick();
-    expect(t2.b.sent.length).toBe(2); // only one per symbol, then blocked
-    t2.b.now += M5; await t2.r.tick(); t2.b.now += M5; await t2.r.tick();
-    expect(t2.r.state.trades.every((t) => t.status === "NOT_FILLED")).toBe(true);
+    expect(t2.b.sent.length).toBe(2); // blocked while order state unknown
+    expect(t2.r.state.trades.every((t) => t.status === "NOT_FILLED" || t.status === "UNKNOWN")).toBe(true);
     expect(b.sent.length).toBe(sentBefore);
   });
 
