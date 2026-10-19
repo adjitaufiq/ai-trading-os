@@ -28,7 +28,9 @@ export const LAB_DEMO_SYMBOLS = ["XAUUSD", "BTCUSD"] as const;
 const SYMBOL_MODE_BLOCK: Readonly<Record<string, readonly string[]>> = { BTCUSD: ["GOLD_SNIPER"] };
 /** Broker trailing: COPET v2 dollar levels mapped onto R (XAU $3/$2 over $10 SL ⇒ 0.3R/0.2R); Mode 12 keeps its own R trail. */
 export const LAB_DEMO_TRAIL = Object.freeze({ COPET_ARM_R: 0.3, COPET_GAP_R: 0.2, COPET_TP_R: 1, FIBO_ARM_R: 1, FIBO_GAP_R: 0.5, FIBO_MIN_GAP_USD: 1 });
-export const UNKNOWN_ORDER_ABSENT_CYCLES = 2;
+/** An UNKNOWN order (timeout/transport error) is declared NOT_FILLED only after this many absent cycles AND this much broker time. */
+export const UNKNOWN_ORDER_ABSENT_CYCLES = 3;
+export const UNKNOWN_ORDER_MIN_AGE_MS = 120_000;
 
 // ---------- ports ----------
 export interface BrokerAccount { readonly login: number; readonly server: string; readonly tradeMode: string; readonly balance: number; readonly equity: number }
@@ -87,6 +89,8 @@ export interface RunnerConfig {
   readonly killSwitch: () => boolean;
   readonly targetUsd?: number;
   readonly operatorLossUsd?: number;
+  /** Test seam only; production uses the Lab evaluateLab unchanged. */
+  readonly evaluate?: typeof evaluateLab;
 }
 
 /** signal_id ≤ 31 chars (MT5 comment limit): L<mode><sym><bar base36><side>. */
@@ -163,7 +167,6 @@ export class LabDemoRunner {
     if (!this.s.reconciliationClean) return this.block("RECONCILIATION_NOT_CLEAN");
     if (this.s.closeFailures > 0) return this.block("CLOSE_UNVERIFIED");
     if (this.s.trades.some((t) => t.status === "UNKNOWN" || t.status === "PENDING")) return this.block("ORDER_STATE_UNKNOWN");
-    this.block(null as unknown as string);
     this.s.blockReason = null;
     await this.entries(acct!, now);
   }
@@ -191,10 +194,9 @@ export class LabDemoRunner {
       } else { clean = false; this.log("RECONCILE_MISMATCH", { kind: "POSITION_GONE_NO_DEAL", ticket: t.ticket }); }
     }
     for (const t of this.s.trades.filter((x) => x.status === "UNKNOWN")) {
-      if (++t.absentCycles >= UNKNOWN_ORDER_ABSENT_CYCLES) { t.status = "NOT_FILLED"; this.log("ORDER_NOT_FILLED", { signalId: t.signalId }); }
+      if (++t.absentCycles >= UNKNOWN_ORDER_ABSENT_CYCLES && now - t.openedAt >= UNKNOWN_ORDER_MIN_AGE_MS) { t.status = "NOT_FILLED"; this.log("ORDER_NOT_FILLED", { signalId: t.signalId }); }
     }
     this.s.reconciliationClean = clean;
-    void now;
   }
 
   private async close(ticket: number, signalId: string, reason: string): Promise<void> {
@@ -226,7 +228,7 @@ export class LabDemoRunner {
       if ((this.s.lastBar[symbol] ?? 0) >= last.open_time) continue; // one evaluation per closed bar
       this.s.lastBar[symbol] = last.open_time;
       if (this.s.trades.some((t) => t.symbol === symbol && isActive(t))) continue; // 1 position per symbol
-      const sigs = evaluateLab(m5, m15, h1).filter((x) => x.strategy in LAB_DEMO_MODES && !(SYMBOL_MODE_BLOCK[symbol] ?? []).includes(x.strategy));
+      const sigs = (this.cfg.evaluate ?? evaluateLab)(m5, m15, h1).filter((x) => x.strategy in LAB_DEMO_MODES && !(SYMBOL_MODE_BLOCK[symbol] ?? []).includes(x.strategy));
       const shim = { trades: this.s.trades.filter((t) => t.symbol === symbol && t.status === "CLOSED").map((t) => ({ symbol, strategy: t.strategy, side: t.side, closed_at: t.closedAt, exit_reason: t.exitReason === "SL" || t.exitReason === "TP" || t.exitReason === "TRAIL" ? t.exitReason : "MANUAL", signal_bar_time: t.barTime })) } as unknown as LabState;
       const rid = applySafetyRiders(sigs, shim, symbol, m5, now);
       if (rid.blocked) this.log("SAFETY_BLOCK", { symbol, blocked: rid.blocked });
