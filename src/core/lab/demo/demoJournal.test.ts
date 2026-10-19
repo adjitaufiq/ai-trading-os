@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import { demoBucket, demoModeRanking, demoStats, eventKey, mapRunnerTrade, netPnl, tradeFingerprint, upsertDecision } from "./demoJournal";
 import type { RunnerTrade } from "./labDemoRunner";
