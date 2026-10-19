@@ -123,6 +123,11 @@ describe("portfolio guard (signed, baseline)", () => {
     expect(nextPhase({ phase: "PORTFOLIO_STOP_HIT", day: "a" }, "b", 0, 50, 30)).toBe("TRADING");
     expect(nextPhase({ phase: "STATE_DESYNC_HALT", day: "a" }, "b", 0, 50, 30)).toBe("STATE_DESYNC_HALT");
   });
+  it("target +$50 counts realized net only; floating profit does not halt entries", () => {
+    expect(nextPhase({ phase: "TRADING", day: "a" }, "a", 60, 50, 30, 40)).toBe("TRADING");
+    expect(nextPhase({ phase: "TRADING", day: "a" }, "a", 45, 50, 30, 50)).toBe("TARGET_REACHED_HALT");
+    expect(nextPhase({ phase: "TRADING", day: "a" }, "a", -30, 50, 30, 10)).toBe("PORTFOLIO_STOP_HIT");
+  });
 });
 
 describe("gateway contract", () => {
