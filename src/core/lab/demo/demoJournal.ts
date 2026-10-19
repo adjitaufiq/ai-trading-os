@@ -30,7 +30,7 @@ export function upsertDecision(existing: { fingerprint: string; snapshot_at_ms: 
 /** Stable event key for a journal.jsonl line: identical line ⇒ identical key (retry-safe). */
 export const eventKey = (line: string) => tradeFingerprint(line.trim());
 
-export type DemoBucket = "OPEN" | "CLOSED" | "REJECTED" | "SHADOW" | "PENDING" | "UNKNOWN";
+export type DemoBucket = "OPEN" | "CLOSED" | "CLOSED_PROVISIONAL" | "REJECTED" | "SHADOW" | "PENDING" | "UNKNOWN";
 export function demoBucket(s: TradeStatus): DemoBucket {
   if (s === "OPEN" || s === "CLOSING") return "OPEN";
   if (s === "NOT_FILLED") return "SHADOW";
@@ -50,9 +50,9 @@ const LAB_EXIT = new Set(["SL", "TP", "TRAIL", "MANUAL"]);
 const f = (v: number | null | undefined, d = 2) => (v == null ? "n/a" : v.toFixed(d));
 
 export function mapRunnerTrade(t: RunnerTrade): DemoTradeView {
-  const bucket = demoBucket(t.status);
+  const closedKnown = t.status === "CLOSED" && isFinal(t);
+  const bucket: DemoBucket = t.status === "CLOSED" && !closedKnown ? "CLOSED_PROVISIONAL" : demoBucket(t.status);
   const filled = t.entry != null && (bucket === "OPEN" || bucket === "CLOSED");
-  const closedKnown = bucket === "CLOSED" && t.pnlUsd != null && t.closedAt != null;
   const meta = [
     `ticket ${t.ticket ?? "n/a"}`, `status ${t.status}`,
     `req ${f(t.requestedPrice, 3)} → fill ${f(t.entry, 3)}`, `lot ${f(t.requestedVolume)} → ${f(t.volume)}${t.partial ? " (partial)" : ""}`,
@@ -65,28 +65,34 @@ export function mapRunnerTrade(t: RunnerTrade): DemoTradeView {
     why: `MT5 DEMO · ${t.profile}`, opened_at: t.openedAt, signal_bar_time: t.barTime,
     entry: t.entry!, sl: t.sl, tp: t.tp, lot: t.volume,
     status: bucket === "CLOSED" ? "CLOSED" : "OPEN", mark: t.entry!,
-    // Open DEMO trades: runner state holds no broker floating mark ⇒ 0, flagged in meta, never estimated.
-    pnl_usd: closedKnown ? netPnl(t)! : 0,
+    // Open DEMO trades: no broker floating mark in runner state. 0 is a placeholder only; the history view
+    // renders it as "n/a" (floatingUnavailable) and no DEMO statistic reads it.
+    pnl_usd: closedKnown ? t.pnlUsd! : 0,
     closed_at: closedKnown ? t.closedAt : null, exit_price: null,
     exit_reason: closedKnown ? ((LAB_EXIT.has(t.exitReason ?? "") ? t.exitReason : "MANUAL") as LabTrade["exit_reason"]) : null,
     version: DEMO_JOURNAL_VERSION,
   } : null;
-  return { raw: t, bucket, row, meta: bucket === "OPEN" ? `${meta} · floating broker belum tercatat` : meta };
+  const tail = bucket === "OPEN" ? " · floating broker n/a" : bucket === "CLOSED_PROVISIONAL" ? ` · P/L sementara ${t.pnlUsd == null ? "n/a" : t.pnlUsd.toFixed(2)} · biaya belum lengkap` : "";
+  return { raw: t, bucket, row, meta: meta + tail };
 }
 
-/** Net = broker profit + commission + swap, only when all three are recorded; otherwise gross profit as recorded. */
-export function netPnl(t: RunnerTrade): number | null {
-  if (t.pnlUsd == null) return null;
-  return t.pnlUsd + (t.commissionUsd ?? 0) + (t.swapUsd ?? 0);
+/** Executor close-deal contract: `profit` already sums profit+swap+commission of every OUT deal of the
+ * position (partial closes included, one record per position). Net is that value — costs are never re-added. */
+export function netPnl(t: RunnerTrade): number | null { return t.pnlUsd; }
+/** Final = closed with recorded profit, close time and both cost fields; otherwise provisional. */
+export function isFinal(t: RunnerTrade): boolean {
+  return t.status === "CLOSED" && t.pnlUsd != null && t.closedAt != null && t.commissionUsd != null && t.swapUsd != null;
 }
 
 export interface DemoStats {
   closed: number; wins: number; losses: number; winRate: number | null; expectancy: number | null; profitFactor: number | null;
   net: number; maxDrawdown: number; maxLossStreak: number; commission: number; swap: number; avgSlippagePoints: number | null;
   open: number; rejected: number; shadow: number; pending: number; unknown: number;
+  /** Closed trades excluded from final stats (missing profit/time/cost fields) and their recorded P/L sum. */
+  provisional: number; provisionalNet: number | null;
 }
 export function demoStats(trades: readonly RunnerTrade[]): DemoStats {
-  const closed = trades.filter((t) => t.status === "CLOSED" && t.pnlUsd != null).sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0));
+  const closed = trades.filter(isFinal).sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0));
   let wins = 0, losses = 0, gp = 0, gl = 0, eq = 0, peak = 0, dd = 0, streak = 0, maxStreak = 0, com = 0, sw = 0;
   for (const t of closed) {
     const n = netPnl(t)!; eq += n; peak = Math.max(peak, eq); dd = Math.max(dd, peak - eq);
@@ -95,25 +101,28 @@ export function demoStats(trades: readonly RunnerTrade[]): DemoStats {
   }
   const slips = trades.map((t) => t.slippagePoints).filter((v): v is number => v != null);
   const c = (b: DemoBucket) => trades.filter((t) => demoBucket(t.status) === b).length;
+  const prov = trades.filter((t) => t.status === "CLOSED" && !isFinal(t));
+  const provKnown = prov.filter((t) => t.pnlUsd != null);
   return {
     closed: closed.length, wins, losses, winRate: closed.length ? wins / closed.length : null,
     expectancy: closed.length ? eq / closed.length : null, profitFactor: gl > 0 ? gp / gl : null,
     net: eq, maxDrawdown: dd, maxLossStreak: maxStreak, commission: com, swap: sw,
     avgSlippagePoints: slips.length ? slips.reduce((a, b) => a + b, 0) / slips.length : null,
     open: c("OPEN"), rejected: c("REJECTED"), shadow: c("SHADOW"), pending: c("PENDING"), unknown: c("UNKNOWN"),
+    provisional: prov.length, provisionalNet: provKnown.length ? provKnown.reduce((a, t) => a + t.pnlUsd!, 0) : null,
   };
 }
 
 export interface DemoModeRank { strategy: string; closed: number; net: number; winRate: number | null }
 export function demoModeRanking(trades: readonly RunnerTrade[]): DemoModeRank[] {
   const m = new Map<string, RunnerTrade[]>();
-  for (const t of trades) if (t.status === "CLOSED" && t.pnlUsd != null) m.set(t.strategy, [...(m.get(t.strategy) ?? []), t]);
+  for (const t of trades) if (isFinal(t)) m.set(t.strategy, [...(m.get(t.strategy) ?? []), t]);
   return [...m].map(([strategy, ts]) => { const s = demoStats(ts); return { strategy, closed: s.closed, net: s.net, winRate: s.winRate }; }).sort((a, b) => b.net - a.net);
 }
 
 /** Hourly (WIB) results; a label is conclusive only with ≥ minSample closed trades in that hour. */
 export function demoHourly(trades: readonly RunnerTrade[], minSample = 20) {
   const h = new Map<number, number[]>();
-  for (const t of trades) if (t.status === "CLOSED" && t.pnlUsd != null) { const hr = (new Date(t.openedAt).getUTCHours() + 7) % 24; h.set(hr, [...(h.get(hr) ?? []), netPnl(t)!]); }
+  for (const t of trades) if (isFinal(t)) { const hr = (new Date(t.openedAt).getUTCHours() + 7) % 24; h.set(hr, [...(h.get(hr) ?? []), netPnl(t)!]); }
   return [...h].sort((a, b) => a[0] - b[0]).map(([hour, v]) => ({ hour, n: v.length, net: v.reduce((a, b) => a + b, 0), conclusive: v.length >= minSample }));
 }

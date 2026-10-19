@@ -22,10 +22,17 @@ describe("Lab DEMO journal", () => {
     expect(eventKey('{"type":"A"}\n')).toBe(eventKey('{"type":"A"}'));
     expect(eventKey('{"type":"A"}')).not.toBe(eventKey('{"type":"B"}'));
   });
-  test("net P/L = broker profit + commission + swap, costs never invented", () => {
-    expect(netPnl(base)).toBeCloseTo(3.86);
+  test("net P/L = executor profit (already incl. commission+swap), costs never re-added", () => {
+    expect(netPnl(base)).toBe(4);
     expect(netPnl(t({ pnlUsd: null }))).toBeNull();
     expect(mapRunnerTrade(t({ commissionUsd: null })).meta).toContain("komisi n/a");
+  });
+  test("missing commission/swap ⇒ provisional: no history row, excluded from final stats and ranking", () => {
+    const v = mapRunnerTrade(t({ swapUsd: null }));
+    expect(v.bucket).toBe("CLOSED_PROVISIONAL"); expect(v.row).toBeNull(); expect(v.meta).toContain("biaya belum lengkap");
+    const s = demoStats([t({ swapUsd: null, pnlUsd: 20 })]);
+    expect(s.closed).toBe(0); expect(s.net).toBe(0); expect(s.provisional).toBe(1); expect(s.provisionalNet).toBe(20);
+    expect(demoModeRanking([t({ swapUsd: null })])).toHaveLength(0);
   });
   test("SHADOW/REJECTED/PENDING/UNKNOWN never become history rows", () => {
     for (const status of ["NOT_FILLED", "REJECTED", "PENDING", "UNKNOWN"] as const) expect(mapRunnerTrade(t({ status, entry: null, pnlUsd: null })).row).toBeNull();
@@ -42,7 +49,8 @@ describe("Lab DEMO journal", () => {
     const v = mapRunnerTrade(t({ status: "OPEN", closedAt: null, pnlUsd: null }));
     expect(v.row!.status).toBe("OPEN");
     expect(v.row!.pnl_usd).toBe(0);
-    expect(v.meta).toContain("floating broker belum tercatat");
+    expect(v.meta).toContain("floating broker n/a");
+    expect(demoStats([t({ status: "OPEN", closedAt: null, pnlUsd: null })]).net).toBe(0);
   });
   test("stats: drawdown, loss streak, ranking from closed broker trades only", () => {
     const ts = [t({ signalId: "a", closedAt: 1, pnlUsd: 10, commissionUsd: 0 }), t({ signalId: "b", closedAt: 2, pnlUsd: -5, commissionUsd: 0 }), t({ signalId: "c", closedAt: 3, pnlUsd: -5, commissionUsd: 0 }), t({ signalId: "d", status: "NOT_FILLED", pnlUsd: null })];
