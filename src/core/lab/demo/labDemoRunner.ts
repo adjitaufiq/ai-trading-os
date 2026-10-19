@@ -87,6 +87,8 @@ export interface RunnerConfig {
   readonly killSwitch: () => boolean;
   readonly targetUsd?: number;
   readonly operatorLossUsd?: number;
+  /** Test seam only; production uses the Lab evaluateLab unchanged. */
+  readonly evaluate?: typeof evaluateLab;
 }
 
 /** signal_id ≤ 31 chars (MT5 comment limit): L<mode><sym><bar base36><side>. */
@@ -163,7 +165,6 @@ export class LabDemoRunner {
     if (!this.s.reconciliationClean) return this.block("RECONCILIATION_NOT_CLEAN");
     if (this.s.closeFailures > 0) return this.block("CLOSE_UNVERIFIED");
     if (this.s.trades.some((t) => t.status === "UNKNOWN" || t.status === "PENDING")) return this.block("ORDER_STATE_UNKNOWN");
-    this.block(null as unknown as string);
     this.s.blockReason = null;
     await this.entries(acct!, now);
   }
@@ -226,7 +227,7 @@ export class LabDemoRunner {
       if ((this.s.lastBar[symbol] ?? 0) >= last.open_time) continue; // one evaluation per closed bar
       this.s.lastBar[symbol] = last.open_time;
       if (this.s.trades.some((t) => t.symbol === symbol && isActive(t))) continue; // 1 position per symbol
-      const sigs = evaluateLab(m5, m15, h1).filter((x) => x.strategy in LAB_DEMO_MODES && !(SYMBOL_MODE_BLOCK[symbol] ?? []).includes(x.strategy));
+      const sigs = (this.cfg.evaluate ?? evaluateLab)(m5, m15, h1).filter((x) => x.strategy in LAB_DEMO_MODES && !(SYMBOL_MODE_BLOCK[symbol] ?? []).includes(x.strategy));
       const shim = { trades: this.s.trades.filter((t) => t.symbol === symbol && t.status === "CLOSED").map((t) => ({ symbol, strategy: t.strategy, side: t.side, closed_at: t.closedAt, exit_reason: t.exitReason === "SL" || t.exitReason === "TP" || t.exitReason === "TRAIL" ? t.exitReason : "MANUAL", signal_bar_time: t.barTime })) } as unknown as LabState;
       const rid = applySafetyRiders(sigs, shim, symbol, m5, now);
       if (rid.blocked) this.log("SAFETY_BLOCK", { symbol, blocked: rid.blocked });
