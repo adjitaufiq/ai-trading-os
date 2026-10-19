@@ -169,7 +169,7 @@ export class LabDemoRunner {
       .map((t) => ({ ticket: t.ticket!, symbol: t.symbol, side: t.side, volume: t.volume, dayBaseUsd: t.dayBaseUsd, closedDay: t.closedDay, pnlUsd: t.pnlUsd, open: isActive(t) }));
     const specs = Object.fromEntries(LAB_DEMO_SYMBOLS.map((s) => [s, toGuardSpec(this.specs[s] ?? null)]));
     const pnl = computeDayPnl(gt, positions, specs, day, P.friction_buffer_usd_per_position);
-    const phase = nextPhase({ phase: this.s.phase, day: this.s.phaseDay }, day, pnl.dayPnlUsd, P.daily_target_usd, P.daily_stop_usd);
+    const phase = nextPhase({ phase: this.s.phase, day: this.s.phaseDay }, day, pnl.dayPnlUsd, P.daily_target_usd, P.daily_stop_usd, pnl.realizedUsd);
     if (phase !== this.s.phase || this.s.phaseDay !== day) {
       if (phase !== this.s.phase) this.log("PORTFOLIO_PHASE", { from: this.s.phase, to: phase, day, ...pnl, note: "realized result may differ from trigger (spread/slippage/gap/costs)" });
       this.s.phase = phase; this.s.phaseDay = day;

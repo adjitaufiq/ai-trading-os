@@ -60,12 +60,14 @@ export function budgetAllows(worstCaseUsd: number | null, candidateSlLossUsd: nu
 
 export type LabPhase = "TRADING" | "TARGET_REACHED_HALT" | "PORTFOLIO_STOP_HIT" | "STATE_DESYNC_HALT";
 /** Phase transition for one tick. STATE_DESYNC_HALT is sticky (operator clears it); TARGET/STOP last the broker day. */
-export function nextPhase(prev: { phase: LabPhase; day: string | null }, day: string, dayPnlUsd: number | null, targetUsd: number, stopUsd: number): LabPhase {
+/** Stop uses realized + floating (dayPnlUsd); target uses REALIZED net only when realizedUsd is given (operator 2026-10-19). */
+export function nextPhase(prev: { phase: LabPhase; day: string | null }, day: string, dayPnlUsd: number | null, targetUsd: number, stopUsd: number, realizedUsd?: number): LabPhase {
   if (prev.phase === "STATE_DESYNC_HALT") return prev.phase;
   const base: LabPhase = prev.day === day ? prev.phase : "TRADING";
   if (base === "PORTFOLIO_STOP_HIT") return base;
   if (dayPnlUsd != null && dayPnlUsd <= -stopUsd) return "PORTFOLIO_STOP_HIT";
   if (base === "TARGET_REACHED_HALT") return base;
-  if (dayPnlUsd != null && dayPnlUsd >= targetUsd) return "TARGET_REACHED_HALT";
+  const targetMetric = realizedUsd ?? dayPnlUsd;
+  if (targetMetric != null && targetMetric >= targetUsd) return "TARGET_REACHED_HALT";
   return "TRADING";
 }
