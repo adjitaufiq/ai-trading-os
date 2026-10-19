@@ -17,7 +17,7 @@ const usd = (v: number) => `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
 const px = (v: number) => (Math.abs(v) >= 1000 ? v.toFixed(2) : v.toFixed(3));
 const time = (t: number) => new Date(t).toLocaleString("id-ID", { hour12: false });
 
-type JournalSource = "PAPER" | "DEMO";
+export type JournalSource = "PAPER" | "DEMO";
 function JournalSourceSelector({ source, onChange }: { source: JournalSource; onChange: (s: JournalSource) => void }) {
   return <div className="mt-2 flex flex-wrap gap-1" role="radiogroup" aria-label="Sumber jurnal" data-testid="journal-source">
     <Button size="sm" role="radio" aria-checked={source === "PAPER"} variant={source === "PAPER" ? "secondary" : "ghost"} onClick={() => onChange("PAPER")}>Paper Simulator</Button>
@@ -26,15 +26,24 @@ function JournalSourceSelector({ source, onChange }: { source: JournalSource; on
   </div>;
 }
 
-export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
-  const [source, setSource] = useState<JournalSource>("PAPER");
+export function StrategyLabPanel({ lab, source: srcProp, onSourceChange }: { lab: LabRuntime; source?: JournalSource; onSourceChange?: (s: JournalSource) => void }) {
+  const [own, setOwn] = useState<JournalSource>("PAPER");
+  const source = srcProp ?? own;
+  const setSource = onSourceChange ?? setOwn;
   const board = leaderboard(lab.state);
   const tone = (v: number) => (v >= 0 ? "text-bull" : "text-bear");
+  if (source === "DEMO") return <section aria-label="Jurnal MT5 DEMO" className="border border-border bg-card p-4" data-testid="strategy-lab-demo">
+    <div className="flex items-center gap-2"><Swords className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">MT5 DEMO · data VPS/broker saja</h3></div>
+    <JournalSourceSelector source={source} onChange={setSource} />
+    <p className="mt-1 text-xs text-muted-foreground">Tampilan ini hanya membaca data yang dikirim VPS. Tidak ada saldo, trade, atau kendali dari Paper Simulator.</p>
+    <LabDemoJournal />
+  </section>;
   return <section aria-label="Arena Lab" className="border border-border bg-card p-4" data-testid="strategy-lab">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="flex items-center gap-2"><Swords className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">Arena Lab · 5 mode · PAPER SIMULASI</h3></div>
+      <div className="flex items-center gap-2"><Swords className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">Arena Lab · PAPER SIMULASI</h3></div>
       <Button size="sm" variant="ghost" onClick={() => { if (confirm("Reset Arena Lab ke $500?")) lab.reset(); }}>Reset</Button>
     </div>
+    <JournalSourceSelector source={source} onChange={setSource} />
     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs" role="status" data-testid="lab-sync-status">
       <span className={lab.sync.status === "SYNCED" ? "text-bull" : "text-warn"}>Jurnal cloud · {{ LOCAL: "Lokal", LOGIN_REQUIRED: "Belum masuk", SYNCING: "Mengirim", SYNCED: "Tersinkron", RETRY: "Menunggu kirim ulang", ACCOUNT_MISMATCH: "Akun berbeda" }[lab.sync.status]}</span>
       <span className="text-muted-foreground">Antrean {lab.sync.pending}{lab.sync.lastSyncedAt ? ` · terkirim ${time(lab.sync.lastSyncedAt)}` : ""} · pembaruan ±15 dtk</span>
@@ -50,8 +59,7 @@ export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
     {lab.error ? <p className="mt-2 text-xs text-warn">{lab.error}</p> : null}
     <LabOperatorConsole lab={lab} />
     <h4 className="mt-4 text-xs font-semibold uppercase text-muted-foreground">Log tembakan · semua market</h4>
-    <JournalSourceSelector source={source} onChange={setSource} />
-    {source === "PAPER" ? <LabTradeHistory trades={lab.state.trades} /> : <LabDemoJournal />}
+    <LabTradeHistory trades={lab.state.trades} />
     <LabLeaderboard lab={lab} />
     <div className="mt-3 space-y-2">{board.rows.map((r, i) => <div key={r.strategy} className="rounded border border-border p-3">
       <div className="text-sm font-semibold break-words">Mode {LAB_LABELS[r.strategy]}{lab.switches[r.strategy] ? null : <span className="ml-2 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">OFF · istirahat</span>}</div>

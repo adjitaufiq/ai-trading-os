@@ -8,7 +8,7 @@ import { toTechBar } from "@/core/technical/TechnicalSliceService";
 import { runQuickBacktest, BACKTEST_DISCLAIMER, type BacktestResult } from "@/core/technical/backtest";
 import type { JournalTrade } from "@/engine/journal/types";
 import { sharedPaperJournal, type JournalEntry, type PaperJournalStore } from "@/lib/paperJournal";
-import { StrategyLabPanel } from "@/components/StrategyLabPanel";
+import { StrategyLabPanel, type JournalSource } from "@/components/StrategyLabPanel";
 import type { LabRuntime } from "@/hooks/use-strategy-lab";
 
 const n = (v: number | null | undefined, d = 3) => (v == null || !Number.isFinite(v) ? "—" : Math.abs(v) >= 1000 ? v.toFixed(2) : v.toFixed(d));
@@ -105,9 +105,13 @@ export function EngineJournalList({ trades, symbol }: { trades: readonly Readonl
 
 export function JournalPanel({ runtimes, selectedSymbol, store, engineTrades, lab }: { lab?: LabRuntime; runtimes: readonly { symbol: string; reader: MarketRuntimeReader | null }[]; selectedSymbol: string; store?: PaperJournalStore; engineTrades?: readonly Readonly<JournalTrade>[] | null }) {
   const s = useMemo(() => store ?? sharedPaperJournal(), [store]);
+  const [source, setSource] = useState<JournalSource>("PAPER");
+  const demo = lab != null && source === "DEMO";
   return <section className="bg-background px-4 pb-8 sm:px-8"><div className="mx-auto max-w-screen-2xl space-y-4">
-    {lab ? <StrategyLabPanel lab={lab} /> : null}
-    {engineTrades ? <EngineJournalList trades={engineTrades} symbol={selectedSymbol} /> : <BacktestPanel runtimes={runtimes} symbol={selectedSymbol} />}
-    <JournalList store={s} symbols={runtimes.map((r) => r.symbol)} />
+    {lab ? <StrategyLabPanel lab={lab} source={source} onSourceChange={setSource} /> : null}
+    {demo ? null : <>
+      {engineTrades ? <EngineJournalList trades={engineTrades} symbol={selectedSymbol} /> : <BacktestPanel runtimes={runtimes} symbol={selectedSymbol} />}
+      <JournalList store={s} symbols={runtimes.map((r) => r.symbol)} />
+    </>}
   </div></section>;
 }
