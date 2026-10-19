@@ -1,4 +1,4 @@
-import type { TechBar } from "@/core/technical/indicators";
+import type { TechBar } from "../../technical/indicators";
 
 /** Parses the real gateway MARKET_DATA.BARS envelope ({ data: { items: [{ raw_time_s, open, high, low, close }] } }).
  * Any malformed row ⇒ null (whole response refused, no partial history). */
