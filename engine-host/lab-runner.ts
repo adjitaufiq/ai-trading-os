@@ -65,7 +65,7 @@ const port: LabBrokerPort = {
       .sort((a, b) => a.open_time - b.open_time);
   }),
   quote: (symbol) => safe(async () => { const d = (await get(GW, `/v1/ticks/latest/${symbol}`)).data; return d?.bid > 0 && d?.ask > 0 ? { bid: d.bid, ask: d.ask } : null; }),
-  spec: (symbol) => safe(async () => { const s = await get(EX, `/v1/demo/symbol?name=${encodeURIComponent(symbol)}`, true); return s ? { symbol, volumeMin: s.volume_min, volumeMax: s.volume_max, volumeStep: s.volume_step, tickSize: s.tick_size, tickValue: s.tick_value, marginPerLot: 0 } : null; }),
+  spec: (symbol) => safe(async () => { const s = await get(EX, `/v1/demo/symbol?name=${encodeURIComponent(symbol)}`, true); return s && !s.error ? { symbol, volumeMin: s.volume_min, volumeMax: s.volume_max, volumeStep: s.volume_step, tickSize: s.tick_size, tickValue: s.tick_value, marginPerLot: 0 } : null; }),
   closeDeal: (t) => safe(async () => { const d = await get(EX, `/v1/demo/close-deal?position=${t}`, true); return d && !d.error ? { ticket: t, time: d.time, profit: d.profit, reason: d.reason } : null; }),
   sendOrder: async (req) => { const r = await post("/v1/demo/orders", req); return { status: r.status, ticket: r.ticket, price: r.price, volume: r.volume, comment: r.comment ?? r.error ?? null }; },
   closePosition: async (req) => { const r = await post("/v1/demo/close", req); return { status: r.status, comment: r.comment ?? null }; },

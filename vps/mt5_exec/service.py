@@ -156,7 +156,9 @@ class DemoExecService:
         pos = next((p for p in n.positions_get() or () if int(p.ticket) == ticket), None)
         if pos is None:
             return {"status": "NOT_FOUND", "comment": "POSITION_NOT_OPEN", "ticket": ticket}
-        if int(pos.magic) != MAGIC or str(pos.comment) != sid[:31]:
+        c = str(pos.comment)
+        comment_ok = c == sid[:31] or (len(c) >= 8 and sid.startswith(c))  # broker may truncate comments
+        if int(pos.magic) != MAGIC or not comment_ok:
             return {"status": "REJECTED", "comment": "NOT_BOT_POSITION", "ticket": ticket}
         symbol = str(pos.symbol)
         tick = n.symbol_info_tick(symbol)
