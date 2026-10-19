@@ -65,6 +65,8 @@ export const Route = createFileRoute("/api/public/agent/lab-demo-journal")({
           if (error) return json({ error: "event store failed" }, 500);
           eventsStored = count ?? evRows.length;
         }
+        const { data: prevStatus } = await supabaseAdmin.from("lab_demo_sync_status").select("snapshot_at_ms").eq("agent_id", p.agent_id).maybeSingle();
+        if (prevStatus && Number(prevStatus.snapshot_at_ms) > p.snapshot_at) return json({ ok: true, trades: counts, events_stored: eventsStored, status: "SKIP_STALE" });
         const { error: e3 } = await supabaseAdmin.from("lab_demo_sync_status").upsert({
           agent_id: p.agent_id, runner_version: p.runner.version, armed: p.runner.armed, phase: p.runner.phase,
           reconciliation_clean: p.runner.reconciliationClean, block_reason: p.runner.blockReason,
