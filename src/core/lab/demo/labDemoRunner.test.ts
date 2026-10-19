@@ -111,7 +111,7 @@ describe("lab demo runner (fake broker only)", () => {
   it("reject is journaled and does not block; ERROR/timeout fail closed until reconcile", async () => {
     const { r, b, store } = rig(() => [sig("EMA_CROSS", "BUY", 0)]);
     b.orderMode = "REJECT"; await warm(r, b); await r.tick();
-    expect(store.events.some((e) => e.type === "ORDER_RESULT" && e.status === "REJECTED")).toBe(true);
+    expect(store.events.some((e) => e["type"] === "ORDER_RESULT" && e["status"] === "REJECTED")).toBe(true);
     b.orderMode = "TIMEOUT"; b.now += M5; await r.tick();
     expect(r.state.trades.some((t) => t.status === "UNKNOWN")).toBe(true);
     b.now += M5; await r.tick(); // reconcile adopts the timed-out fill by comment
@@ -141,7 +141,7 @@ describe("lab demo runner (fake broker only)", () => {
     const bot = r.state.trades.filter((t) => t.status === "OPEN");
     bot.forEach((t) => b.setProfit(t.ticket!, -6));
     b.now += 1000; await r.tick();
-    expect(store.events.some((e) => e.type === "DAILY_GUARD" && e.lossLimitUsd === 10)).toBe(true);
+    expect(store.events.some((e) => e["type"] === "DAILY_GUARD" && e["lossLimitUsd"] === 10)).toBe(true);
     expect(b.closes.sort()).toEqual(bot.map((t) => t.ticket).sort());
     expect(b.closes).not.toContain(9);
     const n = b.sent.length; b.now += M5; await r.tick();
