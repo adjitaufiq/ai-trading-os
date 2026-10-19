@@ -6,15 +6,19 @@
 //   DEMO_EXEC_URL        demo executor (default http://127.0.0.1:8100)
 //   DEMO_EXEC_TOKEN      bearer token shared with vps/mt5_exec (required)
 //   DEMO_ACCOUNT_WHITELIST / DEMO_SERVER_WHITELIST  comma lists (required)
-//   RISK_POLICY_FILE     default engine-host/risk-policy.json (read-only; invalid ⇒ refuse to start)
+//   LAB_RISK_POLICY_FILE default engine-host/lab-risk-policy.json — the ONLY risk/config source (ARENA risk-policy.json is
+//                        never read); missing or invalid ⇒ exit 1 before any broker call. Lab magic 610007 only.
 //   LAB_RUNNER_DATA_DIR  default engine-host/data/lab-runner (state.json + journal.jsonl + lock)
 //   LAB_RUNNER_ARMED     YES to allow orders/closes (anything else = SHADOW)
 //   LAB_RUNNER_INTERVAL_MS default 5000
 //   Kill switch: create <data dir>/DEMO_KILL_SWITCH (or EMERGENCY_STOP) — blocks new entries immediately.
+//   STATE_DESYNC_HALT is sticky; after manual review create <data dir>/CLEAR_DESYNC (consumed once).
+// Startup: Task Scheduler AtLogOn ⇒ runs only after the MT5 Windows user logs in (not unattended after reboot).
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { LabDemoRunner, type BrokerPos, type LabBrokerPort } from "../src/core/lab/demo/labDemoRunner";
-import { parseRiskPolicy } from "../src/engine/risk/riskPolicy";
+import { LAB_MAGIC, parseLabRiskPolicy } from "../src/core/lab/demo/labRiskPolicy";
+import { parseGatewayBars } from "../src/core/lab/demo/gatewayParse";
 import type { TechBar } from "../src/core/technical/indicators";
 
 const env = (k: string, d = "") => (process.env[k] ?? d).trim();
@@ -25,8 +29,9 @@ const servers = new Set(env("DEMO_SERVER_WHITELIST").split(",").map((x) => x.tri
 const loopback = (u: string) => /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(u);
 if (!loopback(GW) || !loopback(EX)) throw new Error("gateway/executor must be loopback");
 if (TOKEN.length < 24 || !logins.size || !servers.size) throw new Error("DEMO_EXEC_TOKEN and DEMO whitelists required");
-const pol = parseRiskPolicy(readFileSync(env("RISK_POLICY_FILE", "engine-host/risk-policy.json"), "utf8"));
-if (!pol.ok) throw new Error(`risk policy invalid: ${pol.error}`);
+const polFile = env("LAB_RISK_POLICY_FILE", "engine-host/lab-risk-policy.json");
+const pol = parseLabRiskPolicy(existsSync(polFile) ? readFileSync(polFile, "utf8") : null);
+if (!pol.ok) { console.error(`[lab-runner] lab risk policy refused: ${pol.error}`); process.exit(1); }
 
 const dir = env("LAB_RUNNER_DATA_DIR", "engine-host/data/lab-runner");
 mkdirSync(dir, { recursive: true });
@@ -56,19 +61,16 @@ const TF_MS = { M5: 300_000, M15: 900_000, H1: 3_600_000 } as const;
 const port: LabBrokerPort = {
   serverTimeMs: () => safe(async () => { const e = await get(GW, "/v1/ticks/latest/XAUUSD"); const t = Number(e?.data?.raw_time_msc); return t > 0 ? t : null; }),
   account: () => safe(async () => { const a = await get(EX, "/v1/demo/account", true); return { login: a.login, server: a.server, tradeMode: a.trade_mode, balance: a.balance, equity: a.equity }; }),
-  positions: () => safe(async () => (await get(EX, "/v1/demo/positions", true) as any[]).map((p): BrokerPos => ({ ticket: p.ticket, symbol: p.symbol, comment: p.comment, magicOk: true, volume: p.volume, profit: p.profit, sl: p.sl, tp: p.tp }))),
+  positions: () => safe(async () => ((await get(EX, `/v1/demo/positions?magic=${LAB_MAGIC}`, true)).positions as any[]).map((p): BrokerPos => ({ ticket: p.ticket, symbol: p.symbol, comment: p.comment, magic: Number(p.magic), side: p.type === "SELL" ? "SELL" : "BUY", volume: p.volume, priceOpen: p.price_open ?? null, profit: p.profit ?? null, swap: p.swap ?? null, sl: p.sl ?? null, tp: p.tp ?? null }))),
   closedBars: (symbol, tf) => safe(async () => {
     const e = await get(GW, `/v1/bars/${symbol}/${tf}?mode=pos&start=1&count=200`); // start=1 skips the forming bar
-    const rows: any[] = Array.isArray(e?.data) ? e.data : e?.data?.bars ?? [];
-    const ms = TF_MS[tf];
-    return rows.map((b): TechBar => ({ open_time: b.raw_time_s * 1000, close_time: b.raw_time_s * 1000 + ms, available_at: b.raw_time_s * 1000 + ms, open: b.open, high: b.high, low: b.low, close: b.close }))
-      .sort((a, b) => a.open_time - b.open_time);
+    return parseGatewayBars(e, TF_MS[tf]);
   }),
   quote: (symbol) => safe(async () => { const d = (await get(GW, `/v1/ticks/latest/${symbol}`)).data; return d?.bid > 0 && d?.ask > 0 ? { bid: d.bid, ask: d.ask } : null; }),
   spec: (symbol) => safe(async () => { const s = await get(EX, `/v1/demo/symbol?name=${encodeURIComponent(symbol)}`, true); return s && !s.error ? { symbol, volumeMin: s.volume_min, volumeMax: s.volume_max, volumeStep: s.volume_step, tickSize: s.tick_size, tickValue: s.tick_value, marginPerLot: 0 } : null; }),
-  closeDeal: (t) => safe(async () => { const d = await get(EX, `/v1/demo/close-deal?position=${t}`, true); return d && !d.error ? { ticket: t, time: d.time, profit: d.profit, reason: d.reason } : null; }),
-  sendOrder: async (req) => { const r = await post("/v1/demo/orders", req); return { status: r.status, ticket: r.ticket, price: r.price, volume: r.volume, comment: r.comment ?? r.error ?? null }; },
-  closePosition: async (req) => { const r = await post("/v1/demo/close", req); return { status: r.status, comment: r.comment ?? null }; },
+  closeDeal: (t) => safe(async () => { const d = await get(EX, `/v1/demo/close-deal?position=${t}&magic=${LAB_MAGIC}`, true); return d && !d.error ? { ticket: t, time: d.time, profit: d.profit, reason: d.reason, volume: d.volume ?? null, commission: d.commission ?? null, swap: d.swap ?? null } : null; }),
+  sendOrder: async (req) => { if (req.magic !== LAB_MAGIC) throw new Error("LAB_MAGIC_REQUIRED"); const r = await post("/v1/demo/orders", req); return { status: r.status, ticket: r.ticket, price: r.price, volume: r.volume, comment: r.comment ?? r.error ?? null }; },
+  closePosition: async (req) => { if (req.magic !== LAB_MAGIC) throw new Error("LAB_MAGIC_REQUIRED"); const r = await post("/v1/demo/close", req); return { status: r.status, comment: r.comment ?? null }; },
 };
 
 const stateFile = join(dir, "state.json"), journalFile = join(dir, "journal.jsonl");
@@ -83,4 +85,11 @@ const runner = new LabDemoRunner(port, {
 });
 console.log(`[lab-runner] started ${runner.state.version} armed=${env("LAB_RUNNER_ARMED") === "YES"} policy=${JSON.stringify(pol.policy)}`);
 let busy = false;
-setInterval(async () => { if (busy) return; busy = true; try { await runner.tick(); } finally { busy = false; } }, Number(env("LAB_RUNNER_INTERVAL_MS", "5000")) || 5000);
+setInterval(async () => {
+  if (busy) return; busy = true;
+  try {
+    const clr = join(dir, "CLEAR_DESYNC");
+    if (existsSync(clr)) { unlinkSync(clr); runner.clearDesync(); }
+    await runner.tick();
+  } finally { busy = false; }
+}, Number(env("LAB_RUNNER_INTERVAL_MS", "5000")) || 5000);
