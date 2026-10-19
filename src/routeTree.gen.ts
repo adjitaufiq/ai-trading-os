@@ -27,6 +27,7 @@ import { Route as ApiPublicAgentEngineEventsRouteImport } from './routes/api/pub
 import { Route as ApiPublicAgentEngineStatusRouteImport } from './routes/api/public/agent/engine-status'
 import { Route as ApiPublicAgentEventsRouteImport } from './routes/api/public/agent/events'
 import { Route as ApiPublicAgentHeartbeatRouteImport } from './routes/api/public/agent/heartbeat'
+import { Route as ApiPublicAgentLabDemoJournalRouteImport } from './routes/api/public/agent/lab-demo-journal'
 import { Route as ApiPublicHooksEngineMemoryRouteImport } from './routes/api/public/hooks/engine-memory'
 import { Route as ApiPublicTelegramWebhookRouteImport } from './routes/api/public/telegram/webhook'
 
@@ -125,6 +126,12 @@ const ApiPublicAgentHeartbeatRoute = ApiPublicAgentHeartbeatRouteImport.update({
   path: '/api/public/agent/heartbeat',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicAgentLabDemoJournalRoute =
+  ApiPublicAgentLabDemoJournalRouteImport.update({
+    id: '/api/public/agent/lab-demo-journal',
+    path: '/api/public/agent/lab-demo-journal',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksEngineMemoryRoute =
   ApiPublicHooksEngineMemoryRouteImport.update({
     id: '/api/public/hooks/engine-memory',
@@ -156,6 +163,7 @@ export interface FileRoutesByFullPath {
   '/api/public/agent/engine-status': typeof ApiPublicAgentEngineStatusRoute
   '/api/public/agent/events': typeof ApiPublicAgentEventsRoute
   '/api/public/agent/heartbeat': typeof ApiPublicAgentHeartbeatRoute
+  '/api/public/agent/lab-demo-journal': typeof ApiPublicAgentLabDemoJournalRoute
   '/api/public/hooks/engine-memory': typeof ApiPublicHooksEngineMemoryRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
 }
@@ -176,6 +184,7 @@ export interface FileRoutesByTo {
   '/api/public/agent/engine-status': typeof ApiPublicAgentEngineStatusRoute
   '/api/public/agent/events': typeof ApiPublicAgentEventsRoute
   '/api/public/agent/heartbeat': typeof ApiPublicAgentHeartbeatRoute
+  '/api/public/agent/lab-demo-journal': typeof ApiPublicAgentLabDemoJournalRoute
   '/api/public/hooks/engine-memory': typeof ApiPublicHooksEngineMemoryRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
 }
@@ -199,6 +208,7 @@ export interface FileRoutesById {
   '/api/public/agent/engine-status': typeof ApiPublicAgentEngineStatusRoute
   '/api/public/agent/events': typeof ApiPublicAgentEventsRoute
   '/api/public/agent/heartbeat': typeof ApiPublicAgentHeartbeatRoute
+  '/api/public/agent/lab-demo-journal': typeof ApiPublicAgentLabDemoJournalRoute
   '/api/public/hooks/engine-memory': typeof ApiPublicHooksEngineMemoryRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
 }
@@ -222,6 +232,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/engine-status'
     | '/api/public/agent/events'
     | '/api/public/agent/heartbeat'
+    | '/api/public/agent/lab-demo-journal'
     | '/api/public/hooks/engine-memory'
     | '/api/public/telegram/webhook'
   fileRoutesByTo: FileRoutesByTo
@@ -242,6 +253,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/engine-status'
     | '/api/public/agent/events'
     | '/api/public/agent/heartbeat'
+    | '/api/public/agent/lab-demo-journal'
     | '/api/public/hooks/engine-memory'
     | '/api/public/telegram/webhook'
   id:
@@ -264,6 +276,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/engine-status'
     | '/api/public/agent/events'
     | '/api/public/agent/heartbeat'
+    | '/api/public/agent/lab-demo-journal'
     | '/api/public/hooks/engine-memory'
     | '/api/public/telegram/webhook'
   fileRoutesById: FileRoutesById
@@ -282,6 +295,7 @@ export interface RootRouteChildren {
   ApiPublicAgentEngineStatusRoute: typeof ApiPublicAgentEngineStatusRoute
   ApiPublicAgentEventsRoute: typeof ApiPublicAgentEventsRoute
   ApiPublicAgentHeartbeatRoute: typeof ApiPublicAgentHeartbeatRoute
+  ApiPublicAgentLabDemoJournalRoute: typeof ApiPublicAgentLabDemoJournalRoute
   ApiPublicHooksEngineMemoryRoute: typeof ApiPublicHooksEngineMemoryRoute
   ApiPublicTelegramWebhookRoute: typeof ApiPublicTelegramWebhookRoute
 }
@@ -414,6 +428,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicAgentHeartbeatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/agent/lab-demo-journal': {
+      id: '/api/public/agent/lab-demo-journal'
+      path: '/api/public/agent/lab-demo-journal'
+      fullPath: '/api/public/agent/lab-demo-journal'
+      preLoaderRoute: typeof ApiPublicAgentLabDemoJournalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/engine-memory': {
       id: '/api/public/hooks/engine-memory'
       path: '/api/public/hooks/engine-memory'
@@ -476,6 +497,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicAgentEngineStatusRoute: ApiPublicAgentEngineStatusRoute,
   ApiPublicAgentEventsRoute: ApiPublicAgentEventsRoute,
   ApiPublicAgentHeartbeatRoute: ApiPublicAgentHeartbeatRoute,
+  ApiPublicAgentLabDemoJournalRoute: ApiPublicAgentLabDemoJournalRoute,
   ApiPublicHooksEngineMemoryRoute: ApiPublicHooksEngineMemoryRoute,
   ApiPublicTelegramWebhookRoute: ApiPublicTelegramWebhookRoute,
 }
