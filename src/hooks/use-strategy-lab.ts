@@ -88,8 +88,10 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
           // Safety Riders: post-SL cooldown 15m per market, spike ATR, whale wick sweep — before entry caps.
           const raw = gateState(stateRef.current, opRef.current, now) === "RUNNING" ? filterEnabled(evaluateLab(m5, m15, h1), swRef.current) : [];
           const safe = applySafetyRiders(raw, stateRef.current, s, m5, now);
-          if (active) setSafety((o) => ({ ...o, [s]: safe.blocked }));
-          const signals = capEntries(safe.pass, stateRef.current, opRef.current, s);
+          // SPV: drop stale signals, lock one direction per symbol per M5 candle, priority order.
+          const spv = applySpv(safe.pass, stateRef.current, s, now);
+          if (active) setSafety((o) => ({ ...o, [s]: safe.blocked ?? spv.blocked }));
+          const signals = capEntries(spv.pass, stateRef.current, opRef.current, s);
           setState((st) => openSignals(st, s, signals, q, now, "COPET"));
           setBook((b) => (b ? bookOpen(b, s, signals, q, now) : b));
           setLastBarAt((o) => ({ ...o, [s]: last }));

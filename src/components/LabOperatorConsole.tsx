@@ -41,7 +41,7 @@ export function LabOperatorConsole({ lab }: { lab: LabRuntime }) {
       {LAB_MARKETS.map((m) => { const left = cooldownLeftMs(lab.state, m, now); const b = lab.safety[m]; return <div key={m} className="mt-1 flex flex-wrap items-center gap-2">
         <span className="font-mono">{m === "XAUUSD" ? "🟡 XAU" : "🟠 BTC"}</span>
         {left > 0 ? <span className="rounded bg-bear/15 px-1.5 text-bear">⏳ Cooldown pasca SL {Math.floor(left / 60000)}:{String(Math.floor((left % 60000) / 1000)).padStart(2, "0")}</span> : <span className="rounded bg-bull/15 px-1.5 text-bull">Aman</span>}
-        {b && b !== "BLOCK_POST_SL_COOLDOWN" ? <span className="rounded bg-bear/15 px-1.5 text-bear">{b === "BLOCK_SPIKE_VOLATILITY" ? "⚡ Candle spike — entry ditahan" : b === "BLOCK_POST_EXIT_BREATH" ? "😮‍💨 Mode baru exit — tarik napas dulu" : "🐋 Jarum whale — arah jarum ditolak"}</span> : null}
+        {b && b !== "BLOCK_POST_SL_COOLDOWN" ? <span className="rounded bg-bear/15 px-1.5 text-bear">{b === "BLOCK_SPIKE_VOLATILITY" ? "⚡ Candle spike — entry ditahan" : b === "BLOCK_POST_EXIT_BREATH" ? "😮‍💨 Mode baru exit — tarik napas dulu" : b === "BLOCK_SPV_DIRECTION_LOCK" ? "🚦 SPV: arah candle ini terkunci — lawan arah ditolak" : b === "BLOCK_SPV_STALE_SIGNAL" ? "🚦 SPV: sinyal basi dibuang" : "🐋 Jarum whale — arah jarum ditolak"}</span> : null}
       </div>; })}
       <p className="mt-1 text-[11px] text-muted-foreground">Habis SL: puasa 15 menit per market. Candle &gt; 1.8× ATR: tahan entry. Jarum ≥ 60%: jangan kejar arah jarum. Habis exit per mode: napas 5 menit (TP) / 10 menit (Trail, SL, manual).</p>
     </div>
