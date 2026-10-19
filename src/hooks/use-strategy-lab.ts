@@ -11,7 +11,7 @@ import { bookMark, bookOpen, createBook, upgradeBook, type LedgerBook } from "@/
 import { OPERATOR_KEY, DEFAULT_OPERATOR, capEntries, closeManual, gateState, parseOperator, type OperatorSettings } from "@/core/lab/operatorControl";
 import type { LabQuote } from "@/core/lab/labLedger";
 import { applySafetyRiders, type SafetyBlock } from "@/core/lab/safetyRiders";
-import { applySpv, type SpvBlock } from "@/core/lab/spvTraffic";
+import { applySpv, buildSpvQueue, dropRejected, SPV_MAX_AGE_MS, type SpvBlock, type SpvQueueItem } from "@/core/lab/spvTraffic";
 import { useLabCloudSync, type LabSyncStatus } from "./use-lab-cloud-sync";
 
 const KEY = "strategy-lab-v1";
@@ -23,7 +23,7 @@ function toBars(items: readonly BridgeBar[], tf: keyof typeof TF_MS): TechBar[] 
   return items.slice(0, -1).map((b) => ({ open_time: b.raw_time_s * 1000, close_time: b.raw_time_s * 1000 + TF_MS[tf], available_at: b.raw_time_s * 1000 + TF_MS[tf], open: b.open, high: b.high, low: b.low, close: b.close }));
 }
 
-export interface LabRuntime { state: LabState; lastBarAt: Record<string, number>; error: string | null; sync: LabSyncStatus; book: LedgerBook | null; safety: Record<string, SafetyBlock | SpvBlock | null>; reset: () => void; switches: ModeSwitches; setSwitches: (s: ModeSwitches) => void; operator: OperatorSettings; setOperator: (o: OperatorSettings) => void; closeTrades: (ids: readonly string[] | "ALL") => void }
+export interface LabRuntime { state: LabState; lastBarAt: Record<string, number>; error: string | null; sync: LabSyncStatus; book: LedgerBook | null; safety: Record<string, SafetyBlock | SpvBlock | null>; reset: () => void; switches: ModeSwitches; setSwitches: (s: ModeSwitches) => void; operator: OperatorSettings; setOperator: (o: OperatorSettings) => void; closeTrades: (ids: readonly string[] | "ALL") => void; spvQueue: SpvQueueItem[]; rejectQueued: (key: string) => void }
 
 export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly string[]): LabRuntime {
   const [state, setState] = useState<LabState>(emptyLab);
@@ -31,6 +31,8 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
   const [error, setError] = useState<string | null>(null);
   const [safety, setSafety] = useState<Record<string, SafetyBlock | SpvBlock | null>>({});
   const [hydrated, setHydrated] = useState(false);
+  const [spvQueue, setSpvQueue] = useState<SpvQueueItem[]>([]);
+  const rejectedRef = useRef<Set<string>>(new Set());
   const [book, setBook] = useState<LedgerBook | null>(null);
   const [switches, setSwitchesState] = useState<ModeSwitches>(defaultSwitches);
   const swRef = useRef(switches); swRef.current = switches;
@@ -88,11 +90,14 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
           // Entry limits (per mode + global) count OPEN entries of the shared journal before opening.
           // Safety Riders: post-SL cooldown 15m per market, spike ATR, whale wick sweep — before entry caps.
           const raw = gateState(stateRef.current, opRef.current, now) === "RUNNING" ? filterEnabled(evaluateLab(m5, m15, h1), swRef.current) : [];
-          const safe = applySafetyRiders(raw, stateRef.current, s, m5, now);
+          const safe = applySafetyRiders(dropRejected(s, raw, rejectedRef.current), stateRef.current, s, m5, now);
           // SPV: drop stale signals, lock one direction per symbol per M5 candle, priority order.
           const spv = applySpv(safe.pass, stateRef.current, s, now);
           if (active) setSafety((o) => ({ ...o, [s]: safe.blocked ?? spv.blocked }));
           const signals = capEntries(spv.pass, stateRef.current, opRef.current, s);
+          const fresh = safe.pass.filter((x) => x.bar_time === spv.lock?.bar_time && now - x.bar_time <= SPV_MAX_AGE_MS);
+          const q = buildSpvQueue(s, fresh, spv.pass, signals, now);
+          if (active) setSpvQueue((o) => [...o.filter((x) => x.symbol !== s && now - x.bar_time <= SPV_MAX_AGE_MS), ...q]);
           setState((st) => openSignals(st, s, signals, q, now, "COPET"));
           setBook((b) => (b ? bookOpen(b, s, signals, q, now) : b));
           setLastBarAt((o) => ({ ...o, [s]: last }));
@@ -108,5 +113,6 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
   return { state, lastBarAt, error, sync, book, safety, reset: () => { rotate(); setState(emptyLab()); }, switches,
     setSwitches: (sw) => { setSwitchesState(sw); try { localStorage.setItem(MODE_SWITCH_KEY, JSON.stringify(sw)); } catch { /* quota */ } },
     operator, setOperator: (o) => { setOperatorState(o); try { localStorage.setItem(OPERATOR_KEY, JSON.stringify(o)); } catch { /* quota */ } },
+    spvQueue, rejectQueued: (key) => { rejectedRef.current.add(key); setSpvQueue((o) => o.filter((x) => x.key !== key)); },
     closeTrades: (ids) => { const now = Date.now(); setState((st) => closeManual(st, ids, quotesRef.current, now)); } };
 }
