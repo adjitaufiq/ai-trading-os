@@ -15,7 +15,7 @@ const RESULTS: [HistoryResult, string][] = [["ALL", "Semua"], ["PROFIT", "Profit
 
 const PAGE = 10;
 
-export function LabTradeHistory({ trades, meta }: { trades: readonly LabTrade[]; meta?: Readonly<Record<string, string>> }) {
+export function LabTradeHistory({ trades, meta, floatingUnavailable = false }: { trades: readonly LabTrade[]; meta?: Readonly<Record<string, string>>; floatingUnavailable?: boolean }) {
   const [market, setMarket] = useState<HistoryMarket>("ALL");
   const [result, setResult] = useState<HistoryResult>("ALL");
   const [day, setDay] = useState<string | null>(null);
@@ -32,11 +32,11 @@ export function LabTradeHistory({ trades, meta }: { trades: readonly LabTrade[];
       <button type="button" aria-expanded={open} onClick={() => setOpenDays((s) => ({ ...s, [d.day]: !open }))} className="flex w-full flex-wrap items-center justify-between gap-2 rounded border border-border bg-muted px-3 py-2 text-left">
         <span className="text-xs font-semibold">{open ? "▾" : "▸"} 📅 {dayLabel(d.day)}</span>
         <span className={`rounded px-2 py-0.5 font-mono text-xs font-semibold ${d.net >= 0 ? "bg-bull/15 text-bull" : "bg-bear/15 text-bear"}`}>{usd(d.net)} {d.net >= 0 ? "PROFIT" : "LOSS"}</span>
-        <span className="w-full text-[11px] text-muted-foreground">{d.wins} menang · {d.losses} kalah{d.open ? <span className="text-warn"> · {d.open} open (floating {usd(d.floating)})</span> : null} · total {d.trades.length} trade</span>
+        <span className="w-full text-[11px] text-muted-foreground">{d.wins} menang · {d.losses} kalah{d.open ? <span className="text-warn"> · {d.open} open (floating {floatingUnavailable ? "n/a" : usd(d.floating)})</span> : null} · total {d.trades.length} trade</span>
       </button>
       {open && <><ul className="divide-y divide-border pr-14 text-sm">{d.trades.slice(0, n).map((t) => <li key={t.id} className="py-2">
         <div className={`font-semibold break-words ${t.side === "BUY" ? "text-bull" : "text-bear"}`}>{t.symbol} {t.side} · {LAB_LABELS[t.strategy]}</div>
-        <div className="mt-1"><span className={`inline-block rounded px-2 py-0.5 font-mono text-xs font-semibold ${t.status === "OPEN" ? "bg-warn/15 text-warn" : t.pnl_usd > 0 ? "bg-bull/15 text-bull" : "bg-bear/15 text-bear"}`}>{t.status === "CLOSED" ? `CLOSED · ${t.exit_reason === "TRAIL" ? "TRAILING LOCK" : t.exit_reason} ${usd(t.pnl_usd)}` : `OPEN · floating ${usd(t.pnl_usd)}${t.trail_floor_usd != null ? ` · kunci ${usd(t.trail_floor_usd)}` : ""}`}</span></div>
+        <div className="mt-1"><span className={`inline-block rounded px-2 py-0.5 font-mono text-xs font-semibold ${t.status === "OPEN" ? "bg-warn/15 text-warn" : t.pnl_usd > 0 ? "bg-bull/15 text-bull" : "bg-bear/15 text-bear"}`}>{t.status === "CLOSED" ? `CLOSED · ${t.exit_reason === "TRAIL" ? "TRAILING LOCK" : t.exit_reason} ${usd(t.pnl_usd)}` : `OPEN · floating ${floatingUnavailable ? "n/a" : usd(t.pnl_usd)}${t.trail_floor_usd != null ? ` · kunci ${usd(t.trail_floor_usd)}` : ""}`}</span></div>
         <div className="mt-1 text-xs text-muted-foreground break-words">{t.exit_profile === "FIBO" ? "FIBO SL/TP · " : t.rr_mode === "COPET" ? "COPET 1:1 · " : ""}{t.why} · entry {px(t.entry)} · SL {px(t.sl)} · TP {px(t.tp)}</div>
         <div className="text-xs text-muted-foreground">{time(t.opened_at)}{t.status === "CLOSED" ? ` → ${t.exit_price != null ? `@ ${px(t.exit_price)} ` : ""}${time(t.closed_at!)}` : ""}</div>
         {meta?.[t.id] ? <div className="text-[11px] text-muted-foreground break-words font-mono">{meta[t.id]}</div> : null}
