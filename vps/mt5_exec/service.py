@@ -7,7 +7,21 @@ import sys
 import time
 from typing import Any, Callable, Dict, FrozenSet, Optional
 
-MAGIC = 610_006  # Phase 6A demo lab
+MAGIC = 610_006  # ARENA engine host (default, backwards compatible)
+LAB_MAGIC = 610_007  # Strategy Lab DEMO runner
+ALLOWED_MAGICS = frozenset({MAGIC, LAB_MAGIC})
+MANUAL_DEAL_REASONS = ("DEAL_REASON_CLIENT", "DEAL_REASON_MOBILE", "DEAL_REASON_WEB")
+
+
+def parse_magic(v: Any) -> Optional[int]:
+    """None/absent ⇒ ARENA default. Anything not in ALLOWED_MAGICS ⇒ None (caller refuses)."""
+    if v is None or v == "":
+        return MAGIC
+    try:
+        m = int(v)
+    except (TypeError, ValueError):
+        return None
+    return m if m in ALLOWED_MAGICS and str(v).strip().lstrip("-").isdigit() else None
 DEVIATION_POINTS = 20
 
 
@@ -114,31 +128,46 @@ class DemoExecService:
         return {"volume_min": float(s.volume_min), "volume_max": float(s.volume_max), "volume_step": float(s.volume_step),
                 "tick_size": float(s.trade_tick_size), "tick_value": float(s.trade_tick_value)}
 
-    def positions(self) -> list:
+    def positions(self, magic: int = MAGIC) -> list:
+        """Positions of exactly one allowed magic. Manual (magic 0) and other runners are never returned."""
         self._require_demo()
+        if magic not in ALLOWED_MAGICS:
+            raise ValueError("INVALID_MAGIC")
         rows = self._n.positions_get() or ()
-        return [{"ticket": int(p.ticket), "symbol": str(p.symbol), "comment": str(p.comment),
-                 "volume": _f(p, "volume"), "price_open": _f(p, "price_open"), "sl": _f(p, "sl"), "tp": _f(p, "tp"), "profit": _f(p, "profit")}
-                for p in rows if int(p.magic) == MAGIC]
+        return [{"ticket": int(p.ticket), "symbol": str(p.symbol), "comment": str(p.comment), "magic": int(p.magic),
+                 "type": "BUY" if int(getattr(p, "type", 0)) == getattr(self._n, "ORDER_TYPE_BUY", 0) else "SELL",
+                 "volume": _f(p, "volume"), "price_open": _f(p, "price_open"), "sl": _f(p, "sl"), "tp": _f(p, "tp"), "profit": _f(p, "profit"),
+                 "swap": _f(p, "swap")}
+                for p in rows if int(p.magic) == magic]
 
-    def close_deal(self, position: int) -> Optional[Dict[str, Any]]:
+    def close_deal(self, position: int, magic: int = MAGIC) -> Optional[Dict[str, Any]]:
+        """Exit deal(s) of one position of this magic. Sums every OUT deal (partial closes) and reports
+        remaining volume unknown to the caller (it re-reads positions)."""
         self._require_demo()
+        if magic not in ALLOWED_MAGICS:
+            raise ValueError("INVALID_MAGIC")
         deals = self._n.history_deals_get(position=position) or ()
-        out = [d for d in deals if int(d.entry) == getattr(self._n, "DEAL_ENTRY_OUT", 1) and int(d.magic) == MAGIC]
+        out = [d for d in deals if int(d.entry) == getattr(self._n, "DEAL_ENTRY_OUT", 1) and int(d.magic) == magic]
         if not out:
             return None
         d = out[-1]
         r = int(d.reason)
-        reason = "SL" if r == getattr(self._n, "DEAL_REASON_SL", 4) else "TP" if r == getattr(self._n, "DEAL_REASON_TP", 5) else "OTHER"
-        return {"price": float(d.price), "profit": float(d.profit) + float(getattr(d, "swap", 0.0)) + float(getattr(d, "commission", 0.0)), "time": int(d.time), "reason": reason}
+        manual = {getattr(self._n, k, v) for k, v in zip(MANUAL_DEAL_REASONS, (0, 1, 2))}
+        reason = ("SL" if r == getattr(self._n, "DEAL_REASON_SL", 4) else "TP" if r == getattr(self._n, "DEAL_REASON_TP", 5)
+                  else "MANUAL" if r in manual else "EXPERT" if r == getattr(self._n, "DEAL_REASON_EXPERT", 3) else "OTHER")
+        profit = sum(float(x.profit) + float(getattr(x, "swap", 0.0)) + float(getattr(x, "commission", 0.0)) for x in out)
+        commission = sum(float(getattr(x, "commission", 0.0)) for x in out)
+        swap = sum(float(getattr(x, "swap", 0.0)) for x in out)
+        return {"price": float(d.price), "profit": profit, "commission": commission, "swap": swap, "time": int(d.time),
+                "reason": reason, "volume": sum(float(getattr(x, "volume", 0.0) or 0.0) for x in out), "deals": len(out), "magic": magic}
 
-    def _signal_seen(self, signal_id: str) -> bool:
+    def _signal_seen(self, signal_id: str, magic: int = MAGIC) -> bool:
         comment = signal_id[:31]
         for p in self._n.positions_get() or ():
-            if int(p.magic) == MAGIC and str(p.comment) == comment:
+            if int(p.magic) == magic and str(p.comment) == comment:
                 return True
         for d in self._n.history_deals_get(0, int(time.time()) + 86_400) or ():
-            if int(d.magic) == MAGIC and str(d.comment) == comment:
+            if int(d.magic) == magic and str(d.comment) == comment:
                 return True
         return False
 
@@ -150,6 +179,9 @@ class DemoExecService:
         self._require_demo()
         sid = str(body.get("signal_id", ""))
         ticket = body.get("ticket")
+        magic = parse_magic(body.get("magic"))
+        if magic is None:
+            return {"status": "REJECTED", "comment": "INVALID_MAGIC", "ticket": ticket}
         if not sid or not isinstance(ticket, int) or ticket <= 0:
             return {"status": "REJECTED", "comment": "INVALID_REQUEST", "ticket": ticket}
         n = self._n
@@ -158,7 +190,7 @@ class DemoExecService:
             return {"status": "NOT_FOUND", "comment": "POSITION_NOT_OPEN", "ticket": ticket}
         c = str(pos.comment)
         comment_ok = c == sid[:31] or (len(c) >= 8 and sid.startswith(c))  # broker may truncate comments
-        if int(pos.magic) != MAGIC or not comment_ok:
+        if int(pos.magic) != magic or not comment_ok:
             return {"status": "REJECTED", "comment": "NOT_BOT_POSITION", "ticket": ticket}
         symbol = str(pos.symbol)
         tick = n.symbol_info_tick(symbol)
@@ -168,7 +200,7 @@ class DemoExecService:
         filling, _ = select_filling(n, symbol)
         req = {"action": n.TRADE_ACTION_DEAL, "symbol": symbol, "volume": float(pos.volume), "position": ticket,
                "type": n.ORDER_TYPE_SELL if is_buy else n.ORDER_TYPE_BUY,
-               "price": float(tick.bid if is_buy else tick.ask), "deviation": DEVIATION_POINTS, "magic": MAGIC,
+               "price": float(tick.bid if is_buy else tick.ask), "deviation": DEVIATION_POINTS, "magic": magic,
                "comment": sid[:31], "type_time": n.ORDER_TIME_GTC, "type_filling": filling}
         res = n.order_send(req)
         self._log(f"close ticket={ticket} retcode={getattr(res, 'retcode', None)}")
@@ -192,9 +224,12 @@ class DemoExecService:
         self._require_demo()
         sid, symbol, direction = str(body.get("signal_id", "")), str(body.get("symbol", "")), body.get("direction")
         volume, sl, tp = body.get("volume"), body.get("sl"), body.get("tp")
+        magic = parse_magic(body.get("magic"))
+        if magic is None:
+            return {"status": "REJECTED", "comment": "INVALID_MAGIC", "ticket": None, "price": None, "retcode": None}
         if not sid or not symbol or direction not in ("BUY", "SELL") or not all(isinstance(x, (int, float)) and x > 0 for x in (volume, sl, tp)):
             return {"status": "REJECTED", "comment": "INVALID_REQUEST", "ticket": None, "price": None, "retcode": None}
-        if self._signal_seen(sid):
+        if self._signal_seen(sid, magic):
             return {"status": "REJECTED", "comment": "DUPLICATE_SIGNAL", "ticket": None, "price": None, "retcode": None}
         n = self._n
         n.symbol_select(symbol, True)
@@ -206,7 +241,7 @@ class DemoExecService:
         req = {
             "action": n.TRADE_ACTION_DEAL, "symbol": symbol, "volume": float(volume),
             "type": n.ORDER_TYPE_BUY if direction == "BUY" else n.ORDER_TYPE_SELL,
-            "price": price, "sl": float(sl), "tp": float(tp), "deviation": DEVIATION_POINTS, "magic": MAGIC,
+            "price": price, "sl": float(sl), "tp": float(tp), "deviation": DEVIATION_POINTS, "magic": magic,
             "comment": sid[:31], "type_time": n.ORDER_TIME_GTC, "type_filling": filling,
         }
         chk = n.order_check(req)

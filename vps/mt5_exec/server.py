@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Optional
 from urllib.parse import parse_qs, urlparse
 
-from .service import AccountBlocked, DemoExecService
+from .service import AccountBlocked, DemoExecService, parse_magic
 
 HOST = "127.0.0.1"
 _LOG_LOCK = threading.Lock()
@@ -67,12 +67,15 @@ def make_handler(svc: DemoExecService, token: str, log_path: str = "demo-exec.lo
                 return self._run(svc.status)
             if u.path == "/v1/demo/symbols":
                 return self._run(lambda: {"symbols": svc.symbols(",".join(q.get("names", [""])).split(","))})
+            magic = parse_magic(q.get("magic", [None])[0])
+            if u.path in ("/v1/demo/positions", "/v1/demo/close-deal") and magic is None:
+                return self._send(400, {"error": "INVALID_MAGIC"})
             if u.path == "/v1/demo/positions":
-                return self._run(lambda: {"positions": svc.positions()})
+                return self._run(lambda: {"positions": svc.positions(magic)})
             if u.path == "/v1/demo/symbol":
                 return self._run(lambda: svc.symbol(q.get("name", [""])[0]) or {"error": "NOT_FOUND"})
             if u.path == "/v1/demo/close-deal":
-                return self._run(lambda: svc.close_deal(int(q.get("position", ["0"])[0])) or {"error": "NOT_FOUND"})
+                return self._run(lambda: svc.close_deal(int(q.get("position", ["0"])[0]), magic) or {"error": "NOT_FOUND"})
             self._send(404, {"error": "NOT_FOUND"})
 
         def do_POST(self) -> None:  # noqa: N802
