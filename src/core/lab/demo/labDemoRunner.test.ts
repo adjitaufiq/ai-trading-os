@@ -58,7 +58,7 @@ function rig(sigsFor: (m5: readonly TechBar[]) => LabSignal[], over: Partial<Run
   return { b, store, cfg, r: new LabDemoRunner(b, store, cfg) };
 }
 /** First tick after start only reconciles (restart rule); second tick may trade. */
-async function warm(r: LabDemoRunner, b: FakeBroker) { await r.tick(); b.now += M5; }
+async function warm(r: LabDemoRunner, b: FakeBroker) { await r.tick(); b.now += M5; if (process.env.DBG) console.log(JSON.stringify(r.state.blockReason), JSON.stringify((r as any).store.events.slice(-5))); }
 
 describe("lab demo runner (fake broker only)", () => {
   it("wires exactly the seven selected modes", () => {
