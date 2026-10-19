@@ -123,6 +123,11 @@ describe("portfolio guard (signed, baseline)", () => {
     expect(nextPhase({ phase: "PORTFOLIO_STOP_HIT", day: "a" }, "b", 0, 50, 30)).toBe("TRADING");
     expect(nextPhase({ phase: "STATE_DESYNC_HALT", day: "a" }, "b", 0, 50, 30)).toBe("STATE_DESYNC_HALT");
   });
+  it("target +$50 counts realized net only; floating profit does not halt entries", () => {
+    expect(nextPhase({ phase: "TRADING", day: "a" }, "a", 60, 50, 30, 40)).toBe("TRADING");
+    expect(nextPhase({ phase: "TRADING", day: "a" }, "a", 45, 50, 30, 50)).toBe("TARGET_REACHED_HALT");
+    expect(nextPhase({ phase: "TRADING", day: "a" }, "a", -30, 50, 30, 10)).toBe("PORTFOLIO_STOP_HIT");
+  });
 });
 
 describe("gateway contract", () => {
@@ -310,17 +315,14 @@ describe("lab demo runner v2 (fake broker only)", () => {
     expect(b.sent.length).toBe(n);
   });
 
-  it("+$50 target: entries blocked, open positions NOT force-closed", async () => {
+  it("+$50 target is realized-only: floating +$51 neither halts nor force-closes", async () => {
     const { r, b } = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("EMA_CROSS", "BUY")]));
     await warm(r, b); await r.tick();
     const tk = r.state.trades[0]!.ticket!;
-    // simulate big realized day from an earlier closed trade
-    (r.state.trades[0] as { trailArmed: boolean }).trailArmed = false;
+    (r.state.trades[0] as { trailArmed: boolean; peakUsd: number }).trailArmed = false;
+    (r.state.trades[0] as { peakUsd: number }).peakUsd = 0;
     b.setProfit(tk, 51); b.now += 1000; await r.tick();
-    expect(r.state.phase).toBe("TARGET_REACHED_HALT");
-    expect(b.closes.filter((c) => c === tk).length).toBe(0 + (r.state.trades[0]!.trailArmed ? 0 : 0));
-    const n = b.sent.length; b.now += M5; await r.tick();
-    expect(b.sent.length).toBe(n);
+    expect(r.state.phase).toBe("TRADING");
   });
 
   it("day rollover with an open position: new day starts at its mark; old stop day resets", async () => {
