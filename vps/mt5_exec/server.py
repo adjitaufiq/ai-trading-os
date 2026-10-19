@@ -78,7 +78,8 @@ def make_handler(svc: DemoExecService, token: str, log_path: str = "demo-exec.lo
         def do_POST(self) -> None:  # noqa: N802
             if not self._auth():
                 return
-            if urlparse(self.path).path != "/v1/demo/orders":
+            path = urlparse(self.path).path
+            if path not in ("/v1/demo/orders", "/v1/demo/close"):
                 return self._send(404, {"error": "NOT_FOUND"})
             n = int(self.headers.get("content-length", "0") or 0)
             try:
@@ -88,9 +89,9 @@ def make_handler(svc: DemoExecService, token: str, log_path: str = "demo-exec.lo
             req = body if isinstance(body, dict) else {}
             t0 = time.time()
             def go() -> Any:
-                res = svc.send_order(req)
+                res = svc.send_order(req) if path == "/v1/demo/orders" else svc.close_position(req)
                 try:
-                    log_event(log_path, {"type": "DEMO_ORDER", "at": int(t0 * 1000), "latency_ms": int((time.time() - t0) * 1000), "request": req, "response": res})
+                    log_event(log_path, {"type": "DEMO_ORDER" if path == "/v1/demo/orders" else "DEMO_CLOSE", "at": int(t0 * 1000), "latency_ms": int((time.time() - t0) * 1000), "request": req, "response": res})
                 except OSError:
                     pass
                 return res

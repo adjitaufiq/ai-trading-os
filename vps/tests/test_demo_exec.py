@@ -87,6 +87,28 @@ class DemoExecTests(unittest.TestCase):
             self.svc(FakeExec(mode=2)).symbols(["XAUUSD"])
         self.assertEqual(f.sent, [])
 
+    def test_close_bot_only_and_verified(self):
+        f = FakeExec()
+        f.pos = [NS(ticket=9, symbol="XAUUSD", comment="manual", magic=0, volume=0.1, type=0),
+                 NS(ticket=8, symbol="XAUUSD", comment="sig1", magic=MAGIC, volume=0.1, type=0)]
+        s = self.svc(f)
+        self.assertEqual(s.close_position({"ticket": 9, "signal_id": "manual"})["comment"], "NOT_BOT_POSITION")
+        self.assertEqual(s.close_position({"ticket": 8, "signal_id": "other"})["comment"], "NOT_BOT_POSITION")
+        self.assertEqual(f.sent, [])
+        f.order_send = lambda req: (f.sent.append(req), f.pos.remove(f.pos[1]), NS(retcode=10009, price=1999.0, comment="done"))[2]
+        r = s.close_position({"ticket": 8, "signal_id": "sig1"})
+        self.assertEqual(r["status"], "CLOSED")
+        self.assertEqual((f.sent[0]["position"], f.sent[0]["type"]), (8, f.ORDER_TYPE_SELL))
+        self.assertEqual(len(f.pos), 1)  # manual position untouched
+
+    def test_close_unverified_and_real_blocked(self):
+        f = FakeExec()
+        f.pos = [NS(ticket=8, symbol="XAUUSD", comment="sig1", magic=MAGIC, volume=0.1, type=0)]
+        f.order_send = lambda req: NS(retcode=10009, price=1999.0, comment="done")  # broker says done but pos remains
+        self.assertEqual(self.svc(f).close_position({"ticket": 8, "signal_id": "sig1"})["status"], "UNVERIFIED")
+        with self.assertRaises(AccountBlocked):
+            self.svc(FakeExec(mode=2)).close_position({"ticket": 8, "signal_id": "sig1"})
+
     def test_whitelist_proxy(self):
         p = WhitelistedExecNative(FakeExec())
         with self.assertRaises(ExecCapabilityDenied):
