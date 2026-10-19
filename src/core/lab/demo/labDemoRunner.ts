@@ -9,12 +9,12 @@
  * Fail-closed: unknown account / position / order / close / spec / baseline state blocks NEW entries.
  * Clock: broker server time only (port.serverTimeMs); no Date.now().
  */
-import { evaluateLab, type LabSignal } from "@/core/lab/strategies";
-import { applySafetyRiders } from "@/core/lab/safetyRiders";
-import { applySpv, SPV_PRIORITY } from "@/core/lab/spvTraffic";
-import type { LabState } from "@/core/lab/labLedger";
-import type { TechBar } from "@/core/technical/indicators";
-import type { BrokerSymbolInfo } from "@/engine/risk/types";
+import { evaluateLab, type LabSignal } from "../strategies";
+import { applySafetyRiders } from "../safetyRiders";
+import { applySpv, SPV_PRIORITY } from "../spvTraffic";
+import type { LabState } from "../labLedger";
+import type { TechBar } from "../../technical/indicators";
+import type { BrokerSymbolInfo } from "../../../engine/risk/types";
 import { LAB_MAGIC, type LabRiskPolicy } from "./labRiskPolicy";
 import { budgetAllows, computeDayPnl, nextPhase, usdAtPrice, type GuardSpec, type LabPhase } from "./labPortfolioGuard";
 

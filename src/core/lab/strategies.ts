@@ -1,6 +1,6 @@
 // Strategy Lab (PAPER EXPERIMENT ONLY). Five named, independent entry modes evaluated on CLOSED broker M5/M15 bars.
 // Authority: EXPERIMENT. Never imports broker/gateway/execution; never feeds LivePaperLoop, Decision Gate, Risk or demo bridge.
-import { atrWilder, causalSwings, ema, engulfing, geometry, type TechBar } from "@/core/technical/indicators";
+import { atrWilder, causalSwings, ema, engulfing, geometry, type TechBar } from "../technical/indicators";
 
 export const STRATEGY_LAB_VERSION = "strategy-lab-v5-smc-fibo-ote";
 export const LAB_STRATEGIES = ["TOUCH_SNR", "EMA_CROSS", "SNR_PA", "DUAL_WALL", "FAST_BREAKOUT",

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { LabSignal } from "@/core/lab/strategies";
-import type { TechBar } from "@/core/technical/indicators";
+import type { LabSignal } from "../strategies";
+import type { TechBar } from "../../technical/indicators";
 import {
   commentMatches, LAB_DEMO_MODES, LabDemoRunner, labSignalId, volumeValid,
   type BrokerPos, type CloseResult, type LabBrokerPort, type LabRunnerState, type OrderResult, type RunnerConfig,
