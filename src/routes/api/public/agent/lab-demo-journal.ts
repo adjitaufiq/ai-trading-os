@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { readSignedAgentRequest, json } from "@/lib/control/agentAuth.server";
-import { eventKey, tradeFingerprint, upsertDecision } from "@/core/lab/demo/demoJournal";
+import { eventKey, syncStatusDecision, tradeFingerprint, upsertDecision } from "@/core/lab/demo/demoJournal";
 
 const num = z.number().finite();
 const Trade = z.object({
@@ -66,7 +66,7 @@ export const Route = createFileRoute("/api/public/agent/lab-demo-journal")({
           eventsStored = count ?? evRows.length;
         }
         const { data: prevStatus } = await supabaseAdmin.from("lab_demo_sync_status").select("snapshot_at_ms").eq("agent_id", p.agent_id).maybeSingle();
-        if (prevStatus && Number(prevStatus.snapshot_at_ms) > p.snapshot_at) return json({ ok: true, trades: counts, events_stored: eventsStored, status: "SKIP_STALE" });
+        if (syncStatusDecision(prevStatus ? { snapshot_at_ms: Number(prevStatus.snapshot_at_ms) } : null, { snapshot_at_ms: p.snapshot_at }) === "SKIP_STALE") return json({ ok: true, trades: counts, events_stored: eventsStored, status: "SKIP_STALE" });
         const { error: e3 } = await supabaseAdmin.from("lab_demo_sync_status").upsert({
           agent_id: p.agent_id, runner_version: p.runner.version, armed: p.runner.armed, phase: p.runner.phase,
           reconciliation_clean: p.runner.reconciliationClean, block_reason: p.runner.blockReason,

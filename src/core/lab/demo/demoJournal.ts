@@ -27,6 +27,11 @@ export function upsertDecision(existing: { fingerprint: string; snapshot_at_ms: 
   return "UPDATE";
 }
 
+/** Sync status: an older snapshot never downgrades stored phase/version/armed/last_received_at. */
+export function syncStatusDecision(existing: { snapshot_at_ms: number } | null, incoming: { snapshot_at_ms: number }): "APPLY" | "SKIP_STALE" {
+  return existing && Number(existing.snapshot_at_ms) > incoming.snapshot_at_ms ? "SKIP_STALE" : "APPLY";
+}
+
 /** Stable event key for a journal.jsonl line: identical line ⇒ identical key (retry-safe). */
 export const eventKey = (line: string) => tradeFingerprint(line.trim());
 
