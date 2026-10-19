@@ -142,7 +142,42 @@ class DemoExecService:
                 return True
         return False
 
-    # ---- the only write ----
+    # ---- bot-only close (daily portfolio guard) ----
+    def close_position(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        """Close ONE bot position: ticket must exist with our MAGIC and comment == signal_id[:31].
+        Manual / unknown positions are refused. Result is verified by re-reading positions;
+        anything not provably closed is UNVERIFIED (caller must fail closed)."""
+        self._require_demo()
+        sid = str(body.get("signal_id", ""))
+        ticket = body.get("ticket")
+        if not sid or not isinstance(ticket, int) or ticket <= 0:
+            return {"status": "REJECTED", "comment": "INVALID_REQUEST", "ticket": ticket}
+        n = self._n
+        pos = next((p for p in n.positions_get() or () if int(p.ticket) == ticket), None)
+        if pos is None:
+            return {"status": "NOT_FOUND", "comment": "POSITION_NOT_OPEN", "ticket": ticket}
+        if int(pos.magic) != MAGIC or str(pos.comment) != sid[:31]:
+            return {"status": "REJECTED", "comment": "NOT_BOT_POSITION", "ticket": ticket}
+        symbol = str(pos.symbol)
+        tick = n.symbol_info_tick(symbol)
+        if tick is None:
+            return {"status": "ERROR", "comment": "NO_TICK", "ticket": ticket}
+        is_buy = int(getattr(pos, "type", 0)) == n.ORDER_TYPE_BUY
+        filling, _ = select_filling(n, symbol)
+        req = {"action": n.TRADE_ACTION_DEAL, "symbol": symbol, "volume": float(pos.volume), "position": ticket,
+               "type": n.ORDER_TYPE_SELL if is_buy else n.ORDER_TYPE_BUY,
+               "price": float(tick.bid if is_buy else tick.ask), "deviation": DEVIATION_POINTS, "magic": MAGIC,
+               "comment": sid[:31], "type_time": n.ORDER_TIME_GTC, "type_filling": filling}
+        res = n.order_send(req)
+        self._log(f"close ticket={ticket} retcode={getattr(res, 'retcode', None)}")
+        if res is None or int(res.retcode) != n.TRADE_RETCODE_DONE:
+            return {"status": "REJECTED", "comment": f"ORDER_SEND {getattr(res, 'comment', n.last_error())}", "ticket": ticket, "retcode": getattr(res, "retcode", None)}
+        still = [p for p in n.positions_get() or () if int(p.ticket) == ticket]
+        if still:
+            return {"status": "UNVERIFIED", "comment": "POSITION_STILL_OPEN", "ticket": ticket, "remaining_volume": _f(still[0], "volume")}
+        return {"status": "CLOSED", "comment": str(res.comment), "ticket": ticket, "price": float(res.price), "retcode": int(res.retcode)}
+
+    # ---- open order ----
     def send_order(self, body: Dict[str, Any]) -> Dict[str, Any]:
         res = self._send_order(body)
         res.update({"symbol": str(body.get("symbol", "")), "direction": body.get("direction"),
