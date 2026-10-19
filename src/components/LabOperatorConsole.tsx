@@ -16,6 +16,7 @@ export function LabOperatorConsole({ lab }: { lab: LabRuntime }) {
   const gate = gateState(lab.state, op, now);
   const open = lab.state.trades.filter((t) => t.status === "OPEN");
   const [target, setTarget] = useState(String(op.targetUsd));
+  const [showQ, setShowQ] = useState(false);
   const [loss, setLoss] = useState(String(op.maxLossUsd));
   const save = () => { const t = Number(target), l = Number(loss); if (t > 0 && l > 0) lab.setOperator({ ...op, targetUsd: t, maxLossUsd: l }); };
   const pct = today >= 0 ? Math.min(100, (today / op.targetUsd) * 100) : Math.min(100, (-today / op.maxLossUsd) * 100);
@@ -34,7 +35,16 @@ export function LabOperatorConsole({ lab }: { lab: LabRuntime }) {
       <Button size="sm" variant="outline" onClick={save}>Simpan target</Button>
       <Button size="sm" variant={op.paused ? "default" : "outline"} onClick={() => lab.setOperator({ ...op, paused: !op.paused })}>{op.paused ? "▶ Resume All" : "🛑 Pause All"}</Button>
       <Button size="sm" variant="destructive" disabled={!open.length} onClick={() => { if (confirm(`Tutup ${open.length} posisi paper sekarang?`)) lab.closeTrades("ALL"); }}>🚨 Close All ({open.length})</Button>
+      <Button size="sm" variant={lab.spvQueue.length ? "default" : "outline"} onClick={() => setShowQ((v) => !v)} data-testid="spv-queue-btn">🚦 Antrean SPV ({lab.spvQueue.length})</Button>
     </div>
+    {showQ ? <div className="mt-2 rounded border border-border p-2 text-xs" data-testid="spv-queue">
+      <div className="font-semibold text-muted-foreground">🚦 Antrean SPV · candle terbaru</div>
+      {lab.spvQueue.length ? <ul className="mt-1 divide-y divide-border">{lab.spvQueue.map((x) => <li key={x.key} className="flex items-center justify-between gap-2 py-1.5">
+        <span className="min-w-0 break-words">{x.symbol === "XAUUSD" ? "🟡" : "🟠"} <b className={x.side === "BUY" ? "text-bull" : "text-bear"}>{x.symbol} {x.side}</b> · Mode {LAB_LABELS[x.strategy as keyof typeof LAB_LABELS] ?? x.strategy} · candle {new Date(x.bar_time).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit" })} · {x.reason === "SLOT_FULL" ? "nunggu slot kosong" : "kalah kunci arah"}</span>
+        <Button size="sm" variant="destructive" onClick={() => lab.rejectQueued(x.key)}>✕ Tolak</Button>
+      </li>)}</ul> : <p className="mt-1 text-muted-foreground">Kosong — belum ada tuyul yang antre.</p>}
+      <p className="mt-1 text-[11px] text-muted-foreground">Ditolak = sinyal itu tidak akan dieksekusi. Sinyal &gt; 10 menit dibuang otomatis.</p>
+    </div> : null}
     <p className="mt-1 text-[11px] text-muted-foreground">Saat pause/target/rem aktif, bot tidak buka posisi baru; posisi open tetap jalan kecuali ditutup manual. Reset otomatis jam 00.00 WIB.</p>
     <div className="mt-2 rounded border border-border p-2 text-xs" data-testid="safety-riders">
       <div className="font-semibold text-muted-foreground">🛡️ Safety Riders</div>

@@ -22,3 +22,17 @@ describe("SPV traffic", () => {
     expect(r.blocked).toBeNull();
   });
 });
+
+import { buildSpvQueue, dropRejected, spvKey } from "./spvTraffic";
+describe("SPV queue + operator reject", () => {
+  const a = { side: "BUY" as const, strategy: "DUAL_WALL_FAST", bar_time: 1 };
+  const b = { side: "SELL" as const, strategy: "EMA_CROSS", bar_time: 1 };
+  const c = { side: "BUY" as const, strategy: "FAST_BREAKOUT", bar_time: 1 };
+  it("queues locked and slot-full signals, not opened ones", () => {
+    const q = buildSpvQueue("XAUUSD", [a, b, c], [a, c], [a], 0);
+    expect(q.map((x) => [x.strategy, x.reason])).toEqual([["EMA_CROSS", "DIRECTION_LOCK"], ["FAST_BREAKOUT", "SLOT_FULL"]]);
+  });
+  it("rejected signal never re-enters", () => {
+    expect(dropRejected("XAUUSD", [a, c], new Set([spvKey("XAUUSD", c)]))).toEqual([a]);
+  });
+});

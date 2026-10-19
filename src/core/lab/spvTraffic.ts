@@ -28,3 +28,23 @@ export function applySpv<T extends { side: "BUY" | "SELL"; strategy?: string; ba
   const blocked: SpvBlock | null = pass.length < sorted.length ? "BLOCK_SPV_DIRECTION_LOCK" : fresh.length < signals.length ? "BLOCK_SPV_STALE_SIGNAL" : null;
   return { pass, blocked, lock: { bar_time: newest, side } };
 }
+
+/** Operator-visible SPV queue (PAPER only): signals of the newest candle that SPV or entry caps held back. */
+export type SpvQueueReason = "DIRECTION_LOCK" | "SLOT_FULL";
+export interface SpvQueueItem { key: string; symbol: string; strategy: string; side: "BUY" | "SELL"; bar_time: number; reason: SpvQueueReason; queued_at: number }
+export const spvKey = (symbol: string, x: { strategy?: string; side: string; bar_time: number }) => `${symbol}:${x.strategy ?? "?"}:${x.side}:${x.bar_time}`;
+
+/** Builds the queue for one symbol; rejected keys never enter it. */
+export function buildSpvQueue<T extends { side: "BUY" | "SELL"; strategy?: string; bar_time: number }>(
+  symbol: string, fresh: readonly T[], spvPass: readonly T[], opened: readonly T[], now: number,
+): SpvQueueItem[] {
+  const passSet = new Set(spvPass), openSet = new Set(opened);
+  return fresh.filter((x) => !openSet.has(x)).map((x) => ({
+    key: spvKey(symbol, x), symbol, strategy: x.strategy ?? "?", side: x.side, bar_time: x.bar_time,
+    reason: passSet.has(x) ? "SLOT_FULL" : "DIRECTION_LOCK", queued_at: now,
+  }));
+}
+
+/** Drops operator-rejected signals (REJECTED_BY_OPERATOR) before SPV. */
+export const dropRejected = <T extends { side: string; strategy?: string; bar_time: number }>(symbol: string, xs: readonly T[], rejected: ReadonlySet<string>) =>
+  xs.filter((x) => !rejected.has(spvKey(symbol, x)));
