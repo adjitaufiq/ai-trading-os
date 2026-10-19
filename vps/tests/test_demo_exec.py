@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace as NS
 
 from mt5_exec.native_exec import ExecCapabilityDenied, WhitelistedExecNative
-from mt5_exec.service import MAGIC, AccountBlocked, DemoExecService
+from mt5_exec.service import LAB_MAGIC, MAGIC, AccountBlocked, DemoExecService, parse_magic
 
 
 class FakeExec:
@@ -115,6 +115,55 @@ class DemoExecTests(unittest.TestCase):
             p.order_close_all  # noqa: B018
         with self.assertRaises(ValueError):
             DemoExecService(FakeExec(), frozenset(), frozenset({"x"}))
+
+
+    # ---- magic isolation (ARENA 610006 vs Lab 610007) ----
+    def test_parse_magic_allowlist(self):
+        self.assertEqual(parse_magic(None), MAGIC)
+        self.assertEqual(parse_magic("610007"), LAB_MAGIC)
+        for bad in (0, 123, "x", 610007.5, -610007, "610008"):
+            self.assertIsNone(parse_magic(bad))
+
+    def test_lab_order_uses_lab_magic_and_invalid_magic_refused(self):
+        f = FakeExec()
+        self.assertEqual(self.svc(f).send_order({**ORDER, "magic": 999})["comment"], "INVALID_MAGIC")
+        self.assertEqual(f.sent, [])
+        self.assertEqual(self.svc(f).send_order({**ORDER, "magic": LAB_MAGIC})["status"], "FILLED")
+        self.assertEqual(f.sent[0]["magic"], LAB_MAGIC)
+        # same signal_id under ARENA magic is a different identity (no cross-runner dedup collision)
+        self.assertEqual(self.svc(f).send_order(ORDER)["status"], "FILLED")
+        self.assertEqual(self.svc(f).send_order({**ORDER, "magic": LAB_MAGIC})["comment"], "DUPLICATE_SIGNAL")
+
+    def test_positions_filtered_by_magic(self):
+        f = FakeExec()
+        f.pos = [NS(ticket=1, symbol="XAUUSD", comment="m", magic=0, volume=0.1, type=0),
+                 NS(ticket=2, symbol="XAUUSD", comment="a", magic=MAGIC, volume=0.1, type=0),
+                 NS(ticket=3, symbol="XAUUSD", comment="l", magic=LAB_MAGIC, volume=0.1, type=1)]
+        s = self.svc(f)
+        self.assertEqual([p["ticket"] for p in s.positions()], [2])
+        self.assertEqual([(p["ticket"], p["type"]) for p in s.positions(LAB_MAGIC)], [(3, "SELL")])
+        with self.assertRaises(ValueError):
+            s.positions(0)
+
+    def test_close_requires_matching_magic(self):
+        f = FakeExec()
+        f.pos = [NS(ticket=2, symbol="XAUUSD", comment="sigA", magic=MAGIC, volume=0.1, type=0),
+                 NS(ticket=3, symbol="XAUUSD", comment="sigL", magic=LAB_MAGIC, volume=0.1, type=0)]
+        s = self.svc(f)
+        self.assertEqual(s.close_position({"ticket": 2, "signal_id": "sigA", "magic": LAB_MAGIC})["comment"], "NOT_BOT_POSITION")
+        self.assertEqual(s.close_position({"ticket": 3, "signal_id": "sigL"})["comment"], "NOT_BOT_POSITION")
+        self.assertEqual(s.close_position({"ticket": 3, "signal_id": "sigL", "magic": 5})["comment"], "INVALID_MAGIC")
+        self.assertEqual(f.sent, [])
+
+    def test_close_deal_manual_reason_and_partials(self):
+        f = FakeExec()
+        f.DEAL_REASON_CLIENT = 0
+        f.deals = [NS(entry=1, magic=LAB_MAGIC, reason=0, price=2001.0, profit=2.0, swap=-0.1, commission=-0.2, time=10, volume=0.01),
+                   NS(entry=1, magic=LAB_MAGIC, reason=0, price=2002.0, profit=3.0, swap=0.0, commission=-0.2, time=20, volume=0.01),
+                   NS(entry=1, magic=MAGIC, reason=4, price=1990.0, profit=-9.0, swap=0.0, commission=0.0, time=30, volume=0.02)]
+        d = self.svc(f).close_deal(3, LAB_MAGIC)
+        self.assertEqual((d["reason"], d["deals"], round(d["profit"], 2), round(d["volume"], 2)), ("MANUAL", 2, 4.5, 0.02))
+        self.assertIsNone(FakeExec() and self.svc(FakeExec()).close_deal(3, LAB_MAGIC))
 
 
 if __name__ == "__main__":
