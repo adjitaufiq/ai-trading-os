@@ -16,6 +16,7 @@ export interface LabReport {
   avgWin: number | null; avgLoss: number | null; rr: number | null; maxDd: number; maxDdPct: number;
   today: { pnl: number; trades: number; wins: number };
   operator: OperatorSettings | null;
+  markets: MarketBreakdown[];
 }
 
 /** Realized-balance drawdown: closed trades in close order, peak → lowest later trough (USD, ≥0). */
@@ -56,7 +57,49 @@ export function buildLabReport(state: LabState, switches: ModeSwitches, now: num
     ...winLossStats(allClosed), maxDd: dd.usd, maxDdPct: dd.pct,
     today: (() => { const st = wibDayStart(now); const c = state.trades.filter((t) => t.status === "CLOSED" && (t.closed_at ?? 0) >= st); return { pnl: todayRealized(state, now), trades: c.length, wins: c.filter((t) => t.pnl_usd > 0).length }; })(),
     operator,
+    markets: marketBreakdown(state.trades.map((t) => ({ strategy: t.strategy, symbol: t.symbol, pnl_usd: t.pnl_usd, closed_at_ms: t.status === "CLOSED" ? (t.closed_at ?? null) : null })), wibDayStart(now)),
   };
+}
+
+export interface MarketTradeRow { strategy: string; symbol: string; pnl_usd: number; closed_at_ms: number | null }
+export interface MarketBreakdown { symbol: string; n: number; w: number; pnl: number; gross: number; loss: number; modes: { strategy: string; n: number; w: number; pnl: number }[] }
+
+/** Closed trades since `since`, grouped per market then per mode (copy of recorded P/L only). */
+export function marketBreakdown(rows: MarketTradeRow[], since: number): MarketBreakdown[] {
+  const m = new Map<string, MarketBreakdown>();
+  for (const r of rows) {
+    if (r.closed_at_ms == null || r.closed_at_ms < since) continue;
+    const b = m.get(r.symbol) ?? { symbol: r.symbol, n: 0, w: 0, pnl: 0, gross: 0, loss: 0, modes: [] };
+    b.n++; b.pnl += r.pnl_usd; if (r.pnl_usd > 0) { b.w++; b.gross += r.pnl_usd; } else b.loss += r.pnl_usd;
+    let md = b.modes.find((x) => x.strategy === r.strategy);
+    if (!md) { md = { strategy: r.strategy, n: 0, w: 0, pnl: 0 }; b.modes.push(md); }
+    md.n++; md.pnl += r.pnl_usd; if (r.pnl_usd > 0) md.w++;
+    m.set(r.symbol, b);
+  }
+  const out = [...m.values()].sort((a, b) => b.pnl - a.pnl);
+  for (const b of out) b.modes.sort((a, c) => c.pnl - a.pnl);
+  return out;
+}
+
+export function formatMarketBreakdown(list: MarketBreakdown[]): string[] {
+  const lbl = (s: string) => LAB_LABELS[s as LabStrategy] ?? s;
+  const L = ["🪙 KONTRIBUSI PER MARKET (HARI INI WIB)"];
+  if (!list.length) return [...L, "(belum ada trade closed hari ini)"];
+  const tot = list.reduce((a, b) => ({ n: a.n + b.n, w: a.w + b.w, pnl: a.pnl + b.pnl, g: a.g + b.gross, l: a.l + b.loss }), { n: 0, w: 0, pnl: 0, g: 0, l: 0 });
+  list.forEach((b, i) => {
+    const top = b.modes.filter((x) => x.pnl > 0).slice(0, 3);
+    const bad = b.modes.filter((x) => x.pnl < 0);
+    const share = tot.pnl > 0 && b.pnl > 0 ? ` · ${((b.pnl / tot.pnl) * 100).toFixed(0)}% dari net` : "";
+    L.push(
+      `${i === 0 ? "🥇" : "🥈"} ${b.symbol}`,
+      `   Net ${usd(b.pnl)} · ${b.n} trade (${b.w}W/${b.n - b.w}L · WR ${pct(b.w, b.n)})${share}`,
+      `   Profit ${usd(b.gross)} · Loss ${usd(b.loss)}`,
+      `   MVP: ${top.length ? top.map((x) => `${lbl(x.strategy)} ${usd(x.pnl)} (${x.w}W/${x.n - x.w}L)`).join(", ") : "—"}`,
+    );
+    if (bad.length) L.push(`   Evaluasi: ${bad.map((x) => `${lbl(x.strategy)} ${usd(x.pnl)} (${x.w}W/${x.n - x.w}L)`).join(", ")}`);
+  });
+  L.push(`Σ Total: ${usd(tot.pnl)} · ${tot.n} trade (${tot.w}W/${tot.n - tot.w}L · WR ${pct(tot.w, tot.n)}) · Profit ${usd(tot.g)} · Loss ${usd(tot.l)}`);
+  return L;
 }
 
 const usd = (v: number) => `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
@@ -90,6 +133,8 @@ export function formatLabReport(r: LabReport, header?: string[] | string): strin
     `• AvgW ${money(r.avgWin)} · AvgL ${money(r.avgLoss)} · RR ${ratio(r.rr)}`,
     `• Max DD -$${r.maxDd.toFixed(2)} (${(r.maxDdPct * 100).toFixed(1)}% dari peak, realized)`,
     `• 3 jam: ${r.recent.trades} closed · ${r.recent.wins}W/${r.recent.trades - r.recent.wins}L (${pct(r.recent.wins, r.recent.trades)}) · ${usd(r.recent.pnl)}`,
+    "",
+    ...formatMarketBreakdown(r.markets),
     "",
     "🏆 LEADERBOARD (urut Realized P/L)",
     "",
