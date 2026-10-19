@@ -17,7 +17,7 @@ const usd = (v: number) => `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
 const px = (v: number) => (Math.abs(v) >= 1000 ? v.toFixed(2) : v.toFixed(3));
 const time = (t: number) => new Date(t).toLocaleString("id-ID", { hour12: false });
 
-type JournalSource = "PAPER" | "DEMO";
+export type JournalSource = "PAPER" | "DEMO";
 function JournalSourceSelector({ source, onChange }: { source: JournalSource; onChange: (s: JournalSource) => void }) {
   return <div className="mt-2 flex flex-wrap gap-1" role="radiogroup" aria-label="Sumber jurnal" data-testid="journal-source">
     <Button size="sm" role="radio" aria-checked={source === "PAPER"} variant={source === "PAPER" ? "secondary" : "ghost"} onClick={() => onChange("PAPER")}>Paper Simulator</Button>
@@ -26,8 +26,10 @@ function JournalSourceSelector({ source, onChange }: { source: JournalSource; on
   </div>;
 }
 
-export function StrategyLabPanel({ lab }: { lab: LabRuntime }) {
-  const [source, setSource] = useState<JournalSource>("PAPER");
+export function StrategyLabPanel({ lab, source: srcProp, onSourceChange }: { lab: LabRuntime; source?: JournalSource; onSourceChange?: (s: JournalSource) => void }) {
+  const [own, setOwn] = useState<JournalSource>("PAPER");
+  const source = srcProp ?? own;
+  const setSource = onSourceChange ?? setOwn;
   const board = leaderboard(lab.state);
   const tone = (v: number) => (v >= 0 ? "text-bull" : "text-bear");
   if (source === "DEMO") return <section aria-label="Jurnal MT5 DEMO" className="border border-border bg-card p-4" data-testid="strategy-lab-demo">
