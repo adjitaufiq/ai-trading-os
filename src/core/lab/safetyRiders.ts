@@ -63,3 +63,10 @@ export function applySafetyRiders<T extends { side: "BUY" | "SELL"; strategy?: s
   const pass = signals.filter((x) => !(x.side === "BUY" && upper >= SAFETY_PARAMS.WICK_SWEEP_RATIO) && !(x.side === "SELL" && lower >= SAFETY_PARAMS.WICK_SWEEP_RATIO));
   return { pass, blocked: pass.length < signals.length ? "BLOCK_WHALE_WICK_SWEEP" : breathBlocked ? "BLOCK_POST_EXIT_BREATH" : null };
 }
+
+/** Modes still breathing on a market (latest exit per mode), for the live countdown. */
+export function breathingModes(s: LabState, symbol: string, now: number): { strategy: string; leftMs: number; until: number }[] {
+  const until = new Map<string, number>();
+  for (const t of s.trades) if (t.symbol === symbol && t.closed_at) { const u = t.closed_at + breathMs(t.exit_reason); if (u > (until.get(t.strategy) ?? 0)) until.set(t.strategy, u); }
+  return [...until].filter(([, u]) => u > now).map(([strategy, u]) => ({ strategy, leftMs: u - now, until: u })).sort((a, b) => a.leftMs - b.leftMs);
+}

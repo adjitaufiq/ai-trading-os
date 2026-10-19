@@ -1,15 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { LAB_LABELS } from "@/core/lab/strategies";
 import { LAB_MARKETS, gateState, todayRealized } from "@/core/lab/operatorControl";
-import { cooldownLeftMs } from "@/core/lab/safetyRiders";
+import { breathingModes, cooldownLeftMs } from "@/core/lab/safetyRiders";
 import type { LabRuntime } from "@/hooks/use-strategy-lab";
 
 const usd = (v: number) => `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
+const mmss = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
 const GATE_TEXT = { RUNNING: "BOT JALAN", PAUSED: "PAUSE — tidak buka posisi baru", TARGET_HIT: "TARGET HARIAN TERCAPAI — TOKO TUTUP", MAX_LOSS_HIT: "BATAS RUGI HARIAN — REM AKTIF" } as const;
 
 /** Operator console for the PAPER Lab only: closes virtual positions, never a broker order. */
 export function LabOperatorConsole({ lab }: { lab: LabRuntime }) {
+  const [, setTick] = useState(0);
+  useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 1000); return () => clearInterval(t); }, []);
   const now = Date.now();
   const op = lab.operator;
   const today = todayRealized(lab.state, now);
@@ -52,6 +55,7 @@ export function LabOperatorConsole({ lab }: { lab: LabRuntime }) {
         <span className="font-mono">{m === "XAUUSD" ? "🟡 XAU" : "🟠 BTC"}</span>
         {left > 0 ? <span className="rounded bg-bear/15 px-1.5 text-bear">⏳ Cooldown pasca SL {Math.floor(left / 60000)}:{String(Math.floor((left % 60000) / 1000)).padStart(2, "0")}</span> : <span className="rounded bg-bull/15 px-1.5 text-bull">Aman</span>}
         {b && b !== "BLOCK_POST_SL_COOLDOWN" ? <span className="rounded bg-bear/15 px-1.5 text-bear">{b === "BLOCK_SPIKE_VOLATILITY" ? "⚡ Candle spike — entry ditahan" : b === "BLOCK_POST_EXIT_BREATH" ? "😮‍💨 Mode baru exit — tarik napas dulu" : b === "BLOCK_SPV_DIRECTION_LOCK" ? "🚦 SPV: arah candle ini terkunci — lawan arah ditolak" : b === "BLOCK_SPV_STALE_SIGNAL" ? "🚦 SPV: sinyal basi dibuang" : "🐋 Jarum whale — arah jarum ditolak"}</span> : null}
+        {breathingModes(lab.state, m, now).map((x) => <span key={x.strategy} className="rounded bg-muted px-1.5 font-mono">😮‍💨 Mode {LAB_LABELS[x.strategy as keyof typeof LAB_LABELS] ?? x.strategy} napas {mmss(x.leftMs)} · aktif {new Date(x.until).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit" })} WIB</span>)}
       </div>; })}
       <p className="mt-1 text-[11px] text-muted-foreground">Habis SL: puasa 15 menit per market. Candle &gt; 1.8× ATR: tahan entry. Jarum ≥ 60%: jangan kejar arah jarum. Habis exit per mode: napas 5 menit (TP) / 10 menit (Trail, SL, manual).</p>
     </div>
