@@ -116,6 +116,8 @@ export function volumeValid(lot: number, s: BrokerSymbolInfo): boolean {
 export class LabDemoRunner {
   private s: LabRunnerState;
   private specs: Record<string, BrokerSymbolInfo | null> = {};
+  /** Tickets already sent a close this tick: a retry needs the NEXT tick's fresh positions read. */
+  private closedThisTick = new Set<number>();
   constructor(private readonly port: LabBrokerPort, private readonly store: LabRunnerStore, private readonly cfg: RunnerConfig) {
     if (cfg.policy.magic !== LAB_MAGIC) throw new Error("LAB_MAGIC_REQUIRED");
     this.s = restoreRunnerState(store.load());
@@ -136,6 +138,7 @@ export class LabDemoRunner {
   }
 
   private async cycle(): Promise<void> {
+    this.closedThisTick.clear();
     const now = await this.port.serverTimeMs();
     if (now == null) return this.block("BROKER_TIME_UNAVAILABLE");
     const acct = await this.port.account();
@@ -177,7 +180,7 @@ export class LabDemoRunner {
 
     // ---- close retries: only after this tick's fresh positions read (idempotent) ----
     for (const t of this.s.trades.filter((x) => x.status === "CLOSING")) {
-      if (!positions.some((p) => p.ticket === t.ticket)) continue; // reconcile will confirm via deal
+      if (this.closedThisTick.has(t.ticket!) || !positions.some((p) => p.ticket === t.ticket)) continue; // reconcile will confirm via deal
       if (t.closeAttempts >= P.max_close_attempts) {
         if (this.s.phase !== "STATE_DESYNC_HALT") { this.s.phase = "STATE_DESYNC_HALT"; this.log("STATE_DESYNC_HALT", { ticket: t.ticket, signalId: t.signalId, attempts: t.closeAttempts }); }
         continue;
@@ -257,6 +260,7 @@ export class LabDemoRunner {
 
   private async sendClose(t: RunnerTrade): Promise<void> {
     if (!this.cfg.armed) return;
+    this.closedThisTick.add(t.ticket!);
     t.closeAttempts++;
     let r: CloseResult;
     try { r = await this.port.closePosition({ ticket: t.ticket!, signal_id: t.signalId, magic: LAB_MAGIC }); } catch (e) { r = { status: "ERROR", comment: `TIMEOUT_OR_TRANSPORT ${String(e)}` }; }
