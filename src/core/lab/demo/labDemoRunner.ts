@@ -28,7 +28,9 @@ export const LAB_DEMO_SYMBOLS = ["XAUUSD", "BTCUSD"] as const;
 const SYMBOL_MODE_BLOCK: Readonly<Record<string, readonly string[]>> = { BTCUSD: ["GOLD_SNIPER"] };
 /** Broker trailing: COPET v2 dollar levels mapped onto R (XAU $3/$2 over $10 SL ⇒ 0.3R/0.2R); Mode 12 keeps its own R trail. */
 export const LAB_DEMO_TRAIL = Object.freeze({ COPET_ARM_R: 0.3, COPET_GAP_R: 0.2, COPET_TP_R: 1, FIBO_ARM_R: 1, FIBO_GAP_R: 0.5, FIBO_MIN_GAP_USD: 1 });
-export const UNKNOWN_ORDER_ABSENT_CYCLES = 2;
+/** An UNKNOWN order (timeout/transport error) is declared NOT_FILLED only after this many absent cycles AND this much broker time. */
+export const UNKNOWN_ORDER_ABSENT_CYCLES = 3;
+export const UNKNOWN_ORDER_MIN_AGE_MS = 120_000;
 
 // ---------- ports ----------
 export interface BrokerAccount { readonly login: number; readonly server: string; readonly tradeMode: string; readonly balance: number; readonly equity: number }
@@ -192,10 +194,9 @@ export class LabDemoRunner {
       } else { clean = false; this.log("RECONCILE_MISMATCH", { kind: "POSITION_GONE_NO_DEAL", ticket: t.ticket }); }
     }
     for (const t of this.s.trades.filter((x) => x.status === "UNKNOWN")) {
-      if (++t.absentCycles >= UNKNOWN_ORDER_ABSENT_CYCLES) { t.status = "NOT_FILLED"; this.log("ORDER_NOT_FILLED", { signalId: t.signalId }); }
+      if (++t.absentCycles >= UNKNOWN_ORDER_ABSENT_CYCLES && now - t.openedAt >= UNKNOWN_ORDER_MIN_AGE_MS) { t.status = "NOT_FILLED"; this.log("ORDER_NOT_FILLED", { signalId: t.signalId }); }
     }
     this.s.reconciliationClean = clean;
-    void now;
   }
 
   private async close(ticket: number, signalId: string, reason: string): Promise<void> {
