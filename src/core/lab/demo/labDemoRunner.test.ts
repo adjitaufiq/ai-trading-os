@@ -1,31 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_RISK_POLICY } from "@/engine/risk/riskPolicy";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { LabSignal } from "@/core/lab/strategies";
 import type { TechBar } from "@/core/technical/indicators";
 import {
-  commentMatches, effectiveDailyLossUsd, LAB_DEMO_MODES, LabDemoRunner, labSignalId,
+  commentMatches, LAB_DEMO_MODES, LabDemoRunner, labSignalId, volumeValid,
   type BrokerPos, type CloseResult, type LabBrokerPort, type LabRunnerState, type OrderResult, type RunnerConfig,
 } from "./labDemoRunner";
+import { LAB_MAGIC, LAB_RISK_POLICY_FILE_CONTENT, parseLabRiskPolicy, type LabRiskPolicy } from "./labRiskPolicy";
+import { budgetAllows, computeDayPnl, nextPhase } from "./labPortfolioGuard";
+import { parseGatewayBars } from "./gatewayParse";
 
 const M5 = 300_000;
 const NOW0 = Date.UTC(2026, 9, 19, 3, 0, 30);
+const POLICY = (over: Partial<LabRiskPolicy> = {}): LabRiskPolicy => ({ ...(JSON.parse(JSON.stringify(LAB_RISK_POLICY_FILE_CONTENT)) as LabRiskPolicy), ...over });
 const bars = (endOpen: number, n = 80, px = 2000): TechBar[] =>
   Array.from({ length: n }, (_, i) => { const o = endOpen - (n - 1 - i) * M5; return { open_time: o, close_time: o + M5, available_at: o + M5, open: px, high: px + 1, low: px, close: px + 1 }; });
+const SPEC = { XAUUSD: { tickSize: 0.01, tickValue: 1 }, BTCUSD: { tickSize: 0.01, tickValue: 0.01 } } as const;
 
 class FakeBroker implements LabBrokerPort {
-  now = NOW0; mode = "DEMO"; login = 111; balance = 500; equity = 500;
+  now = NOW0; mode = "DEMO"; login = 111;
   pos: BrokerPos[] = []; deals = new Map<number, { profit: number; reason: string }>();
   sent: Parameters<LabBrokerPort["sendOrder"]>[0][] = []; closes: number[] = [];
   orderMode: "FILL" | "REJECT" | "TIMEOUT" | "PARTIAL" | "ERROR" = "FILL";
-  closeMode: CloseResult["status"] | "TIMEOUT" = "CLOSED";
-  nextTicket = 100; specInfo = { symbol: "", volumeMin: 0.01, volumeMax: 100, volumeStep: 0.01, tickSize: 0.01, tickValue: 1, marginPerLot: 0 };
+  closeMode: "CLOSED" | "TIMEOUT" | "TIMEOUT_BUT_CLOSED" | "REJECTED" = "CLOSED";
+  nextTicket = 100; specOver: Partial<{ tickValue: number; volumeStep: number }> = {};
   async serverTimeMs() { return this.now; }
-  async account() { return { login: this.login, server: "Exness-MT5Trial", tradeMode: this.mode, balance: this.balance, equity: this.equity }; }
+  async account() { return { login: this.login, server: "Exness-MT5Trial", tradeMode: this.mode, balance: 500, equity: 500 }; }
   async positions() { return this.pos; }
   async closedBars(symbol: string) { const last = Math.floor((this.now - M5) / M5) * M5; return bars(last, 80, symbol === "BTCUSD" ? 80000 : 2000); }
   async quote(symbol: string) { return symbol === "BTCUSD" ? { bid: 80001, ask: 80001.5 } : { bid: 2001, ask: 2001.2 }; }
-  async spec(symbol: string) { return { ...this.specInfo, symbol }; }
-  async closeDeal(t: number) { const d = this.deals.get(t); return d ? { ticket: t, time: Math.floor(this.now / 1000), ...d } : null; }
+  async spec(symbol: string) { const s = SPEC[symbol as keyof typeof SPEC]; return { symbol, volumeMin: 0.01, volumeMax: 100, volumeStep: 0.01, marginPerLot: 0, ...s, ...this.specOver }; }
+  async closeDeal(t: number) { const d = this.deals.get(t); return d ? { ticket: t, time: Math.floor(this.now / 1000), volume: null, commission: -0.1, swap: 0, ...d } : null; }
   async sendOrder(req: Parameters<LabBrokerPort["sendOrder"]>[0]): Promise<OrderResult> {
     this.sent.push(req);
     if (this.orderMode === "TIMEOUT") { this.pos.push(this.mk(req, this.nextTicket++, req.volume)); throw new Error("timeout"); }
@@ -33,179 +39,329 @@ class FakeBroker implements LabBrokerPort {
     if (this.orderMode === "ERROR") return { status: "ERROR", ticket: null, price: null, volume: null, comment: "NO_TICK" };
     const vol = this.orderMode === "PARTIAL" ? Number((req.volume / 2).toFixed(2)) : req.volume, ticket = this.nextTicket++;
     this.pos.push(this.mk(req, ticket, vol));
-    return { status: "FILLED", ticket, price: req.direction === "BUY" ? 2001.2 : 2001, volume: vol, comment: "done" };
+    return { status: "FILLED", ticket, price: (await this.quote(req.symbol))[req.direction === "BUY" ? "ask" : "bid"], volume: vol, comment: "done" };
   }
-  mk(req: { signal_id: string; symbol: string; sl: number; tp: number }, ticket: number, volume: number): BrokerPos {
-    return { ticket, symbol: req.symbol, comment: req.signal_id.slice(0, 31), magicOk: true, volume, profit: 0, sl: req.sl, tp: req.tp };
+  mk(req: { signal_id: string; symbol: string; sl: number; tp: number; direction: "BUY" | "SELL"; magic: number }, ticket: number, volume: number): BrokerPos {
+    const q = req.symbol === "BTCUSD" ? { bid: 80001, ask: 80001.5 } : { bid: 2001, ask: 2001.2 };
+    return { ticket, symbol: req.symbol, comment: req.signal_id.slice(0, 31), magic: req.magic, side: req.direction, volume, priceOpen: req.direction === "BUY" ? q.ask : q.bid, profit: 0, swap: 0, sl: req.sl, tp: req.tp };
   }
   async closePosition(req: { ticket: number }): Promise<CloseResult> {
     this.closes.push(req.ticket);
+    const gone = () => { const p = this.pos.find((x) => x.ticket === req.ticket); this.pos = this.pos.filter((x) => x.ticket !== req.ticket); this.deals.set(req.ticket, { profit: p?.profit ?? 0, reason: "EXPERT" }); };
     if (this.closeMode === "TIMEOUT") throw new Error("timeout");
-    if (this.closeMode === "CLOSED") { const p = this.pos.find((x) => x.ticket === req.ticket); this.pos = this.pos.filter((x) => x.ticket !== req.ticket); this.deals.set(req.ticket, { profit: p?.profit ?? 0, reason: "OTHER" }); }
-    return { status: this.closeMode, comment: null };
+    if (this.closeMode === "TIMEOUT_BUT_CLOSED") { gone(); throw new Error("timeout"); }
+    if (this.closeMode === "REJECTED") return { status: "REJECTED", comment: "market closed" };
+    gone(); return { status: "CLOSED", comment: null };
   }
   setProfit(ticket: number, profit: number) { this.pos = this.pos.map((p) => (p.ticket === ticket ? { ...p, profit } : p)); }
+  manualClose(ticket: number, profit: number, withDeal = true) { this.pos = this.pos.filter((p) => p.ticket !== ticket); if (withDeal) this.deals.set(ticket, { profit, reason: "MANUAL" }); }
 }
 
 class MemStore { data: unknown = null; events: Record<string, unknown>[] = []; load() { return this.data ? JSON.parse(JSON.stringify(this.data)) : null; } save(s: LabRunnerState) { this.data = JSON.parse(JSON.stringify(s)); } journal(e: Record<string, unknown>) { this.events.push(e); } }
 
-const sig = (strategy: string, side: "BUY" | "SELL", barTime: number, sl = 2): LabSignal => ({ strategy: strategy as LabSignal["strategy"], side, why: "test", sl_distance: sl, bar_time: barTime });
-const lastOpen = (now: number) => Math.floor((now - M5) / M5) * M5;
+const sig = (strategy: string, side: "BUY" | "SELL", extra: Partial<LabSignal> = {}): LabSignal => ({ strategy: strategy as LabSignal["strategy"], side, why: "test", sl_distance: 2, bar_time: 0, ...extra });
+const SEVEN = ["SMC_FIBO_OTE", "DUAL_WALL_FAST", "GOLD_SNIPER", "FAST_BREAKOUT", "RANGE_REVERSAL", "BREAKOUT_RETEST", "EMA_CROSS"];
+const fiboFor = (m5: readonly TechBar[], side: "BUY" | "SELL" = "BUY") => { const btc = m5[0]!.open > 10000; const px = btc ? 80001.5 : 2001.2; const d = btc ? 400 : 5; return { sl_price: side === "BUY" ? px - d : px + d, tp_price: side === "BUY" ? px + 2 * d : px - 2 * d }; };
 
 function rig(sigsFor: (m5: readonly TechBar[]) => LabSignal[], over: Partial<RunnerConfig> = {}, store = new MemStore(), b = new FakeBroker()) {
-  const cfg: RunnerConfig = { policy: DEFAULT_RISK_POLICY, whitelistLogins: new Set([111]), whitelistServers: new Set(["Exness-MT5Trial"]), armed: true, killSwitch: () => false,
+  const cfg: RunnerConfig = { policy: POLICY(), whitelistLogins: new Set([111]), whitelistServers: new Set(["Exness-MT5Trial"]), armed: true, killSwitch: () => false,
     evaluate: (m5) => sigsFor(m5).map((s) => ({ ...s, bar_time: m5.at(-1)!.open_time })), ...over };
   return { b, store, cfg, r: new LabDemoRunner(b, store, cfg) };
 }
-/** First tick after start only reconciles (restart rule); second tick may trade. */
+/** First tick after start only reconciles (restart rule); next bar may trade. */
 async function warm(r: LabDemoRunner, b: FakeBroker) { await r.tick(); b.now += M5; }
+const ev = (s: MemStore, type: string) => s.events.filter((e) => e["type"] === type);
 
-describe("lab demo runner (fake broker only)", () => {
-  it("wires exactly the seven selected modes", () => {
-    expect(Object.keys(LAB_DEMO_MODES).sort()).toEqual(["BREAKOUT_RETEST", "DUAL_WALL_FAST", "EMA_CROSS", "FAST_BREAKOUT", "GOLD_SNIPER", "RANGE_REVERSAL", "SMC_FIBO_OTE"]);
+describe("lab risk policy (single source, fail-closed)", () => {
+  it("shipped JSON parses and equals the approved values", () => {
+    const r = parseLabRiskPolicy(readFileSync(join(process.cwd(), "engine-host/lab-risk-policy.json"), "utf8"));
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect([r.policy.daily_target_usd, r.policy.daily_stop_usd, r.policy.max_active_positions_total, r.policy.max_active_positions_per_mode, r.policy.magic]).toEqual([50, 30, 6, 1, 610007]);
+      expect(r.policy.copet.XAUUSD).toEqual({ lot: 0.02, contract_size_assumed: 100, sl_usd: 10, tp_usd: 10, trail_arm_usd: 3, trail_gap_usd: 2 });
+      expect(r.policy.copet.BTCUSD).toEqual({ lot: 0.05, contract_size_assumed: 1, sl_usd: 20, tp_usd: 20, trail_arm_usd: 6, trail_gap_usd: 4 });
+    }
+  });
+  it("missing / bad json / extra key / wrong magic are refused", () => {
+    const good = JSON.stringify(LAB_RISK_POLICY_FILE_CONTENT);
+    expect(parseLabRiskPolicy(null)).toEqual({ ok: false, error: "LAB_RISK_POLICY_MISSING" });
+    expect(parseLabRiskPolicy("{").ok).toBe(false);
+    expect(parseLabRiskPolicy(JSON.stringify({ ...LAB_RISK_POLICY_FILE_CONTENT, risk_per_trade: 0.005 })).ok).toBe(false);
+    expect(parseLabRiskPolicy(JSON.stringify({ ...LAB_RISK_POLICY_FILE_CONTENT, magic: 610006 })).ok).toBe(false);
+    expect(parseLabRiskPolicy(good).ok).toBe(true);
+  });
+  it("runner refuses a non-Lab magic", () => {
+    expect(() => rig(() => [], { policy: { ...POLICY(), magic: 610006 as typeof LAB_MAGIC } })).toThrow("LAB_MAGIC_REQUIRED");
+  });
+});
+
+describe("portfolio guard (signed, baseline)", () => {
+  const spec = { XAUUSD: { tickSize: 0.01, tickValue: 1 } };
+  const open = (dayBaseUsd = 0) => ({ ticket: 1, symbol: "XAUUSD", side: "BUY" as const, volume: 0.02, dayBaseUsd, closedDay: null, pnlUsd: null, open: true });
+  const pos = (profit: number) => ({ ticket: 1, priceOpen: 2000, sl: 1995, profit, swap: 0, volume: 0.02 });
+  it("realized +20 with a −$10 hard SL position ⇒ worst-case +10 − friction (no abs())", () => {
+    const d = computeDayPnl([{ ticket: 9, symbol: "XAUUSD", side: "BUY", volume: 0.02, dayBaseUsd: 0, closedDay: "2026-10-19", pnlUsd: 20, open: false }, open()], [pos(-3)], spec, "2026-10-19", 2);
+    expect(d.realizedUsd).toBe(20); expect(d.dayPnlUsd).toBeCloseTo(17); expect(d.worstCaseUsd).toBeCloseTo(8);
+  });
+  it("realized −15, open −10 SL, candidate −10 ⇒ rejected; floating loss not double-counted", () => {
+    const d = computeDayPnl([{ ticket: 9, symbol: "XAUUSD", side: "BUY", volume: 0.02, dayBaseUsd: 0, closedDay: "2026-10-19", pnlUsd: -15, open: false }, open()], [pos(-7)], spec, "2026-10-19", 0);
+    expect(d.worstCaseUsd).toBeCloseTo(-25);
+    expect(budgetAllows(d.worstCaseUsd, 10, 0, 30)).toEqual({ ok: false, projectedUsd: -35 });
+    expect(budgetAllows(-15, 10, 2, 30).ok).toBe(true);
+  });
+  it("position crossing midnight: only today's move counts", () => {
+    const d = computeDayPnl([open(-8)], [pos(-9)], spec, "2026-10-20", 2);
+    expect(d.dayPnlUsd).toBeCloseTo(-1); expect(d.worstCaseUsd).toBeCloseTo(-4);
+  });
+  it("missing SL / spec ⇒ unmeasurable (null) ⇒ no entries", () => {
+    expect(computeDayPnl([open()], [{ ...pos(0), sl: null }], spec, "d", 2).worstCaseUsd).toBeNull();
+    expect(budgetAllows(null, 10, 2, 30).ok).toBe(false);
+  });
+  it("phases: target, stop, sticky desync, reset next day", () => {
+    expect(nextPhase({ phase: "TRADING", day: "a" }, "a", 50, 50, 30)).toBe("TARGET_REACHED_HALT");
+    expect(nextPhase({ phase: "TARGET_REACHED_HALT", day: "a" }, "a", -30, 50, 30)).toBe("PORTFOLIO_STOP_HIT");
+    expect(nextPhase({ phase: "PORTFOLIO_STOP_HIT", day: "a" }, "b", 0, 50, 30)).toBe("TRADING");
+    expect(nextPhase({ phase: "STATE_DESYNC_HALT", day: "a" }, "b", 0, 50, 30)).toBe("STATE_DESYNC_HALT");
+  });
+});
+
+describe("gateway contract", () => {
+  it("parses the real MARKET_DATA.BARS envelope (data.items) recorded from vps/mt5_gateway", () => {
+    const env = JSON.parse(readFileSync(join(process.cwd(), "src/core/lab/demo/__fixtures__/gateway-bars-m5.json"), "utf8"));
+    expect(env.capability).toBe("MARKET_DATA.BARS");
+    const b = parseGatewayBars(env, M5)!;
+    expect(b.length).toBe(3);
+    expect(b[1]!.open_time - b[0]!.open_time).toBe(M5);
+    expect(b[0]!.close_time).toBe(b[0]!.open_time + M5);
+    expect(parseGatewayBars({ data: { bars: [] } }, M5)).toBeNull();
+    expect(parseGatewayBars({ data: { items: [{ raw_time_s: 1, open: "x" }] } }, M5)).toBeNull();
+  });
+});
+
+describe("lab demo runner v2 (fake broker only)", () => {
+  it("wires exactly the seven selected modes; GOLD_SNIPER is XAU-only", async () => {
+    expect(Object.keys(LAB_DEMO_MODES).sort()).toEqual([...SEVEN].sort());
     expect(labSignalId("SMC_FIBO_OTE", "XAUUSD", NOW0, "BUY").length).toBeLessThanOrEqual(31);
-  });
-
-  it("effective daily loss = stricter of policy 2% and operator $30", () => {
-    expect(effectiveDailyLossUsd(DEFAULT_RISK_POLICY, 500)).toBe(10);
-    expect(effectiveDailyLossUsd(DEFAULT_RISK_POLICY, 5000)).toBe(30);
-  });
-
-  it("sizes lot from SL + risk policy, sets hard SL/TP, one per symbol, two total", async () => {
-    const { r, b } = rig(() => [sig("DUAL_WALL_FAST", "BUY", 0), sig("EMA_CROSS", "BUY", 0), sig("TOUCH_SNR", "BUY", 0)]);
+    const { r, b, store } = rig(() => [sig("GOLD_SNIPER", "BUY")]);
     await warm(r, b); await r.tick();
-    expect(b.sent.length).toBe(2); // XAU + BTC, never two on one symbol
-    expect(new Set(b.sent.map((x) => x.symbol))).toEqual(new Set(["XAUUSD", "BTCUSD"]));
-    const x = b.sent.find((s) => s.symbol === "XAUUSD")!;
-    expect(x.signal_id).toContain("L11"); // SPV priority: Mode 11 beats Mode 2
-    expect(x.volume).toBe(0.01); // $2.5 budget / $200 per lot (2.0 SL) = 0.0125 → floor 0.01
-    expect(x.sl).toBeCloseTo(1999.2); expect(x.tp).toBeCloseTo(2003.2);
-    b.now += M5; await r.tick();
-    expect(b.sent.length).toBe(2); // slots/symbols full
+    expect(b.sent.map((s) => s.symbol)).toEqual(["XAUUSD"]);
+    expect(ev(store, "CANDIDATE_SUPPRESSED").some((e) => e["symbol"] === "BTCUSD" && e["reason"] === "INELIGIBLE_SYMBOL")).toBe(true);
   });
 
-  it("rejects when risk budget cannot fund the minimum lot (no fixed paper lot)", async () => {
-    const { r, b } = rig(() => [sig("EMA_CROSS", "BUY", 0, 500)]);
+  it("COPET v2 nominal: fixed Lab lot, hard SL/TP at $10 XAU / $20 BTC, Lab magic", async () => {
+    const { r, b } = rig(() => [sig("EMA_CROSS", "BUY")]);
     await warm(r, b); await r.tick();
-    expect(b.sent.length).toBe(0);
+    const x = b.sent.find((s) => s.symbol === "XAUUSD")!, y = b.sent.find((s) => s.symbol === "BTCUSD")!;
+    expect([x.volume, x.magic]).toEqual([0.02, LAB_MAGIC]);
+    expect(x.sl).toBeCloseTo(2001.2 - 5); expect(x.tp).toBeCloseTo(2001.2 + 5);
+    expect(y.volume).toBe(0.05); expect(y.sl).toBeCloseTo(80001.5 - 400); expect(y.tp).toBeCloseTo(80001.5 + 400);
+    expect(b.sent.every((s) => s.sl > 0 && s.tp > 0)).toBe(true);
   });
 
-  it("direction conflict on the same candle: only the SPV-locked side is dispatched", async () => {
-    const { r, b } = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("SMC_FIBO_OTE", "SELL", 0), sig("EMA_CROSS", "BUY", 0)]), {});
-    // Mode 12 SELL without absolute prices falls back to sl_distance
+  it("budget gate: −$30 stop admits only what worst-case allows (XAU $10 + $2 friction each)", async () => {
+    const { r, b, store } = rig((m5) => (m5[0]!.open > 10000 ? [] : SEVEN.filter((s) => s !== "SMC_FIBO_OTE").map((s) => sig(s, "BUY"))));
     await warm(r, b); await r.tick();
-    expect(b.sent.map((s) => s.direction)).toEqual(["SELL"]);
+    expect(b.sent.length).toBe(2); // −12, −24; third would be −36
+    expect(b.sent.map((s) => s.signal_id.slice(0, 3))).toEqual(["L11", "L13"]); // SPV rank order
+    expect(ev(store, "ENTRY_REJECTED").filter((e) => e["reason"] === "REJECTED_BUDGET_EXCEEDED").length).toBe(4);
   });
 
-  it("duplicate signal is never re-sent, even after restart", async () => {
+  it("6 is a cap, not a target; one position per mode; every suppression journaled", async () => {
+    const { r, b, store } = rig((m5) => SEVEN.map((s) => (s === "SMC_FIBO_OTE" ? sig(s, "BUY", fiboFor(m5)) : sig(s, "BUY"))), { policy: POLICY({ daily_stop_usd: 1000 }) });
+    await warm(r, b); await r.tick();
+    expect(b.sent.length).toBe(6);
+    const modes = b.sent.map((s) => s.signal_id.slice(0, 3));
+    expect(new Set(modes).size).toBe(6);
+    const sup = ev(store, "CANDIDATE_SUPPRESSED").map((e) => e["reason"]);
+    expect(sup).toContain("SUPPRESSED_MODE_SLOT_FULL");
+    expect(sup).toContain("SUPPRESSED_SLOT_FULL");
+    const intent = ev(store, "ORDER_INTENT").at(-1)!["symbolExposure"] as Record<string, { positions: number; correlated: boolean }>;
+    expect(intent["XAUUSD"]!.positions + intent["BTCUSD"]!.positions).toBe(6);
+    expect(intent["XAUUSD"]!.correlated).toBe(true);
+  });
+
+  it("Mode 12 keeps technical Fibo SL/TP (not COPET)", async () => {
+    const { r, b } = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("SMC_FIBO_OTE", "BUY", fiboFor(m5))]));
+    await warm(r, b); await r.tick();
+    expect(b.sent[0]!.sl).toBeCloseTo(2001.2 - 5); expect(b.sent[0]!.tp).toBeCloseTo(2001.2 + 10);
+  });
+
+  it("same candle opposite sides: SPV direction lock; next candle opposite of an active position is suppressed", async () => {
+    let flip = false;
+    const { r, b, store } = rig((m5) => (m5[0]!.open > 10000 ? [] : flip ? [sig("RANGE_REVERSAL", "SELL")] : [sig("DUAL_WALL_FAST", "BUY"), sig("EMA_CROSS", "SELL")]));
+    await warm(r, b); await r.tick();
+    expect(b.sent.map((s) => s.direction)).toEqual(["BUY"]);
+    flip = true; b.now += M5; await r.tick();
+    expect(b.sent.length).toBe(1);
+    expect(ev(store, "CANDIDATE_SUPPRESSED").filter((e) => e["reason"] === "SUPPRESSED_DIRECTION_LOCK").length).toBe(2);
+  });
+
+  it("broker spec mismatch / invalid volume step are rejected, lot never changed", async () => {
+    for (const o of [{ tickValue: 2 }, { volumeStep: 0.1 }]) {
+      const { r, b, store } = rig(() => [sig("EMA_CROSS", "BUY")]); b.specOver = o;
+      await warm(r, b); await r.tick();
+      expect(b.sent.length).toBe(0);
+      expect(ev(store, "ENTRY_REJECTED").map((e) => e["reason"])).toContain(o.tickValue ? "REJECTED_BROKER_SPEC_MISMATCH" : "REJECTED_BROKER_VOLUME");
+    }
+    expect(volumeValid(0.02, { symbol: "X", volumeMin: 0.01, volumeMax: 1, volumeStep: 0.01, tickSize: 1, tickValue: 1, marginPerLot: 0 })).toBe(true);
+  });
+
+  it("duplicate signal is never re-sent after restart", async () => {
     const store = new MemStore();
-    const a = rig(() => [sig("EMA_CROSS", "BUY", 0)], {}, store);
+    const a = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("EMA_CROSS", "BUY")]), {}, store);
     await warm(a.r, a.b); await a.r.tick();
-    a.b.setProfit(100, 0); a.b.closeMode = "CLOSED";
-    const b2 = rig(() => [sig("EMA_CROSS", "BUY", 0)], {}, store, a.b); // restart, same bar
+    const b2 = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("EMA_CROSS", "BUY")]), {}, store, a.b);
     await b2.r.tick(); await b2.r.tick();
-    expect(a.b.sent.filter((s) => s.symbol === "XAUUSD").length).toBe(1);
-    expect(b2.r.state.trades.find((t) => t.symbol === "XAUUSD")!.status).toBe("OPEN");
+    expect(a.b.sent.length).toBe(1);
+    expect(b2.r.state.trades[0]!.status).toBe("OPEN");
   });
 
-  it("reject is journaled and does not block; ERROR/timeout fail closed until reconcile", async () => {
-    const { r, b, store } = rig(() => [sig("EMA_CROSS", "BUY", 0)]);
+  it("COPET trailing XAU: arm at +$3, close at peak − $2; peak survives restart and closes on first tick", async () => {
+    const store = new MemStore();
+    const { r, b } = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("EMA_CROSS", "BUY")]), {}, store);
+    await warm(r, b); await r.tick();
+    const tk = r.state.trades[0]!.ticket!;
+    b.setProfit(tk, 2.5); b.now += 1000; await r.tick(); expect(r.state.trades[0]!.trailArmed).toBe(false);
+    b.setProfit(tk, 4); b.now += 1000; await r.tick(); expect(r.state.trades[0]!.trailArmed).toBe(true);
+    b.setProfit(tk, 2.5); b.now += 1000; await r.tick(); expect(b.closes).toEqual([]);
+    // restart while runner was down and price fell below floor (4 − 2 = 2)
+    b.setProfit(tk, 1.9); b.now += 60_000;
+    const r2 = rig((m5) => (m5[0]!.open > 10000 ? [] : []), {}, store, b).r;
+    await r2.tick();
+    expect(b.closes).toEqual([tk]);
+    await r2.tick();
+    expect(r2.state.trades[0]!.status).toBe("CLOSED"); expect(r2.state.trades[0]!.exitReason).toBe("TRAIL");
+  });
+
+  it("close timeout: no same-tick retry, re-read before retry, STATE_DESYNC_HALT after max attempts", async () => {
+    const { r, b, store } = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("EMA_CROSS", "BUY")]));
+    await warm(r, b); await r.tick();
+    const tk = r.state.trades[0]!.ticket!;
+    b.closeMode = "TIMEOUT"; b.setProfit(tk, 4); await r.tick(); b.setProfit(tk, 1); b.now += 1000; await r.tick();
+    expect(b.closes).toEqual([tk]);
+    b.now += 1000; await r.tick(); expect(b.closes.length).toBe(2);
+    b.now += 1000; await r.tick(); expect(b.closes.length).toBe(3);
+    b.now += 1000; await r.tick(); expect(b.closes.length).toBe(3);
+    expect(r.state.phase).toBe("STATE_DESYNC_HALT");
+    expect(ev(store, "STATE_DESYNC_HALT").length).toBe(1);
+    b.now += M5; await r.tick(); expect(b.sent.length).toBe(1);
+    r.clearDesync(); expect(r.state.phase).toBe("TRADING");
+  });
+
+  it("close timeout that actually closed at broker: confirmed via deal, no retry", async () => {
+    const { r, b } = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("EMA_CROSS", "BUY")]));
+    await warm(r, b); await r.tick();
+    const tk = r.state.trades[0]!.ticket!;
+    b.closeMode = "TIMEOUT_BUT_CLOSED"; b.setProfit(tk, 4); await r.tick(); b.setProfit(tk, 1); b.now += 1000; await r.tick();
+    b.now += 1000; await r.tick();
+    expect(b.closes).toEqual([tk]);
+    expect(r.state.trades[0]!.status).toBe("CLOSED");
+  });
+
+  it("manual operator close: only with deal history ⇒ EXIT_MANUAL_OPERATOR and slot freed", async () => {
+    const { r, b } = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("EMA_CROSS", "BUY")]));
+    await warm(r, b); await r.tick();
+    const tk = r.state.trades[0]!.ticket!;
+    b.manualClose(tk, 0, false); b.now += 1000; await r.tick();
+    expect(r.state.trades[0]!.status).toBe("OPEN"); // no deal yet ⇒ not closed, slot occupied
+    expect(r.state.blockReason).toBe("RECONCILIATION_NOT_CLEAN");
+    b.deals.set(tk, { profit: 3.2, reason: "MANUAL" }); b.now += 1000; await r.tick();
+    expect(r.state.trades[0]!.status).toBe("CLOSED"); expect(r.state.trades[0]!.exitReason).toBe("EXIT_MANUAL_OPERATOR");
+    expect(r.state.trades[0]!.pnlUsd).toBe(3.2);
+  });
+
+  it("partial manual close and partial fill record actual volume", async () => {
+    const { r, b, store } = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("EMA_CROSS", "BUY")]));
+    b.orderMode = "PARTIAL"; await warm(r, b); await r.tick();
+    const t = r.state.trades[0]!;
+    expect(t.partial).toBe(true); expect(t.volume).toBe(0.01);
+    expect(ev(store, "FILL_VS_PLAN").length).toBe(1);
+    const p2 = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("EMA_CROSS", "BUY")]));
+    await warm(p2.r, p2.b); await p2.r.tick();
+    p2.b.pos = p2.b.pos.map((p) => ({ ...p, volume: 0.01 })); p2.b.now += 1000; await p2.r.tick();
+    expect(p2.r.state.trades[0]!.status).toBe("OPEN"); expect(p2.r.state.trades[0]!.volume).toBe(0.01);
+  });
+
+  it("reject is journaled; order timeout ⇒ UNKNOWN, entries blocked, adopted by comment", async () => {
+    const { r, b, store } = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("EMA_CROSS", "BUY")]));
     b.orderMode = "REJECT"; await warm(r, b); await r.tick();
-    expect(store.events.some((e) => e["type"] === "ORDER_RESULT" && e["status"] === "REJECTED")).toBe(true);
+    expect(ev(store, "ORDER_RESULT").some((e) => e["status"] === "REJECTED")).toBe(true);
     b.orderMode = "TIMEOUT"; b.now += M5; await r.tick();
     expect(r.state.trades.some((t) => t.status === "UNKNOWN")).toBe(true);
-    b.now += M5; await r.tick(); // reconcile adopts the timed-out fill by comment
-    expect(r.state.trades.filter((t) => t.status === "OPEN").length).toBeGreaterThan(0);
-    const sentBefore = b.sent.length;
-    const t2 = rig(() => [sig("EMA_CROSS", "BUY", 0)]); t2.b.orderMode = "ERROR";
-    await warm(t2.r, t2.b); await t2.r.tick();
-    expect(t2.b.sent.length).toBe(2);
-    expect(t2.r.state.blockReason).toBe("ORDER_STATE_UNKNOWN");
-    t2.b.now += M5; await t2.r.tick();
-    expect(t2.b.sent.length).toBe(2); // blocked while order state unknown
-    expect(t2.r.state.trades.every((t) => t.status === "NOT_FILLED" || t.status === "UNKNOWN")).toBe(true);
-    expect(b.sent.length).toBe(sentBefore);
+    b.now += 1000; await r.tick();
+    expect(r.state.trades.filter((t) => t.status === "OPEN").length).toBe(1);
   });
 
-  it("partial fill records actual volume and scales risk", async () => {
-    const { r, b } = rig(() => [sig("EMA_CROSS", "BUY", 0, 0.5)]);
-    b.orderMode = "PARTIAL"; await warm(r, b); await r.tick();
-    const t = r.state.trades.find((x) => x.symbol === "XAUUSD")!;
-    expect(t.partial).toBe(true); expect(t.volume).toBeLessThan(t.requestedVolume);
-  });
-
-  it("daily loss (stricter $10 on $500) stops entries and closes only bot positions", async () => {
-    const { r, b, store } = rig(() => [sig("EMA_CROSS", "BUY", 0, 0.5)]);
-    b.pos.push({ ticket: 9, symbol: "XAUUSD", comment: "manual", magicOk: false, volume: 1, profit: -50, sl: 1, tp: 3 });
+  it("daily stop −$30 (signed day P/L) closes Lab positions only and blocks entries", async () => {
+    const { r, b } = rig((m5) => (m5[0]!.open > 10000 ? [sig("EMA_CROSS", "BUY")] : [sig("EMA_CROSS", "BUY")]), { policy: POLICY({ daily_stop_usd: 30 }) });
+    b.pos.push({ ticket: 9, symbol: "XAUUSD", comment: "manual", magic: 0, side: "BUY", volume: 1, priceOpen: 2000, profit: -500, swap: 0, sl: 1, tp: 3 });
+    b.pos.push({ ticket: 8, symbol: "XAUUSD", comment: "arena", magic: 610006, side: "SELL", volume: 1, priceOpen: 2000, profit: -500, swap: 0, sl: 3000, tp: 1 });
     await warm(r, b); await r.tick();
     const bot = r.state.trades.filter((t) => t.status === "OPEN");
-    bot.forEach((t) => b.setProfit(t.ticket!, -6));
-    b.now += 1000; await r.tick();
-    expect(store.events.some((e) => e["type"] === "DAILY_GUARD" && e["lossLimitUsd"] === 10)).toBe(true);
-    expect(b.closes.sort()).toEqual(bot.map((t) => t.ticket).sort());
-    expect(b.closes).not.toContain(9);
+    expect(bot.length).toBe(1); // XAU −12 + BTC −22 = −34 ⇒ BTC rejected by budget
+    b.setProfit(bot[0]!.ticket!, -31); b.now += 1000; await r.tick();
+    expect(r.state.phase).toBe("PORTFOLIO_STOP_HIT");
+    expect(b.closes).toEqual([bot[0]!.ticket]);
     const n = b.sent.length; b.now += M5; await r.tick();
     expect(b.sent.length).toBe(n);
   });
 
-  it("+$50 target stops entries and closes bot positions", async () => {
-    const { r, b } = rig(() => [sig("EMA_CROSS", "BUY", 0, 0.5)]);
-    b.balance = b.equity = 5000;
+  it("+$50 target: entries blocked, open positions NOT force-closed", async () => {
+    const { r, b } = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("EMA_CROSS", "BUY")]));
     await warm(r, b); await r.tick();
-    r.state.trades.filter((t) => t.status === "OPEN").forEach((t) => b.setProfit(t.ticket!, 30));
-    b.now += 1000; await r.tick();
-    expect(b.closes.length).toBe(2);
-    expect(r.state.guard.phase).not.toBe("TRADING");
-  });
-
-  it("close failure / timeout fails closed", async () => {
-    const { r, b } = rig(() => [sig("EMA_CROSS", "BUY", 0, 0.5)]);
-    await warm(r, b); await r.tick();
-    b.closeMode = "TIMEOUT";
-    r.state.trades.filter((t) => t.status === "OPEN").forEach((t) => b.setProfit(t.ticket!, -6));
-    b.now += 1000; await r.tick();
-    expect(r.state.closeFailures).toBeGreaterThan(0);
+    const tk = r.state.trades[0]!.ticket!;
+    // simulate big realized day from an earlier closed trade
+    (r.state.trades[0] as { trailArmed: boolean }).trailArmed = false;
+    b.setProfit(tk, 51); b.now += 1000; await r.tick();
+    expect(r.state.phase).toBe("TARGET_REACHED_HALT");
+    expect(b.closes.filter((c) => c === tk).length).toBe(0 + (r.state.trades[0]!.trailArmed ? 0 : 0));
     const n = b.sent.length; b.now += M5; await r.tick();
     expect(b.sent.length).toBe(n);
   });
 
-  it("COPET trailing closes only after arm and pullback by gap", async () => {
-    const { r, b } = rig(() => [sig("EMA_CROSS", "BUY", 0, 0.5)]);
-    b.balance = b.equity = 5000;
+  it("day rollover with an open position: new day starts at its mark; old stop day resets", async () => {
+    const { r, b, store } = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("EMA_CROSS", "BUY")]), { policy: POLICY({ daily_stop_usd: 15 }) });
+    b.now = Date.UTC(2026, 9, 19, 23, 40, 30);
     await warm(r, b); await r.tick();
-    const t = r.state.trades.find((x) => x.symbol === "XAUUSD")!;
-    b.setProfit(t.ticket!, t.riskUsd * 0.5); b.now += 1000; await r.tick();
-    expect(b.closes).toEqual([]);
-    b.setProfit(t.ticket!, t.riskUsd * 0.25); b.now += 1000; await r.tick();
-    expect(b.closes).toEqual([t.ticket]);
-  });
-
-  it("reconciliation mismatch (unknown bot position / missing SL / vanished without deal) blocks entries", async () => {
-    const { r, b } = rig(() => [sig("EMA_CROSS", "BUY", 0)]);
-    b.pos.push({ ticket: 55, symbol: "XAUUSD", comment: "ghost", magicOk: true, volume: 0.1, profit: 0, sl: 1, tp: 3 });
-    await warm(r, b); await r.tick();
-    expect(b.sent.length).toBe(0);
-    expect(r.state.blockReason).toContain("RECONCILIATION_NOT_CLEAN");
+    const tk = r.state.trades[0]!.ticket!;
+    b.setProfit(tk, -8); b.now = Date.UTC(2026, 9, 20, 0, 0, 10); await r.tick();
+    expect(r.state.day).toBe("2026-10-20");
+    expect(r.state.trades[0]!.dayBaseUsd).toBe(-8);
+    expect(ev(store, "DAY_ROLLOVER_BASELINE").length).toBe(1);
+    // day-2 worst-case = (−10 − (−8)) − 2 = −4; without baseline it would be −12 and block the next XAU under stop 15
+    b.setProfit(tk, -9); b.now += M5; await r.tick();
+    expect(r.state.phase).toBe("TRADING");
+    expect(ev(store, "ENTRY_REJECTED").filter((e) => e["reason"] === "REJECTED_BUDGET_EXCEEDED" && (e["worstCaseUsd"] as number) < -10).length).toBe(0);
+    b.manualClose(tk, -9); b.now += 1000; await r.tick();
+    expect(r.state.trades[0]!.pnlUsd! - r.state.trades[0]!.dayBaseUsd).toBe(-1); // only today's −1 counts for day 2
   });
 
   it("REAL or non-whitelisted account is always refused", async () => {
     for (const mut of [(b: FakeBroker) => (b.mode = "REAL"), (b: FakeBroker) => (b.login = 5)]) {
-      const { r, b } = rig(() => [sig("EMA_CROSS", "BUY", 0)]); mut(b);
+      const { r, b } = rig(() => [sig("EMA_CROSS", "BUY")]); mut(b);
       await warm(r, b); await r.tick();
-      expect(b.sent.length).toBe(0);
+      expect(b.sent.length).toBe(0); expect(b.closes.length).toBe(0);
     }
   });
 
   it("SHADOW (not armed) and kill switch never send", async () => {
-    const a = rig(() => [sig("EMA_CROSS", "BUY", 0)], { armed: false }); await warm(a.r, a.b); await a.r.tick();
-    const k = rig(() => [sig("EMA_CROSS", "BUY", 0)], { killSwitch: () => true }); await warm(k.r, k.b); await k.r.tick();
+    const a = rig(() => [sig("EMA_CROSS", "BUY")], { armed: false }); await warm(a.r, a.b); await a.r.tick();
+    const k = rig(() => [sig("EMA_CROSS", "BUY")], { killSwitch: () => true }); await warm(k.r, k.b); await k.r.tick();
     expect(a.b.sent.length + k.b.sent.length).toBe(0);
+  });
+
+  it("untracked Lab position (state lost) ⇒ trailing degraded, never touched, entries blocked; foreign magic ignored", async () => {
+    const { r, b } = rig(() => [sig("EMA_CROSS", "BUY")]);
+    b.pos.push({ ticket: 55, symbol: "XAUUSD", comment: "ghost", magic: LAB_MAGIC, side: "BUY", volume: 0.02, priceOpen: 2000, profit: -1, swap: 0, sl: 1995, tp: 2005 });
+    b.pos.push({ ticket: 56, symbol: "XAUUSD", comment: "arena", magic: 610006, side: "SELL", volume: 0.1, priceOpen: 2000, profit: 0, swap: 0, sl: 2010, tp: 1990 });
+    await warm(r, b); await r.tick();
+    expect(b.sent.length).toBe(0); expect(b.closes.length).toBe(0);
+    expect(r.state.blockReason).toBe("UNTRACKED_TRAILING_DEGRADED");
+    expect(r.state.degradedTickets).toEqual([55]);
   });
 
   it("broker comment truncation still matches by prefix; too-short comment does not", () => {
     expect(commentMatches("L11XAUt3", "L11XAUt3abcB")).toBe(true);
     expect(commentMatches("L11", "L11XAUt3abcB")).toBe(false);
   });
-
-  void lastOpen;
 });
