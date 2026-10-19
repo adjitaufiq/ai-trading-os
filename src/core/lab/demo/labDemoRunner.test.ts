@@ -60,7 +60,7 @@ class FakeBroker implements LabBrokerPort {
 class MemStore { data: unknown = null; events: Record<string, unknown>[] = []; load() { return this.data ? JSON.parse(JSON.stringify(this.data)) : null; } save(s: LabRunnerState) { this.data = JSON.parse(JSON.stringify(s)); } journal(e: Record<string, unknown>) { this.events.push(e); } }
 
 const sig = (strategy: string, side: "BUY" | "SELL", extra: Partial<LabSignal> = {}): LabSignal => ({ strategy: strategy as LabSignal["strategy"], side, why: "test", sl_distance: 2, bar_time: 0, ...extra });
-const SEVEN = ["SMC_FIBO_OTE", "DUAL_WALL_FAST", "GOLD_SNIPER", "FAST_BREAKOUT", "RANGE_REVERSAL", "BREAKOUT_RETEST", "EMA_CROSS"];
+const SIX = ["DUAL_WALL_FAST", "GOLD_SNIPER", "FAST_BREAKOUT", "RANGE_REVERSAL", "BREAKOUT_RETEST", "EMA_CROSS"];
 const fiboFor = (m5: readonly TechBar[], side: "BUY" | "SELL" = "BUY") => { const btc = m5[0]!.open > 10000; const px = btc ? 80001.5 : 2001.2; const d = btc ? 400 : 5; return { sl_price: side === "BUY" ? px - d : px + d, tp_price: side === "BUY" ? px + 2 * d : px - 2 * d }; };
 
 function rig(sigsFor: (m5: readonly TechBar[]) => LabSignal[], over: Partial<RunnerConfig> = {}, store = new MemStore(), b = new FakeBroker()) {
@@ -144,9 +144,10 @@ describe("gateway contract", () => {
 });
 
 describe("lab demo runner v2 (fake broker only)", () => {
-  it("wires exactly the seven selected modes; GOLD_SNIPER is XAU-only", async () => {
-    expect(Object.keys(LAB_DEMO_MODES).sort()).toEqual([...SEVEN].sort());
-    expect(labSignalId("SMC_FIBO_OTE", "XAUUSD", NOW0, "BUY").length).toBeLessThanOrEqual(31);
+  it("wires exactly the six selected modes (no Mode 12); GOLD_SNIPER is XAU-only", async () => {
+    expect(Object.keys(LAB_DEMO_MODES).sort()).toEqual([...SIX].sort());
+    expect(Object.keys(LAB_DEMO_MODES)).not.toContain("SMC_FIBO_OTE");
+    expect(labSignalId("DUAL_WALL_FAST", "XAUUSD", NOW0, "BUY").length).toBeLessThanOrEqual(31);
     const { r, b, store } = rig(() => [sig("GOLD_SNIPER", "BUY")]);
     await warm(r, b); await r.tick();
     expect(b.sent.map((s) => s.symbol)).toEqual(["XAUUSD"]);
@@ -164,7 +165,7 @@ describe("lab demo runner v2 (fake broker only)", () => {
   });
 
   it("budget gate: −$30 stop admits only what worst-case allows (XAU $10 + $2 friction each)", async () => {
-    const { r, b, store } = rig((m5) => (m5[0]!.open > 10000 ? [] : SEVEN.filter((s) => s !== "SMC_FIBO_OTE").map((s) => sig(s, "BUY"))));
+    const { r, b, store } = rig((m5) => (m5[0]!.open > 10000 ? [] : SIX.map((s) => sig(s, "BUY"))));
     await warm(r, b); await r.tick();
     expect(b.sent.length).toBe(2); // −12, −24; third would be −36
     expect(b.sent.map((s) => s.signal_id.slice(0, 3))).toEqual(["L11", "L13"]); // SPV rank order
@@ -174,23 +175,24 @@ describe("lab demo runner v2 (fake broker only)", () => {
   });
 
   it("6 is a cap, not a target; one position per mode; every suppression journaled", async () => {
-    const { r, b, store } = rig((m5) => SEVEN.map((s) => (s === "SMC_FIBO_OTE" ? sig(s, "BUY", fiboFor(m5)) : sig(s, "BUY"))), { policy: POLICY({ daily_stop_usd: 1000 }) });
+    const { r, b, store } = rig((m5) => SIX.map((s) => sig(s, "BUY")), { policy: POLICY({ daily_stop_usd: 1000 }) });
     await warm(r, b); await r.tick();
     expect(b.sent.length).toBe(6);
     const modes = b.sent.map((s) => s.signal_id.slice(0, 3));
     expect(new Set(modes).size).toBe(6);
     const sup = ev(store, "CANDIDATE_SUPPRESSED").map((e) => e["reason"]);
     expect(sup).toContain("SUPPRESSED_MODE_SLOT_FULL");
-    expect(sup).toContain("SUPPRESSED_SLOT_FULL");
+    // With exactly six modes the per-mode slot binds before the global cap of 6.
     const intent = ev(store, "ORDER_INTENT").at(-1)!["symbolExposure"] as Record<string, { positions: number; correlated: boolean }>;
     expect(intent["XAUUSD"]!.positions + intent["BTCUSD"]!.positions).toBe(6);
     expect(intent["XAUUSD"]!.correlated).toBe(true);
   });
 
-  it("Mode 12 keeps technical Fibo SL/TP (not COPET)", async () => {
-    const { r, b } = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("SMC_FIBO_OTE", "BUY", fiboFor(m5))]));
-    await warm(r, b); await r.tick();
-    expect(b.sent[0]!.sl).toBeCloseTo(2001.2 - 5); expect(b.sent[0]!.tp).toBeCloseTo(2001.2 + 10);
+  it("Mode 12 SMC_FIBO_OTE is excluded: no candidate, no order (even armed)", async () => {
+    const { r, b, store } = rig((m5) => [sig("SMC_FIBO_OTE", "BUY", fiboFor(m5))]);
+    await warm(r, b); await r.tick(); await r.tick();
+    expect(b.sent.length).toBe(0);
+    expect(store.events.some((e) => JSON.stringify(e).includes("SMC_FIBO_OTE"))).toBe(false);
   });
 
   it("same candle opposite sides: SPV direction lock; next candle opposite of an active position is suppressed", async () => {

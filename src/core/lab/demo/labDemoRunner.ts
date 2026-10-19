@@ -1,5 +1,5 @@
 /**
- * Lab DEMO runner v2 (VPS, headless). Seven Lab modes evaluate CLOSED M5 bars as candidate generators; ONE
+ * Lab DEMO runner v2 (VPS, headless). Six Lab modes evaluate CLOSED M5 bars as candidate generators; ONE
  * deterministic dispatcher decides broker orders. Broker access only through LabBrokerPort (fake in tests,
  * loopback mt5_exec/mt5_gateway on the VPS) with Lab magic 610007. Paper Lab ledger is never read or written.
  *
@@ -18,10 +18,10 @@ import type { BrokerSymbolInfo } from "../../../engine/risk/types";
 import { LAB_MAGIC, type LabRiskPolicy } from "./labRiskPolicy";
 import { budgetAllows, computeDayPnl, nextPhase, usdAtPrice, type GuardSpec, type LabPhase } from "./labPortfolioGuard";
 
-export const LAB_DEMO_RUNNER_VERSION = "lab-demo-runner-v2";
-/** The seven operator-selected modes and their short code used in signal_id. */
+export const LAB_DEMO_RUNNER_VERSION = "lab-demo-runner-v2.1-six-modes";
+/** The six operator-selected modes (final) and their short code used in signal_id. Mode 12 SMC_FIBO_OTE is excluded from the runner (paper Lab only). */
 export const LAB_DEMO_MODES: Readonly<Record<string, string>> = Object.freeze({
-  SMC_FIBO_OTE: "12", DUAL_WALL_FAST: "11", GOLD_SNIPER: "13", FAST_BREAKOUT: "5", RANGE_REVERSAL: "9", BREAKOUT_RETEST: "8", EMA_CROSS: "2",
+  DUAL_WALL_FAST: "11", GOLD_SNIPER: "13", FAST_BREAKOUT: "5", RANGE_REVERSAL: "9", BREAKOUT_RETEST: "8", EMA_CROSS: "2",
 });
 export const LAB_DEMO_SYMBOLS = ["XAUUSD", "BTCUSD"] as const;
 type Sym = (typeof LAB_DEMO_SYMBOLS)[number];
