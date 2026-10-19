@@ -3,7 +3,7 @@
 // lab_journal_trades (browser PAPER journal). No AI text, no calculation of signals, no order/config path.
 import { escapeTelegramHtml as esc } from "@/lib/assistant/telegramFormat";
 import { LAB_LABELS, type LabStrategy } from "@/core/lab/strategies";
-import { maxDrawdown, winLossStats } from "@/core/lab/labReport";
+import { formatMarketBreakdown, marketBreakdown, maxDrawdown, winLossStats } from "@/core/lab/labReport";
 
 export const BTN = {
   XAU: "🥇 Gold (XAUUSD) Radar",
@@ -164,6 +164,9 @@ export async function labCard(now: number, full = false): Promise<string> {
     "<b>🪙 Per Pair</b>",
   ];
   for (const a of aggregate(rows, (r) => r.symbol, now)) L.push(`• ${esc(a.key)}: ${usd(a.pnl)} · ${a.n} trade (${wr(a)}) · ${a.open} open`);
+  { const st = Math.floor((now + 7 * 3600_000) / 86_400_000) * 86_400_000 - 7 * 3600_000;
+    const mb = formatMarketBreakdown(marketBreakdown(rows, st));
+    L.push("", `<b>${esc(mb[0])}</b>`, ...mb.slice(1).map(esc)); }
   const modes = aggregate(rows, (r) => r.strategy, now);
   const medal = ["🥇", "🥈", "🥉"];
   L.push("", full ? "<b>🏆 Leaderboard Semua Mode</b>" : "<b>🏆 Top 3 Mesin Cuan</b>");

@@ -16,6 +16,7 @@ export interface LabReport {
   avgWin: number | null; avgLoss: number | null; rr: number | null; maxDd: number; maxDdPct: number;
   today: { pnl: number; trades: number; wins: number };
   operator: OperatorSettings | null;
+  markets: MarketBreakdown[];
 }
 
 /** Realized-balance drawdown: closed trades in close order, peak → lowest later trough (USD, ≥0). */
@@ -56,6 +57,7 @@ export function buildLabReport(state: LabState, switches: ModeSwitches, now: num
     ...winLossStats(allClosed), maxDd: dd.usd, maxDdPct: dd.pct,
     today: (() => { const st = wibDayStart(now); const c = state.trades.filter((t) => t.status === "CLOSED" && (t.closed_at ?? 0) >= st); return { pnl: todayRealized(state, now), trades: c.length, wins: c.filter((t) => t.pnl_usd > 0).length }; })(),
     operator,
+    markets: marketBreakdown(state.trades.map((t) => ({ strategy: t.strategy, symbol: t.symbol, pnl_usd: t.pnl_usd, closed_at_ms: t.status === "CLOSED" ? (t.closed_at ?? null) : null })), wibDayStart(now)),
   };
 }
 
@@ -132,7 +134,7 @@ export function formatLabReport(r: LabReport, header?: string[] | string): strin
     `• Max DD -$${r.maxDd.toFixed(2)} (${(r.maxDdPct * 100).toFixed(1)}% dari peak, realized)`,
     `• 3 jam: ${r.recent.trades} closed · ${r.recent.wins}W/${r.recent.trades - r.recent.wins}L (${pct(r.recent.wins, r.recent.trades)}) · ${usd(r.recent.pnl)}`,
     "",
-    ...formatMarketBreakdown(marketBreakdown(stateRows(r), wibDayStart(r.at))),
+    ...formatMarketBreakdown(r.markets),
     "",
     "🏆 LEADERBOARD (urut Realized P/L)",
     "",
