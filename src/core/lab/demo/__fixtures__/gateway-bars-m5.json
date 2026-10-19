@@ -1,0 +1,78 @@
+{
+ "schema_version": "3.0B-1",
+ "bridge_instance_id": "gw-fixture",
+ "connection_epoch": 0,
+ "request_id": "ee9c30c5bd594cd5a1d82d6e1e014d99",
+ "sequence": 1,
+ "delivery": "BACKFILL",
+ "source": "EXNESS_MT5",
+ "source_mode": "SIMULATION",
+ "capability": "MARKET_DATA.BARS",
+ "timing": {
+  "source_event_at": null,
+  "bridge_received_at": 1767600010000,
+  "bridge_sent_at": 1767600010001,
+  "client_sent_at": null,
+  "client_received_at": null
+ },
+ "latency": {
+  "source_arrival_delay_observed_ms": null,
+  "bridge_processing_ms": 1,
+  "bridge_to_client_apparent_delay_ms": null,
+  "transport_rtt_ms": null
+ },
+ "ok": true,
+ "data": {
+  "items": [
+   {
+    "broker_symbol": "XAUUSDm",
+    "timeframe": "M5",
+    "raw_time_s": 1767600000,
+    "open": 2345.1,
+    "high": 2346.1,
+    "low": 2344.1,
+    "close": 2345.6,
+    "tick_volume": 10,
+    "spread": 12,
+    "real_volume": 0,
+    "time_precision": "s"
+   },
+   {
+    "broker_symbol": "XAUUSDm",
+    "timeframe": "M5",
+    "raw_time_s": 1767600300,
+    "open": 2345.6,
+    "high": 2346.6,
+    "low": 2344.6,
+    "close": 2346.1,
+    "tick_volume": 11,
+    "spread": 12,
+    "real_volume": 0,
+    "time_precision": "s"
+   },
+   {
+    "broker_symbol": "XAUUSDm",
+    "timeframe": "M5",
+    "raw_time_s": 1767600600,
+    "open": 2346.1,
+    "high": 2347.1,
+    "low": 2345.1,
+    "close": 2346.6,
+    "tick_volume": 12,
+    "spread": 12,
+    "real_volume": 0,
+    "time_precision": "s"
+   }
+  ],
+  "coverage": {
+   "requested_from": 1767600000,
+   "requested_to": 1767600900,
+   "returned_count": 3,
+   "oldest_returned_at": 1767600000,
+   "newest_returned_at": 1767600600,
+   "coverage_status": "UNKNOWN",
+   "reason": "contiguous, but terminal history sync is not proven"
+  }
+ },
+ "error": null
+}
