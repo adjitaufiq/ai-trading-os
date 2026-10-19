@@ -149,7 +149,7 @@ describe("lab demo runner v2 (fake broker only)", () => {
   });
 
   it("COPET v2 nominal: fixed Lab lot, hard SL/TP at $10 XAU / $20 BTC, Lab magic", async () => {
-    const { r, b } = rig(() => [sig("EMA_CROSS", "BUY")], { policy: POLICY({ daily_stop_usd: 1000 }) });
+    const { r, b } = rig((m5) => [sig(m5[0]!.open > 10000 ? "FAST_BREAKOUT" : "EMA_CROSS", "BUY")], { policy: POLICY({ daily_stop_usd: 1000 }) });
     await warm(r, b); await r.tick();
     const x = b.sent.find((s) => s.symbol === "XAUUSD")!, y = b.sent.find((s) => s.symbol === "BTCUSD")!;
     expect([x.volume, x.magic]).toEqual([0.02, LAB_MAGIC]);
