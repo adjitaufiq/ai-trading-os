@@ -96,8 +96,8 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
           if (active) setSafety((o) => ({ ...o, [s]: safe.blocked ?? spv.blocked }));
           const signals = capEntries(spv.pass, stateRef.current, opRef.current, s);
           const fresh = safe.pass.filter((x) => x.bar_time === spv.lock?.bar_time && now - x.bar_time <= SPV_MAX_AGE_MS);
-          const q = buildSpvQueue(s, fresh, spv.pass, signals, now);
-          if (active) setSpvQueue((o) => [...o.filter((x) => x.symbol !== s && now - x.bar_time <= SPV_MAX_AGE_MS), ...q]);
+          const queued = buildSpvQueue(s, fresh, spv.pass, signals, now);
+          if (active) setSpvQueue((o) => [...o.filter((x) => x.symbol !== s && now - x.bar_time <= SPV_MAX_AGE_MS), ...queued]);
           setState((st) => openSignals(st, s, signals, q, now, "COPET"));
           setBook((b) => (b ? bookOpen(b, s, signals, q, now) : b));
           setLastBarAt((o) => ({ ...o, [s]: last }));
