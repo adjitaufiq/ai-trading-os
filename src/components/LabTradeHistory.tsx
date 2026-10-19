@@ -15,7 +15,7 @@ const RESULTS: [HistoryResult, string][] = [["ALL", "Semua"], ["PROFIT", "Profit
 
 const PAGE = 10;
 
-export function LabTradeHistory({ trades }: { trades: readonly LabTrade[] }) {
+export function LabTradeHistory({ trades, meta }: { trades: readonly LabTrade[]; meta?: Readonly<Record<string, string>> }) {
   const [market, setMarket] = useState<HistoryMarket>("ALL");
   const [result, setResult] = useState<HistoryResult>("ALL");
   const [day, setDay] = useState<string | null>(null);
