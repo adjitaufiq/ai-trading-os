@@ -85,7 +85,7 @@ export function formatMarketBreakdown(list: MarketBreakdown[]): string[] {
   const lbl = (s: string) => LAB_LABELS[s as LabStrategy] ?? s;
   const L = ["🪙 KONTRIBUSI PER MARKET (HARI INI WIB)"];
   if (!list.length) return [...L, "(belum ada trade closed hari ini)"];
-  const tot = list.reduce((a, b) => ({ n: a.n + b.n, w: a.w + b.w, pnl: a.pnl + b.pnl, g: a.g + b.g, l: a.l + b.l }), { n: 0, w: 0, pnl: 0, g: 0, l: 0 });
+  const tot = list.reduce((a, b) => ({ n: a.n + b.n, w: a.w + b.w, pnl: a.pnl + b.pnl, g: a.g + b.gross, l: a.l + b.loss }), { n: 0, w: 0, pnl: 0, g: 0, l: 0 });
   list.forEach((b, i) => {
     const top = b.modes.filter((x) => x.pnl > 0).slice(0, 3);
     const bad = b.modes.filter((x) => x.pnl < 0);
