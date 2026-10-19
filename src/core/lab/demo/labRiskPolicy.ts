@@ -45,7 +45,8 @@ const exact = (o: unknown, keys: readonly string[]) => !!o && typeof o === "obje
 
 export function parseLabRiskPolicy(text: string | null | undefined): { ok: true; policy: LabRiskPolicy } | { ok: false; error: string } {
   if (text == null) return { ok: false, error: "LAB_RISK_POLICY_MISSING" };
-  let j: Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let j: any;
   try { j = JSON.parse(text); } catch { return { ok: false, error: "LAB_RISK_POLICY_BAD_JSON" }; }
   if (!exact(j, KEYS)) return { ok: false, error: "LAB_RISK_POLICY_SCHEMA_KEYS" };
   if (j.version !== LAB_RISK_POLICY_VERSION) return { ok: false, error: "LAB_RISK_POLICY_VERSION" };
@@ -54,16 +55,16 @@ export function parseLabRiskPolicy(text: string | null | undefined): { ok: true;
   if ((j.broker_spec_tolerance as number) >= 1) return { ok: false, error: "LAB_RISK_POLICY_broker_spec_tolerance" };
   for (const k of ["max_active_positions_total", "max_active_positions_per_mode", "max_active_positions_per_symbol", "max_close_attempts"] as const) if (!int(j[k])) return { ok: false, error: `LAB_RISK_POLICY_${k}` };
   if (j.max_trades_per_day !== null && !int(j.max_trades_per_day)) return { ok: false, error: "LAB_RISK_POLICY_max_trades_per_day" };
-  const c = j.copet as Record<string, unknown>;
+  const c = j.copet;
   if (!exact(c, ["XAUUSD", "BTCUSD"])) return { ok: false, error: "LAB_RISK_POLICY_COPET_SYMBOLS" };
   for (const s of ["XAUUSD", "BTCUSD"]) {
-    const p = c[s] as Record<string, unknown>;
+    const p = c[s];
     if (!exact(p, PKEYS) || !PKEYS.every((k) => pos(p[k]))) return { ok: false, error: `LAB_RISK_POLICY_COPET_${s}` };
     if ((p.trail_gap_usd as number) >= (p.trail_arm_usd as number)) return { ok: false, error: `LAB_RISK_POLICY_COPET_${s}_GAP_GE_ARM` };
   }
-  const f = j.fibo as Record<string, unknown>;
+  const f = j.fibo;
   if (!exact(f, ["arm_r", "gap_r", "min_gap_usd", "lot"]) || !pos(f.arm_r) || !pos(f.gap_r) || !pos(f.min_gap_usd)) return { ok: false, error: "LAB_RISK_POLICY_FIBO" };
-  const fl = f.lot as Record<string, unknown>;
+  const fl = f.lot;
   if (!exact(fl, ["XAUUSD", "BTCUSD"]) || !pos(fl.XAUUSD) || !pos(fl.BTCUSD)) return { ok: false, error: "LAB_RISK_POLICY_FIBO_LOT" };
   return { ok: true, policy: deepFreeze(j) as unknown as LabRiskPolicy };
 }
