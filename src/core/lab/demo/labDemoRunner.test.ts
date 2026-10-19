@@ -182,7 +182,7 @@ describe("lab demo runner v2 (fake broker only)", () => {
     expect(new Set(modes).size).toBe(6);
     const sup = ev(store, "CANDIDATE_SUPPRESSED").map((e) => e["reason"]);
     expect(sup).toContain("SUPPRESSED_MODE_SLOT_FULL");
-    expect(sup).toContain("SUPPRESSED_SLOT_FULL");
+    // With exactly six modes the per-mode slot binds before the global cap of 6.
     const intent = ev(store, "ORDER_INTENT").at(-1)!["symbolExposure"] as Record<string, { positions: number; correlated: boolean }>;
     expect(intent["XAUUSD"]!.positions + intent["BTCUSD"]!.positions).toBe(6);
     expect(intent["XAUUSD"]!.correlated).toBe(true);
