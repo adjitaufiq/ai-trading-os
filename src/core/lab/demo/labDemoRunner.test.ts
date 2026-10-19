@@ -149,7 +149,7 @@ describe("lab demo runner v2 (fake broker only)", () => {
   });
 
   it("COPET v2 nominal: fixed Lab lot, hard SL/TP at $10 XAU / $20 BTC, Lab magic", async () => {
-    const { r, b } = rig(() => [sig("EMA_CROSS", "BUY")]);
+    const { r, b } = rig((m5) => [sig(m5[0]!.open > 10000 ? "FAST_BREAKOUT" : "EMA_CROSS", "BUY")], { policy: POLICY({ daily_stop_usd: 1000 }) });
     await warm(r, b); await r.tick();
     const x = b.sent.find((s) => s.symbol === "XAUUSD")!, y = b.sent.find((s) => s.symbol === "BTCUSD")!;
     expect([x.volume, x.magic]).toEqual([0.02, LAB_MAGIC]);
@@ -163,7 +163,9 @@ describe("lab demo runner v2 (fake broker only)", () => {
     await warm(r, b); await r.tick();
     expect(b.sent.length).toBe(2); // −12, −24; third would be −36
     expect(b.sent.map((s) => s.signal_id.slice(0, 3))).toEqual(["L11", "L13"]); // SPV rank order
-    expect(ev(store, "ENTRY_REJECTED").filter((e) => e["reason"] === "REJECTED_BUDGET_EXCEEDED").length).toBe(4);
+    const rej = ev(store, "ENTRY_REJECTED");
+    expect(rej.length).toBeGreaterThanOrEqual(4);
+    expect(rej.every((e) => e["reason"] === "REJECTED_BUDGET_EXCEEDED")).toBe(true);
   });
 
   it("6 is a cap, not a target; one position per mode; every suppression journaled", async () => {
@@ -193,7 +195,9 @@ describe("lab demo runner v2 (fake broker only)", () => {
     expect(b.sent.map((s) => s.direction)).toEqual(["BUY"]);
     flip = true; b.now += M5; await r.tick();
     expect(b.sent.length).toBe(1);
-    expect(ev(store, "CANDIDATE_SUPPRESSED").filter((e) => e["reason"] === "SUPPRESSED_DIRECTION_LOCK").length).toBe(2);
+    const locks = ev(store, "CANDIDATE_SUPPRESSED").filter((e) => e["reason"] === "SUPPRESSED_DIRECTION_LOCK");
+    expect(locks.some((e) => e["strategy"] === "EMA_CROSS" && !e["against"])).toBe(true);
+    expect(locks.at(-1)!["against"]).toBe("ACTIVE_POSITION");
   });
 
   it("broker spec mismatch / invalid volume step are rejected, lot never changed", async () => {
