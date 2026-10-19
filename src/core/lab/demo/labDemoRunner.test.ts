@@ -103,7 +103,6 @@ describe("lab demo runner (fake broker only)", () => {
     await warm(a.r, a.b); await a.r.tick();
     a.b.setProfit(100, 0); a.b.closeMode = "CLOSED";
     const b2 = rig(() => [sig("EMA_CROSS", "BUY", 0)], {}, store, a.b); // restart, same bar
-    a.b.lastSent = a.b.sent.length;
     await b2.r.tick(); await b2.r.tick();
     expect(a.b.sent.filter((s) => s.symbol === "XAUUSD").length).toBe(1);
     expect(b2.r.state.trades.find((t) => t.symbol === "XAUUSD")!.status).toBe("OPEN");
