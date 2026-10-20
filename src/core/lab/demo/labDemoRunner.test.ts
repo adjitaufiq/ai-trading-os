@@ -154,13 +154,13 @@ describe("lab demo runner v2 (fake broker only)", () => {
     expect(ev(store, "CANDIDATE_SUPPRESSED").some((e) => e["symbol"] === "BTCUSD" && e["reason"] === "INELIGIBLE_SYMBOL")).toBe(true);
   });
 
-  it("COPET v2 nominal: fixed Lab lot, hard SL/TP at $10 XAU / $20 BTC, Lab magic", async () => {
+  it("COPET v2 nominal: fixed Lab lot, hard SL/TP at $10 XAU / $10 BTC, Lab magic", async () => {
     const { r, b } = rig((m5) => [sig(m5[0]!.open > 10000 ? "FAST_BREAKOUT" : "EMA_CROSS", "BUY")], { policy: POLICY({ daily_stop_usd: 1000 }) });
     await warm(r, b); await r.tick();
     const x = b.sent.find((s) => s.symbol === "XAUUSD")!, y = b.sent.find((s) => s.symbol === "BTCUSD")!;
     expect([x.volume, x.magic]).toEqual([0.02, LAB_MAGIC]);
     expect(x.sl).toBeCloseTo(2001.2 - 5); expect(x.tp).toBeCloseTo(2001.2 + 5);
-    expect(y.volume).toBe(0.05); expect(y.sl).toBeCloseTo(80001.5 - 400); expect(y.tp).toBeCloseTo(80001.5 + 400);
+    expect(y.volume).toBe(0.05); expect(y.sl).toBeCloseTo(80001.5 - 200); expect(y.tp).toBeCloseTo(80001.5 + 200);
     expect(b.sent.every((s) => s.sl > 0 && s.tp > 0)).toBe(true);
   });
 
