@@ -7,10 +7,10 @@ const flat = (n: number) => Array.from({ length: n }, () => ({ open: 100, high: 
 const sig = [{ side: "BUY" as const }, { side: "SELL" as const }];
 
 describe("safety riders", () => {
-  it("blocks a market for 15 minutes after an SL, other market free", () => {
+  it("blocks a market for 20 minutes after an SL, other market free", () => {
     const s = st([{ symbol: "BTCUSD", exit_reason: "SL", closed_at: 1_000_000 }]);
-    expect(cooldownLeftMs(s, "BTCUSD", 1_000_000 + 14 * 60_000)).toBe(60_000);
-    expect(cooldownLeftMs(s, "BTCUSD", 1_000_000 + 15 * 60_000)).toBe(0);
+    expect(cooldownLeftMs(s, "BTCUSD", 1_000_000 + 19 * 60_000)).toBe(60_000);
+    expect(cooldownLeftMs(s, "BTCUSD", 1_000_000 + 20 * 60_000)).toBe(0);
     expect(cooldownLeftMs(s, "XAUUSD", 1_000_000)).toBe(0);
     expect(applySafetyRiders(sig, s, "BTCUSD", flat(20), 1_000_000 + 60_000).blocked).toBe("BLOCK_POST_SL_COOLDOWN");
   });
