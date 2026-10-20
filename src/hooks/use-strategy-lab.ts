@@ -6,7 +6,7 @@ import type { BrokerGatewayClient } from "@/core/broker/gateway/BrokerGatewayCli
 import type { BridgeBar } from "@/core/broker/bridge/types";
 import type { TechBar } from "@/core/technical/indicators";
 import { evaluateLab } from "@/core/lab/strategies";
-import { emptyLab, markSymbol, openSignals, type LabState } from "@/core/lab/labLedger";
+import { appendEval, emptyLab, markSymbol, openSignals, withLifecycle, type LabEvalEvent, type LabState } from "@/core/lab/labLedger";
 import { bookMark, bookOpen, createBook, upgradeBook, type LedgerBook } from "@/core/lab/isolatedLedgers";
 import { OPERATOR_KEY, DEFAULT_OPERATOR, capEntries, closeManual, gateState, parseOperator, type OperatorSettings } from "@/core/lab/operatorControl";
 import type { LabQuote } from "@/core/lab/labLedger";
@@ -16,6 +16,7 @@ import { useLabCloudSync, type LabSyncStatus } from "./use-lab-cloud-sync";
 
 const KEY = "strategy-lab-v1";
 const BOOK_KEY = "strategy-lab-ledgers-v1";
+const EVAL_KEY = "strategy-lab-eval-v1";
 const TF_MS = { M5: 300_000, M15: 900_000, H1: 3_600_000 } as const;
 
 function toBars(items: readonly BridgeBar[], tf: keyof typeof TF_MS): TechBar[] {
@@ -40,16 +41,19 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
   const opRef = useRef(operator); opRef.current = operator;
   const stateRef = useRef(state); stateRef.current = state;
   const quotesRef = useRef<Record<string, LabQuote>>({});
-  const { sync, rotate } = useLabCloudSync(state, hydrated);
+  const [evals, setEvals] = useState<LabEvalEvent[]>([]);
+  const { sync, rotate } = useLabCloudSync(state, hydrated, evals);
 
   useEffect(() => {
     try { const raw = localStorage.getItem(KEY); if (raw) setState({ ...emptyLab(), ...JSON.parse(raw) }); } catch { /* corrupt ⇒ empty */ }
     try { const raw = localStorage.getItem(BOOK_KEY); setBook(raw ? upgradeBook(JSON.parse(raw), Date.now()) : createBook(Date.now())); } catch { setBook(createBook(Date.now())); }
     try { const raw = localStorage.getItem(MODE_SWITCH_KEY); setSwitchesState(parseSwitches(raw ? JSON.parse(raw) : null)); } catch { /* defaults */ }
+    try { const raw = localStorage.getItem(EVAL_KEY); if (raw) setEvals(JSON.parse(raw)); } catch { /* corrupt ⇒ empty */ }
     try { const raw = localStorage.getItem(OPERATOR_KEY); setOperatorState(parseOperator(raw ? JSON.parse(raw) : null)); } catch { /* defaults */ }
     setHydrated(true);
   }, []);
   useEffect(() => { if (hydrated) { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* quota */ } } }, [state, hydrated]);
+  useEffect(() => { if (hydrated) { try { localStorage.setItem(EVAL_KEY, JSON.stringify(evals)); } catch { /* quota */ } } }, [evals, hydrated]);
   useEffect(() => { if (hydrated && book) { try { localStorage.setItem(BOOK_KEY, JSON.stringify(book)); } catch { /* quota */ } } }, [book, hydrated]);
 
   useEffect(() => {
@@ -63,7 +67,7 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
     };
     const tickLoop = async () => {
       for (const s of symbols) {
-        try { const q = await quote(s); if (q && active) { quotesRef.current[s] = q; const now = Date.now(); setState((st) => markSymbol(st, s, q, now)); setBook((b) => (b ? bookMark(b, s, q, now) : b)); } } catch { /* skip */ }
+        try { const q = await quote(s); if (q && active) { quotesRef.current[s] = q; const now = Date.now(); setState((st) => withLifecycle(st, markSymbol(st, s, q, now), now)); setBook((b) => (b ? bookMark(b, s, q, now) : b)); } } catch { /* skip */ }
       }
     };
     const barLoop = async () => {
@@ -89,7 +93,8 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
           // Operator circuit breaker: paused / daily target / daily max loss ⇒ no new Lab positions (open ones keep running).
           // Entry limits (per mode + global) count OPEN entries of the shared journal before opening.
           // Safety Riders: post-SL cooldown 15m per market, spike ATR, whale wick sweep — before entry caps.
-          const raw = gateState(stateRef.current, opRef.current, now) === "RUNNING" ? filterEnabled(evaluateLab(m5, m15, h1), swRef.current) : [];
+          const gate = gateState(stateRef.current, opRef.current, now);
+          const raw = gate === "RUNNING" ? filterEnabled(evaluateLab(m5, m15, h1), swRef.current) : [];
           const safe = applySafetyRiders(dropRejected(s, raw, rejectedRef.current), stateRef.current, s, m5, now);
           // SPV: drop stale signals, lock one direction per symbol per M5 candle, priority order.
           const spv = applySpv(safe.pass, stateRef.current, s, now);
@@ -98,7 +103,11 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
           const fresh = safe.pass.filter((x) => x.bar_time === spv.lock?.bar_time && now - x.bar_time <= SPV_MAX_AGE_MS);
           const queued = buildSpvQueue(s, fresh, spv.pass, signals, now);
           if (active) setSpvQueue((o) => [...o.filter((x) => x.symbol !== s && now - x.bar_time <= SPV_MAX_AGE_MS), ...queued]);
-          setState((st) => openSignals(st, s, signals, q, now, "COPET"));
+          // Observation only: record what this closed-M5 evaluation produced (code enums, no inferred cause).
+          const tag = (x: { strategy: string; side: string }) => `${x.strategy}:${x.side}`;
+          const capped = spv.pass.filter((x) => !signals.includes(x)).map(tag);
+          if (active) setEvals((o) => appendEval(o, { id: `eval:${s}:${last}`, v: "lab-eval-v1", symbol: s, bar_time: last, at: now, gate, candidates: raw.map(tag), safety_block: safe.blocked ?? null, spv_block: spv.blocked ?? null, after_spv: spv.pass.map(tag), capped, accepted: signals.map(tag) }));
+          setState((st) => withLifecycle(st, openSignals(st, s, signals, q, now, "COPET"), now));
           setBook((b) => (b ? bookOpen(b, s, signals, q, now) : b));
           setLastBarAt((o) => ({ ...o, [s]: last }));
           setError(null);
@@ -114,5 +123,5 @@ export function useStrategyLab(client: BrokerGatewayClient, symbols: readonly st
     setSwitches: (sw) => { setSwitchesState(sw); try { localStorage.setItem(MODE_SWITCH_KEY, JSON.stringify(sw)); } catch { /* quota */ } },
     operator, setOperator: (o) => { setOperatorState(o); try { localStorage.setItem(OPERATOR_KEY, JSON.stringify(o)); } catch { /* quota */ } },
     spvQueue, rejectQueued: (key) => { rejectedRef.current.add(key); setSpvQueue((o) => o.filter((x) => x.key !== key)); },
-    closeTrades: (ids) => { const now = Date.now(); setState((st) => closeManual(st, ids, quotesRef.current, now)); } };
+    closeTrades: (ids) => { const now = Date.now(); setState((st) => withLifecycle(st, closeManual(st, ids, quotesRef.current, now), now)); } };
 }

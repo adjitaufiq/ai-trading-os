@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
-import type { LabState } from '@/core/lab/labLedger';
+import type { LabEvalEvent, LabState } from '@/core/lab/labLedger';
 import { LAB_SYNC_KEY, LAB_SYNC_MS, acknowledgeJournal, newJournalQueue, pendingCount, rotateJournal, stageJournal, type JournalQueue } from '@/lib/labJournalSync';
 
 export interface LabSyncStatus {
@@ -9,7 +9,7 @@ export interface LabSyncStatus {
   pending: number; lastSyncedAt: number | null; error: string | null;
 }
 const initial: LabSyncStatus = { status: 'LOCAL', pending: 0, lastSyncedAt: null, error: null };
-export function useLabCloudSync(state: LabState, hydrated: boolean) {
+export function useLabCloudSync(state: LabState, hydrated: boolean, evals?: readonly LabEvalEvent[]) {
   const queue = useRef<JournalQueue | null>(null);
   const busy = useRef(false);
   const [sync, setSync] = useState<LabSyncStatus>(initial);
@@ -24,13 +24,13 @@ export function useLabCloudSync(state: LabState, hydrated: boolean) {
         queue.current = raw ? JSON.parse(raw) as JournalQueue : newJournalQueue(() => crypto.randomUUID());
       }
       if (!queue.current) return;
-      queue.current = stageJournal(queue.current, state, Date.now(), () => crypto.randomUUID());
+      queue.current = stageJournal(queue.current, state, Date.now(), () => crypto.randomUUID(), evals);
       save(); // durable before any network attempt; also preserves evicted/reset local trades
       setSync(s => ({ ...s, pending: queue.current ? pendingCount(queue.current) : 0 }));
     } catch {
       setSync(s => ({ ...s, status: 'RETRY', error: 'Penyimpanan lokal penuh atau rusak; belum terkirim.' }));
     }
-  }, [state, hydrated]);
+  }, [state, hydrated, evals]);
 
   useEffect(() => {
     if (!hydrated) return;
