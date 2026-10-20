@@ -1,0 +1,1 @@
+- Lab Excel report (src/lib/report) is a read-only copy of all stored Lab history (paginated, dedup by source+trade_id highest revision); missing history is NOT_RECORDED/NOT_AVAILABLE; one managed hourly schedule → /api/public/hooks/lab-report, deduped per WIB hour in lab_report_runs. Why: reporting must never alter trades or double-send.
