@@ -29,15 +29,25 @@ export async function collectReportInput(db: Admin, cutoffMs: number): Promise<R
     ...demo.map((r) => ({ session_id: String(r["agent_id"]), trade_id: String(r["signal_id"]), strategy: String(r["strategy"]), symbol: String(r["symbol"]), side: String(r["side"]), status: String(r["status"]), pnl_usd: r["pnl_usd"] == null ? 0 : Number(r["pnl_usd"]), opened_at_ms: Number(r["opened_at_ms"]), closed_at_ms: r["closed_at_ms"] == null ? null : Number(r["closed_at_ms"]), revision: Number(r["snapshot_at_ms"]), payload: (r["payload"] ?? {}) as Record<string, unknown>, source: "MT5_DEMO" })),
   ];
   if (!demo.length) notes.push("MT5_DEMO: belum ada trade dari VPS (lab_demo_trades kosong).");
-  notes.push("Lab Paper: log sinyal, snapshot posisi historis, floating per jam, dan event risk guard tidak pernah dicatat → NOT_RECORDED.");
-  notes.push("Signal_Log/Risk_Events dari engine_events adalah ARENA engine, bukan Strategy Lab.");
+  notes.push("Trade historis sebelum instrumentasi lab-lifecycle-v1/lab-eval-v1: lifecycle, alasan tolak, snapshot posisi & guard tetap NOT_RECORDED (tidak di-backfill).");
+  notes.push("Signal_Log/Risk_Events hanya Strategy Lab (BROWSER_PAPER lab-eval-v1) dan MT5_DEMO; event ARENA engine dipisah ke sheet Arena_Events.");
+  notes.push("Evaluasi Lab di cloud = jendela bergulir per sesi (maks 400 terakhir); log lengkap append-only tersimpan di browser.");
   const sessions: SessionRow[] = sess.map((s) => ({ id: String(s["id"]), source: String(s["source"]), started_at_ms: s["started_at_ms"] == null ? null : Number(s["started_at_ms"]), initial_balance: Number(s["initial_balance"]), client_as_of_ms: Number(s["client_as_of_ms"]), synced_at: String(s["synced_at"]), summary: (s["summary"] ?? {}) as Record<string, unknown> }));
-  const ev: EventRow[] = eng.map((e) => ({ source: `ARENA_ENGINE:${e["source"]}`, at: String(e["occurred_at"]), symbol: e["symbol"] as string, type: String(e["event_type"]), stage: e["stage"] as string | null, signal_id: e["signal_id"] as string | null, direction: e["direction"] as string | null, reason: String(e["reason"] ?? ""), result: e["execution_result"] as string | null, block_reason: e["block_reason"] as string | null }));
+  const arena: EventRow[] = eng.map((e) => ({ source: `ARENA_ENGINE:${e["source"]}`, at: String(e["occurred_at"]), symbol: e["symbol"] as string, type: String(e["event_type"]), stage: e["stage"] as string | null, signal_id: e["signal_id"] as string | null, direction: e["direction"] as string | null, reason: String(e["reason"] ?? ""), result: e["execution_result"] as string | null, block_reason: e["block_reason"] as string | null }));
   const dEv: EventRow[] = demoEv.map((e) => ({ source: "MT5_DEMO", at: e["at_ms"] ? new Date(Number(e["at_ms"])).toISOString() : "", symbol: e["symbol"] as string | null, type: String(e["event_type"]), stage: null, signal_id: e["signal_id"] as string | null, direction: null, reason: JSON.stringify(e["payload"]).slice(0, 300), result: null, block_reason: null }));
+  // Lab evaluation events (lab-eval-v1) copied verbatim from session summaries; dedup by stable id.
+  const seen = new Set<string>(); const labEv: EventRow[] = [];
+  for (const s of sessions) for (const e of (Array.isArray(s.summary["eval_events"]) ? s.summary["eval_events"] : []) as Record<string, unknown>[]) {
+    const id = String(e["id"] ?? ""); if (!id || seen.has(id)) continue; seen.add(id);
+    const list = (k: string) => (Array.isArray(e[k]) ? (e[k] as string[]).join(" ") : "");
+    const block = (e["gate"] !== "RUNNING" ? `GATE_${e["gate"]}` : null) ?? (e["safety_block"] as string | null) ?? (e["spv_block"] as string | null) ?? (list("capped") ? "CAP_ENTRIES" : null);
+    labEv.push({ source: `${s.source}:lab-eval-v1`, at: new Date(Number(e["at"])).toISOString(), symbol: String(e["symbol"] ?? ""), type: "M5_EVAL", stage: `bar ${new Date(Number(e["bar_time"])).toISOString()}`, signal_id: id, direction: null, reason: `candidates=[${list("candidates")}] after_spv=[${list("after_spv")}] capped=[${list("capped")}]`, result: `accepted=[${list("accepted")}]`, block_reason: block });
+  }
+  labEv.sort((a, b) => a.at.localeCompare(b.at));
   const isRisk = (e: EventRow) => e.type === "BLOCKED" || !!e.block_reason || /GUARD|STOP|TARGET|HALT|CAP|BLACKOUT|FLATTEN|REJECT/i.test(e.type);
-  const signals = [...ev, ...dEv].filter((e) => !isRisk(e));
-  const risk = [...ev, ...dEv].filter(isRisk);
-  return { trades: (await import("./labReport")).dedupTrades(trades), rawTradeRows: paper.length + demo.length, sessions, signals, risk, demoTradeRows: demo.length, notes, cutoffMs };
+  const signals = [...labEv, ...dEv.filter((e) => !isRisk(e))];
+  const risk = [...labEv.filter((e) => !!e.block_reason), ...dEv.filter(isRisk)];
+  return { trades: (await import("./labReport")).dedupTrades(trades), rawTradeRows: paper.length + demo.length, sessions, signals, risk, arena, demoTradeRows: demo.length, notes, cutoffMs };
 }
 
 async function sendDocument(bytes: Uint8Array, filename: string, caption: string): Promise<{ ok: boolean; note: string }> {
