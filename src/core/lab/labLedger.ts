@@ -100,8 +100,8 @@ export function appendEval(log: readonly LabEvalEvent[], e: LabEvalEvent): LabEv
 export type LabRrMode = "NORMAL" | "COPET";
 /** Copet v2 (owner rule 2026-10-19), per symbol, 1:1. XAU and BTC SL/TP $10, arm +$3, gap $2 (BTC cut from $20 by owner 2026-10-20, Paper only). */
 export const COPET_V2_PARAMS: Readonly<Record<string, Readonly<{ TP_USD: number; SL_USD: number; TRAIL_ARM_USD: number; TRAIL_GAP_USD: number }>>> = Object.freeze({
-  XAUUSD: Object.freeze({ TP_USD: 10, SL_USD: 10, TRAIL_ARM_USD: 3, TRAIL_GAP_USD: 2 }),
-  BTCUSD: Object.freeze({ TP_USD: 10, SL_USD: 10, TRAIL_ARM_USD: 3, TRAIL_GAP_USD: 2 }),
+  XAUUSD: Object.freeze({ TP_USD: 10, SL_USD: 10, TRAIL_ARM_USD: 3, TRAIL_GAP_USD: 1 }),
+  BTCUSD: Object.freeze({ TP_USD: 10, SL_USD: 10, TRAIL_ARM_USD: 3, TRAIL_GAP_USD: 1 }),
 });
 /** Fallback for unknown symbols (legacy v1 values). */
 export const COPET_PARAMS = Object.freeze({ TP_USD: 5, SL_USD: 5, TRAIL_ARM_USD: 2, TRAIL_GAP_USD: 1 });
