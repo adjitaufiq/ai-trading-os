@@ -78,8 +78,8 @@ describe("lab risk policy (single source, fail-closed)", () => {
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect([r.policy.daily_target_usd, r.policy.daily_stop_usd, r.policy.max_active_positions_total, r.policy.max_active_positions_per_mode, r.policy.magic]).toEqual([50, 30, 6, 1, 610007]);
-      expect(r.policy.copet.XAUUSD).toEqual({ lot: 0.02, contract_size_assumed: 100, sl_usd: 10, tp_usd: 10, trail_arm_usd: 3, trail_gap_usd: 1 });
-      expect(r.policy.copet.BTCUSD).toEqual({ lot: 0.05, contract_size_assumed: 1, sl_usd: 10, tp_usd: 10, trail_arm_usd: 3, trail_gap_usd: 1 });
+      expect(r.policy.copet.XAUUSD).toEqual({ lot: 0.02, contract_size_assumed: 100, sl_usd: 10, tp_usd: 10, trail_arm_usd: 2, trail_gap_usd: 1 });
+      expect(r.policy.copet.BTCUSD).toEqual({ lot: 0.05, contract_size_assumed: 1, sl_usd: 10, tp_usd: 10, trail_arm_usd: 2, trail_gap_usd: 1 });
     }
   });
   it("missing / bad json / extra key / wrong magic are refused", () => {
@@ -227,12 +227,12 @@ describe("lab demo runner v2 (fake broker only)", () => {
     expect(b2.r.state.trades[0]!.status).toBe("OPEN");
   });
 
-  it("COPET trailing XAU: arm at +$3, close at peak − $1; peak survives restart and closes on first tick", async () => {
+  it("COPET trailing XAU: arm at +$2, close at peak − $1; peak survives restart and closes on first tick", async () => {
     const store = new MemStore();
     const { r, b } = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("EMA_CROSS", "BUY")]), {}, store);
     await warm(r, b); await r.tick();
     const tk = r.state.trades[0]!.ticket!;
-    b.setProfit(tk, 2.5); b.now += 1000; await r.tick(); expect(r.state.trades[0]!.trailArmed).toBe(false);
+    b.setProfit(tk, 1.99); b.now += 1000; await r.tick(); expect(r.state.trades[0]!.trailArmed).toBe(false);
     b.setProfit(tk, 4); b.now += 1000; await r.tick(); expect(r.state.trades[0]!.trailArmed).toBe(true);
     b.setProfit(tk, 3.2); b.now += 1000; await r.tick(); expect(b.closes).toEqual([]);
     // restart while runner was down and price fell below floor (4 − 1 = 3)

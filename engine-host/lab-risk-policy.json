@@ -16,7 +16,7 @@
       "contract_size_assumed": 100,
       "sl_usd": 10,
       "tp_usd": 10,
-      "trail_arm_usd": 3,
+      "trail_arm_usd": 2,
       "trail_gap_usd": 1
     },
     "BTCUSD": {
@@ -24,7 +24,7 @@
       "contract_size_assumed": 1,
       "sl_usd": 10,
       "tp_usd": 10,
-      "trail_arm_usd": 3,
+      "trail_arm_usd": 2,
       "trail_gap_usd": 1
     }
   },
