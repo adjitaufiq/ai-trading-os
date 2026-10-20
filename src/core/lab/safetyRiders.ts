@@ -2,7 +2,7 @@ import type { LabState } from "./labLedger";
 
 /** Safety Riders (PAPER Lab only): pre-entry filters, never touch open positions or a broker. */
 export const SAFETY_PARAMS = Object.freeze({
-  POST_SL_COOLDOWN_MS: 15 * 60_000, // 3 closed M5 bars per market after an SL
+  POST_SL_COOLDOWN_MS: 20 * 60_000, // 4 closed M5 bars per market after an SL
   SPIKE_ATR_MULT: 1.8, // last closed M5 range > 1.8×ATR14(M5) ⇒ spike
   ATR_PERIOD: 14,
   WICK_SWEEP_RATIO: 0.6, // wick ≥ 60% of range ⇒ whale sweep; block chasing that wick's side
