@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { copetParams } from "./labLedger";
-import { LAB_RISK_POLICY_DEFAULT as P } from "./demo/labRiskPolicy";
+import { LAB_RISK_POLICY_FILE_CONTENT as P } from "./demo/labRiskPolicy";
 const floor = (peak: number, arm: number, gap: number) => (peak >= arm ? peak - gap : null);
 describe("COPET operator targets", () => {
   for (const s of ["XAUUSD", "BTCUSD"]) {

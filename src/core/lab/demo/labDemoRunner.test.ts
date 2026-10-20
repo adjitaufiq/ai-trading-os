@@ -78,8 +78,8 @@ describe("lab risk policy (single source, fail-closed)", () => {
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect([r.policy.daily_target_usd, r.policy.daily_stop_usd, r.policy.max_active_positions_total, r.policy.max_active_positions_per_mode, r.policy.magic]).toEqual([50, 30, 6, 1, 610007]);
-      expect(r.policy.copet.XAUUSD).toEqual({ lot: 0.02, contract_size_assumed: 100, sl_usd: 10, tp_usd: 10, trail_arm_usd: 3, trail_gap_usd: 2 });
-      expect(r.policy.copet.BTCUSD).toEqual({ lot: 0.05, contract_size_assumed: 1, sl_usd: 20, tp_usd: 20, trail_arm_usd: 6, trail_gap_usd: 4 });
+      expect(r.policy.copet.XAUUSD).toEqual({ lot: 0.02, contract_size_assumed: 100, sl_usd: 10, tp_usd: 10, trail_arm_usd: 3, trail_gap_usd: 1 });
+      expect(r.policy.copet.BTCUSD).toEqual({ lot: 0.05, contract_size_assumed: 1, sl_usd: 10, tp_usd: 10, trail_arm_usd: 3, trail_gap_usd: 1 });
     }
   });
   it("missing / bad json / extra key / wrong magic are refused", () => {
