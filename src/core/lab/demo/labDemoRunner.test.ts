@@ -78,8 +78,8 @@ describe("lab risk policy (single source, fail-closed)", () => {
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect([r.policy.daily_target_usd, r.policy.daily_stop_usd, r.policy.max_active_positions_total, r.policy.max_active_positions_per_mode, r.policy.magic]).toEqual([50, 30, 6, 1, 610007]);
-      expect(r.policy.copet.XAUUSD).toEqual({ lot: 0.02, contract_size_assumed: 100, sl_usd: 10, tp_usd: 10, trail_arm_usd: 3, trail_gap_usd: 2 });
-      expect(r.policy.copet.BTCUSD).toEqual({ lot: 0.05, contract_size_assumed: 1, sl_usd: 20, tp_usd: 20, trail_arm_usd: 6, trail_gap_usd: 4 });
+      expect(r.policy.copet.XAUUSD).toEqual({ lot: 0.02, contract_size_assumed: 100, sl_usd: 10, tp_usd: 10, trail_arm_usd: 3, trail_gap_usd: 1 });
+      expect(r.policy.copet.BTCUSD).toEqual({ lot: 0.05, contract_size_assumed: 1, sl_usd: 10, tp_usd: 10, trail_arm_usd: 3, trail_gap_usd: 1 });
     }
   });
   it("missing / bad json / extra key / wrong magic are refused", () => {
@@ -154,13 +154,13 @@ describe("lab demo runner v2 (fake broker only)", () => {
     expect(ev(store, "CANDIDATE_SUPPRESSED").some((e) => e["symbol"] === "BTCUSD" && e["reason"] === "INELIGIBLE_SYMBOL")).toBe(true);
   });
 
-  it("COPET v2 nominal: fixed Lab lot, hard SL/TP at $10 XAU / $20 BTC, Lab magic", async () => {
+  it("COPET v2 nominal: fixed Lab lot, hard SL/TP at $10 XAU / $10 BTC, Lab magic", async () => {
     const { r, b } = rig((m5) => [sig(m5[0]!.open > 10000 ? "FAST_BREAKOUT" : "EMA_CROSS", "BUY")], { policy: POLICY({ daily_stop_usd: 1000 }) });
     await warm(r, b); await r.tick();
     const x = b.sent.find((s) => s.symbol === "XAUUSD")!, y = b.sent.find((s) => s.symbol === "BTCUSD")!;
     expect([x.volume, x.magic]).toEqual([0.02, LAB_MAGIC]);
     expect(x.sl).toBeCloseTo(2001.2 - 5); expect(x.tp).toBeCloseTo(2001.2 + 5);
-    expect(y.volume).toBe(0.05); expect(y.sl).toBeCloseTo(80001.5 - 400); expect(y.tp).toBeCloseTo(80001.5 + 400);
+    expect(y.volume).toBe(0.05); expect(y.sl).toBeCloseTo(80001.5 - 200); expect(y.tp).toBeCloseTo(80001.5 + 200);
     expect(b.sent.every((s) => s.sl > 0 && s.tp > 0)).toBe(true);
   });
 
@@ -227,16 +227,16 @@ describe("lab demo runner v2 (fake broker only)", () => {
     expect(b2.r.state.trades[0]!.status).toBe("OPEN");
   });
 
-  it("COPET trailing XAU: arm at +$3, close at peak − $2; peak survives restart and closes on first tick", async () => {
+  it("COPET trailing XAU: arm at +$3, close at peak − $1; peak survives restart and closes on first tick", async () => {
     const store = new MemStore();
     const { r, b } = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("EMA_CROSS", "BUY")]), {}, store);
     await warm(r, b); await r.tick();
     const tk = r.state.trades[0]!.ticket!;
     b.setProfit(tk, 2.5); b.now += 1000; await r.tick(); expect(r.state.trades[0]!.trailArmed).toBe(false);
     b.setProfit(tk, 4); b.now += 1000; await r.tick(); expect(r.state.trades[0]!.trailArmed).toBe(true);
-    b.setProfit(tk, 2.5); b.now += 1000; await r.tick(); expect(b.closes).toEqual([]);
-    // restart while runner was down and price fell below floor (4 − 2 = 2)
-    b.setProfit(tk, 1.9); b.now += 60_000;
+    b.setProfit(tk, 3.2); b.now += 1000; await r.tick(); expect(b.closes).toEqual([]);
+    // restart while runner was down and price fell below floor (4 − 1 = 3)
+    b.setProfit(tk, 2.9); b.now += 60_000;
     const r2 = rig((m5) => (m5[0]!.open > 10000 ? [] : []), {}, store, b).r;
     await r2.tick();
     expect(b.closes).toEqual([tk]);
