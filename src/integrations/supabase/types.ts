@@ -779,6 +779,60 @@ export type Database = {
           },
         ]
       }
+      lab_report_runs: {
+        Row: {
+          file_bytes: number | null
+          finished_at: string | null
+          first_trade_at: string | null
+          id: string
+          last_trade_at: string | null
+          net_pnl: number | null
+          note: string | null
+          slot_key: string
+          started_at: string
+          status: string
+          telegram_attempts: number
+          telegram_status: string | null
+          trade_rows: number | null
+          trigger: string
+          unique_trades: number | null
+        }
+        Insert: {
+          file_bytes?: number | null
+          finished_at?: string | null
+          first_trade_at?: string | null
+          id?: string
+          last_trade_at?: string | null
+          net_pnl?: number | null
+          note?: string | null
+          slot_key: string
+          started_at?: string
+          status?: string
+          telegram_attempts?: number
+          telegram_status?: string | null
+          trade_rows?: number | null
+          trigger: string
+          unique_trades?: number | null
+        }
+        Update: {
+          file_bytes?: number | null
+          finished_at?: string | null
+          first_trade_at?: string | null
+          id?: string
+          last_trade_at?: string | null
+          net_pnl?: number | null
+          note?: string | null
+          slot_key?: string
+          started_at?: string
+          status?: string
+          telegram_attempts?: number
+          telegram_status?: string | null
+          trade_rows?: number | null
+          trigger?: string
+          unique_trades?: number | null
+        }
+        Relationships: []
+      }
       trade_reviews: {
         Row: {
           compliance: Json

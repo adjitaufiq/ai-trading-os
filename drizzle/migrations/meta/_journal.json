@@ -106,6 +106,13 @@
       "when": 1792430085113,
       "tag": "0014_lab_demo_journal",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1792484684944,
+      "tag": "0015_migration",
+      "breakpoints": true
     }
   ]
 }

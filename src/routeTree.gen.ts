@@ -29,6 +29,7 @@ import { Route as ApiPublicAgentEventsRouteImport } from './routes/api/public/ag
 import { Route as ApiPublicAgentHeartbeatRouteImport } from './routes/api/public/agent/heartbeat'
 import { Route as ApiPublicAgentLabDemoJournalRouteImport } from './routes/api/public/agent/lab-demo-journal'
 import { Route as ApiPublicHooksEngineMemoryRouteImport } from './routes/api/public/hooks/engine-memory'
+import { Route as ApiPublicHooksLabReportRouteImport } from './routes/api/public/hooks/lab-report'
 import { Route as ApiPublicTelegramWebhookRouteImport } from './routes/api/public/telegram/webhook'
 
 const IndexRoute = IndexRouteImport.update({
@@ -138,6 +139,11 @@ const ApiPublicHooksEngineMemoryRoute =
     path: '/api/public/hooks/engine-memory',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksLabReportRoute = ApiPublicHooksLabReportRouteImport.update({
+  id: '/api/public/hooks/lab-report',
+  path: '/api/public/hooks/lab-report',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicTelegramWebhookRoute =
   ApiPublicTelegramWebhookRouteImport.update({
     id: '/api/public/telegram/webhook',
@@ -165,6 +171,7 @@ export interface FileRoutesByFullPath {
   '/api/public/agent/heartbeat': typeof ApiPublicAgentHeartbeatRoute
   '/api/public/agent/lab-demo-journal': typeof ApiPublicAgentLabDemoJournalRoute
   '/api/public/hooks/engine-memory': typeof ApiPublicHooksEngineMemoryRoute
+  '/api/public/hooks/lab-report': typeof ApiPublicHooksLabReportRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
 }
 export interface FileRoutesByTo {
@@ -186,6 +193,7 @@ export interface FileRoutesByTo {
   '/api/public/agent/heartbeat': typeof ApiPublicAgentHeartbeatRoute
   '/api/public/agent/lab-demo-journal': typeof ApiPublicAgentLabDemoJournalRoute
   '/api/public/hooks/engine-memory': typeof ApiPublicHooksEngineMemoryRoute
+  '/api/public/hooks/lab-report': typeof ApiPublicHooksLabReportRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
 }
 export interface FileRoutesById {
@@ -210,6 +218,7 @@ export interface FileRoutesById {
   '/api/public/agent/heartbeat': typeof ApiPublicAgentHeartbeatRoute
   '/api/public/agent/lab-demo-journal': typeof ApiPublicAgentLabDemoJournalRoute
   '/api/public/hooks/engine-memory': typeof ApiPublicHooksEngineMemoryRoute
+  '/api/public/hooks/lab-report': typeof ApiPublicHooksLabReportRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
 }
 export interface FileRouteTypes {
@@ -234,6 +243,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/heartbeat'
     | '/api/public/agent/lab-demo-journal'
     | '/api/public/hooks/engine-memory'
+    | '/api/public/hooks/lab-report'
     | '/api/public/telegram/webhook'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -255,6 +265,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/heartbeat'
     | '/api/public/agent/lab-demo-journal'
     | '/api/public/hooks/engine-memory'
+    | '/api/public/hooks/lab-report'
     | '/api/public/telegram/webhook'
   id:
     | '__root__'
@@ -278,6 +289,7 @@ export interface FileRouteTypes {
     | '/api/public/agent/heartbeat'
     | '/api/public/agent/lab-demo-journal'
     | '/api/public/hooks/engine-memory'
+    | '/api/public/hooks/lab-report'
     | '/api/public/telegram/webhook'
   fileRoutesById: FileRoutesById
 }
@@ -297,6 +309,7 @@ export interface RootRouteChildren {
   ApiPublicAgentHeartbeatRoute: typeof ApiPublicAgentHeartbeatRoute
   ApiPublicAgentLabDemoJournalRoute: typeof ApiPublicAgentLabDemoJournalRoute
   ApiPublicHooksEngineMemoryRoute: typeof ApiPublicHooksEngineMemoryRoute
+  ApiPublicHooksLabReportRoute: typeof ApiPublicHooksLabReportRoute
   ApiPublicTelegramWebhookRoute: typeof ApiPublicTelegramWebhookRoute
 }
 
@@ -442,6 +455,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksEngineMemoryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/lab-report': {
+      id: '/api/public/hooks/lab-report'
+      path: '/api/public/hooks/lab-report'
+      fullPath: '/api/public/hooks/lab-report'
+      preLoaderRoute: typeof ApiPublicHooksLabReportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/telegram/webhook': {
       id: '/api/public/telegram/webhook'
       path: '/api/public/telegram/webhook'
@@ -499,6 +519,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicAgentHeartbeatRoute: ApiPublicAgentHeartbeatRoute,
   ApiPublicAgentLabDemoJournalRoute: ApiPublicAgentLabDemoJournalRoute,
   ApiPublicHooksEngineMemoryRoute: ApiPublicHooksEngineMemoryRoute,
+  ApiPublicHooksLabReportRoute: ApiPublicHooksLabReportRoute,
   ApiPublicTelegramWebhookRoute: ApiPublicTelegramWebhookRoute,
 }
 export const routeTree = rootRouteImport
