@@ -227,16 +227,16 @@ describe("lab demo runner v2 (fake broker only)", () => {
     expect(b2.r.state.trades[0]!.status).toBe("OPEN");
   });
 
-  it("COPET trailing XAU: arm at +$3, close at peak − $2; peak survives restart and closes on first tick", async () => {
+  it("COPET trailing XAU: arm at +$3, close at peak − $1; peak survives restart and closes on first tick", async () => {
     const store = new MemStore();
     const { r, b } = rig((m5) => (m5[0]!.open > 10000 ? [] : [sig("EMA_CROSS", "BUY")]), {}, store);
     await warm(r, b); await r.tick();
     const tk = r.state.trades[0]!.ticket!;
     b.setProfit(tk, 2.5); b.now += 1000; await r.tick(); expect(r.state.trades[0]!.trailArmed).toBe(false);
     b.setProfit(tk, 4); b.now += 1000; await r.tick(); expect(r.state.trades[0]!.trailArmed).toBe(true);
-    b.setProfit(tk, 2.5); b.now += 1000; await r.tick(); expect(b.closes).toEqual([]);
-    // restart while runner was down and price fell below floor (4 − 2 = 2)
-    b.setProfit(tk, 1.9); b.now += 60_000;
+    b.setProfit(tk, 3.2); b.now += 1000; await r.tick(); expect(b.closes).toEqual([]);
+    // restart while runner was down and price fell below floor (4 − 1 = 3)
+    b.setProfit(tk, 2.9); b.now += 60_000;
     const r2 = rig((m5) => (m5[0]!.open > 10000 ? [] : []), {}, store, b).r;
     await r2.tick();
     expect(b.closes).toEqual([tk]);
