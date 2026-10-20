@@ -25,7 +25,7 @@ export function LabReportControls() {
       const r = await gen();
       if (!r.ok || !r.base64) { setMsg(`Gagal: ${r.note ?? r.status}`); return; }
       const bin = Uint8Array.from(atob(r.base64), (c) => c.charCodeAt(0));
-      last.current = { filename: r.filename!, blob: new Blob([bin], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), at: new Date().toLocaleString("id-ID"), trades: r.trades, net: r.net };
+      last.current = { filename: r.filename!, blob: new Blob([bin as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), at: new Date().toLocaleString("id-ID"), trades: r.trades, net: r.net };
       setMsg(`Laporan diperbarui ${last.current.at} · ${r.trades} trade unik · net ${r.net}`);
       force((n) => n + 1);
     } catch (e) { setMsg(`Gagal: ${(e as Error).message}`); } finally { setBusy(false); }
