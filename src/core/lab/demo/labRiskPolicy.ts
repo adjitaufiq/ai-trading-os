@@ -78,8 +78,8 @@ export const LAB_RISK_POLICY_FILE_CONTENT = {
   max_active_positions_total: 6, max_active_positions_per_mode: 1, max_active_positions_per_symbol: 6,
   max_trades_per_day: null, friction_buffer_usd_per_position: 2, broker_spec_tolerance: 0.1, max_close_attempts: 3,
   copet: {
-    XAUUSD: { lot: 0.02, contract_size_assumed: 100, sl_usd: 10, tp_usd: 10, trail_arm_usd: 3, trail_gap_usd: 1 },
-    BTCUSD: { lot: 0.05, contract_size_assumed: 1, sl_usd: 10, tp_usd: 10, trail_arm_usd: 3, trail_gap_usd: 1 },
+    XAUUSD: { lot: 0.02, contract_size_assumed: 100, sl_usd: 10, tp_usd: 10, trail_arm_usd: 2, trail_gap_usd: 1 },
+    BTCUSD: { lot: 0.05, contract_size_assumed: 1, sl_usd: 10, tp_usd: 10, trail_arm_usd: 2, trail_gap_usd: 1 },
   },
   fibo: { arm_r: 1, gap_r: 0.5, min_gap_usd: 1, lot: { XAUUSD: 0.02, BTCUSD: 0.05 } },
 } as const;
