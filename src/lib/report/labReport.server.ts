@@ -97,8 +97,8 @@ export async function runLabReport(opts: { trigger: "HOURLY" | "MANUAL"; telegra
       tg = doc.ok ? "SENT" : `FAILED: doc ${doc.note}; msg ${msg.status}`;
     }
     const first = input.trades[0]?.opened_at_ms;
-    await fin({ status: "OK", trade_rows: input.rawTradeRows, unique_trades: summary.unique_trades, net_pnl: summary.total.net, first_trade_at: first ? new Date(first).toISOString() : null, last_trade_at: input.trades.length ? new Date(Math.max(...input.trades.map((t) => t.closed_at_ms ?? t.opened_at_ms))).toISOString() : null, file_bytes: bytes.length, ...(opts.telegram ? { telegram_status: tg?.startsWith("SENT") ? "SENT" : "FAILED", telegram_attempts: attempts, note: tg } : {}) });
-    return { ok: true, slot, status: "OK", trades: summary.unique_trades, rows: input.rawTradeRows, net: summary.total.net, bytes: bytes.length, telegram: tg, ...(opts.returnFile ? { base64: Buffer.from(bytes).toString("base64"), filename } : {}) };
+    await fin({ status: "OK", trade_rows: input.rawTradeRows, unique_trades: summary.unique_trades, net_pnl: Math.round(summary.total.net * 100) / 100, first_trade_at: first ? new Date(first).toISOString() : null, last_trade_at: input.trades.length ? new Date(Math.max(...input.trades.map((t) => t.closed_at_ms ?? t.opened_at_ms))).toISOString() : null, file_bytes: bytes.length, ...(opts.telegram ? { telegram_status: tg?.startsWith("SENT") ? "SENT" : "FAILED", telegram_attempts: attempts, note: tg } : {}) });
+    return { ok: true, slot, status: "OK", trades: summary.unique_trades, rows: input.rawTradeRows, net: Math.round(summary.total.net * 100) / 100, bytes: bytes.length, telegram: tg, ...(opts.returnFile ? { base64: Buffer.from(bytes).toString("base64"), filename } : {}) };
   } catch (e) {
     const note = (e as Error).message;
     console.error("[lab-report] failed", note);
