@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { Button } from "@/components/ui/button";
 import { generateLabReport } from "@/lib/report/labReport.functions";
 
-type Report = { filename: string; blob: Blob; at: string; trades?: number; net?: number };
+type Report = { filename: string; blob: Blob; at: string; trades?: number | undefined; net?: number | undefined };
 
 function download(r: Report) {
   const url = URL.createObjectURL(r.blob);
@@ -25,8 +25,9 @@ export function LabReportControls() {
       const r = await gen();
       if (!r.ok || !r.base64) { setMsg(`Gagal: ${r.note ?? r.status}`); return; }
       const bin = Uint8Array.from(atob(r.base64), (c) => c.charCodeAt(0));
-      last.current = { filename: r.filename!, blob: new Blob([bin], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), at: new Date().toLocaleString("id-ID"), trades: r.trades, net: r.net };
-      setMsg(`Laporan diperbarui ${last.current.at} · ${r.trades} trade unik · net ${r.net}`);
+      const rep: Report = { filename: r.filename!, blob: new Blob([bin as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), at: new Date().toLocaleString("id-ID"), trades: r.trades, net: r.net };
+      last.current = rep;
+      setMsg(`Laporan diperbarui ${rep.at} · ${r.trades} trade unik · net ${r.net}`);
       force((n) => n + 1);
     } catch (e) { setMsg(`Gagal: ${(e as Error).message}`); } finally { setBusy(false); }
   };

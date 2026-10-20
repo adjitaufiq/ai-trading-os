@@ -47,7 +47,7 @@ async function sendDocument(bytes: Uint8Array, filename: string, caption: string
   const fd = new FormData();
   fd.append("chat_id", operatorChatId());
   fd.append("caption", caption.slice(0, 1000));
-  fd.append("document", new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), filename);
+  fd.append("document", new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), filename);
   try {
     const r = await fetch(`https://api.telegram.org/bot${bot}/sendDocument`, { method: "POST", body: fd });
     const body = await r.text();
@@ -57,7 +57,7 @@ async function sendDocument(bytes: Uint8Array, filename: string, caption: string
   } catch (e) { return { ok: false, note: (e as Error).message }; }
 }
 
-export interface RunResult { ok: boolean; skipped?: boolean; slot: string; status: string; trades?: number; rows?: number; net?: number; bytes?: number; telegram?: string; note?: string; base64?: string; filename?: string }
+export interface RunResult { ok: boolean; skipped?: boolean; slot: string; status: string; trades?: number; rows?: number; net?: number; bytes?: number; telegram?: string | undefined; note?: string; base64?: string; filename?: string }
 
 /** One run: collect → workbook → (optional) Telegram. Hourly slots are deduped via unique slot_key. */
 export async function runLabReport(opts: { trigger: "HOURLY" | "MANUAL"; telegram: boolean; returnFile: boolean }): Promise<RunResult> {
