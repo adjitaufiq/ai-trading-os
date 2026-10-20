@@ -38,6 +38,63 @@ export interface LabTrade {
   readonly exit_profile?: "FIBO";
   /** Initial risk in USD (FIBO only), used for trailing arm/gap. */
   readonly risk_usd?: number;
+  /** Append-only lifecycle observations (lab-lifecycle-v1). Absent on trades opened before instrumentation. */
+  readonly lifecycle?: readonly LabLifecycleEvent[];
+  readonly lifecycle_truncated?: boolean;
+}
+
+export const LAB_LIFECYCLE_VERSION = "lab-lifecycle-v1";
+export const LAB_LIFECYCLE_MAX = 60;
+export interface LabLifecycleEvent {
+  readonly id: string; readonly type: "OPENED" | "TRAIL_FLOOR_SET" | "CLOSED"; readonly at: number;
+  readonly price: number | null; readonly pnl_usd: number | null; readonly peak_pnl_usd: number | null;
+  readonly trail_floor_usd: number | null; readonly reason: string | null; readonly v: string;
+}
+
+/**
+ * Observation only: compares two ledger states produced by the unchanged simulation and appends the transitions that
+ * actually happened (open, trailing floor change, close). Never alters prices, P&L, status or decisions. Pure.
+ */
+export function withLifecycle(prev: LabState, next: LabState, now: number): LabState {
+  if (prev === next) return next;
+  const before = new Map(prev.trades.map((t) => [t.id, t]));
+  let changed = false;
+  const trades = next.trades.map((t) => {
+    const p = before.get(t.id);
+    const ev: LabLifecycleEvent[] = [];
+    const mk = (type: LabLifecycleEvent["type"], id: string, at: number, price: number | null, reason: string | null): LabLifecycleEvent =>
+      ({ id, type, at, price, pnl_usd: t.pnl_usd, peak_pnl_usd: t.peak_pnl_usd ?? null, trail_floor_usd: t.trail_floor_usd ?? null, reason, v: LAB_LIFECYCLE_VERSION });
+    if (!p) ev.push(mk("OPENED", `${t.id}:OPENED`, t.opened_at, t.entry, null));
+    else {
+      if (t.trail_floor_usd != null && t.trail_floor_usd !== (p.trail_floor_usd ?? null)) ev.push(mk("TRAIL_FLOOR_SET", `${t.id}:TRAIL:${t.trail_floor_usd.toFixed(6)}`, now, t.mark, null));
+      if (p.status === "OPEN" && t.status === "CLOSED") ev.push(mk("CLOSED", `${t.id}:CLOSED`, t.closed_at ?? now, t.exit_price, t.exit_reason));
+    }
+    if (!ev.length) return t;
+    const log = t.lifecycle ?? p?.lifecycle ?? [];
+    const ids = new Set(log.map((e) => e.id));
+    let truncated = t.lifecycle_truncated ?? false;
+    const add = ev.filter((e) => !ids.has(e.id)).filter((e) => {
+      if (e.type === "TRAIL_FLOOR_SET" && log.length >= LAB_LIFECYCLE_MAX) { truncated = true; return false; }
+      return true;
+    });
+    if (!add.length && truncated === (t.lifecycle_truncated ?? false)) return t;
+    changed = true;
+    return { ...t, lifecycle: [...log, ...add], ...(truncated ? { lifecycle_truncated: true } : {}) };
+  });
+  return changed ? { ...next, trades } : next;
+}
+
+/** One closed-M5 evaluation of one symbol, as recorded by the browser Lab (lab-eval-v1). Reasons are code enums only. */
+export interface LabEvalEvent {
+  readonly id: string; readonly v: "lab-eval-v1"; readonly symbol: string; readonly bar_time: number; readonly at: number;
+  readonly gate: string; readonly candidates: readonly string[]; readonly safety_block: string | null; readonly spv_block: string | null;
+  readonly after_spv: readonly string[]; readonly capped: readonly string[]; readonly accepted: readonly string[];
+}
+export const LAB_EVAL_KEEP = 2000;
+/** Append-only by stable id: an id already present is never rewritten. */
+export function appendEval(log: readonly LabEvalEvent[], e: LabEvalEvent): LabEvalEvent[] {
+  if (log.some((x) => x.id === e.id)) return log as LabEvalEvent[];
+  return [...log, e].slice(-LAB_EVAL_KEEP);
 }
 
 export type LabRrMode = "NORMAL" | "COPET";
