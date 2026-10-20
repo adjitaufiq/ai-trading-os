@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Swords } from "lucide-react";
 import { LabDemoJournal } from "./LabDemoJournal";
+import { LabReportControls } from "./LabReportControls";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { LAB_LABELS, LAB_STRATEGIES, type LabStrategy } from "@/core/lab/strategies";
@@ -35,6 +36,7 @@ export function StrategyLabPanel({ lab, source: srcProp, onSourceChange }: { lab
   if (source === "DEMO") return <section aria-label="Jurnal MT5 DEMO" className="border border-border bg-card p-4" data-testid="strategy-lab-demo">
     <div className="flex items-center gap-2"><Swords className="h-4 w-4 text-muted-foreground" /><h3 className="text-xs font-semibold uppercase text-muted-foreground">MT5 DEMO · data VPS/broker saja</h3></div>
     <JournalSourceSelector source={source} onChange={setSource} />
+    <LabReportControls />
     <p className="mt-1 text-xs text-muted-foreground">Tampilan ini hanya membaca data yang dikirim VPS. Tidak ada saldo, trade, atau kendali dari Paper Simulator.</p>
     <LabDemoJournal />
   </section>;
@@ -44,6 +46,7 @@ export function StrategyLabPanel({ lab, source: srcProp, onSourceChange }: { lab
       <Button size="sm" variant="ghost" onClick={() => { if (confirm("Reset Arena Lab ke $500?")) lab.reset(); }}>Reset</Button>
     </div>
     <JournalSourceSelector source={source} onChange={setSource} />
+    <LabReportControls />
     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs" role="status" data-testid="lab-sync-status">
       <span className={lab.sync.status === "SYNCED" ? "text-bull" : "text-warn"}>Jurnal cloud · {{ LOCAL: "Lokal", LOGIN_REQUIRED: "Belum masuk", SYNCING: "Mengirim", SYNCED: "Tersinkron", RETRY: "Menunggu kirim ulang", ACCOUNT_MISMATCH: "Akun berbeda" }[lab.sync.status]}</span>
       <span className="text-muted-foreground">Antrean {lab.sync.pending}{lab.sync.lastSyncedAt ? ` · terkirim ${time(lab.sync.lastSyncedAt)}` : ""} · pembaruan ±15 dtk</span>
